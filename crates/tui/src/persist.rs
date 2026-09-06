@@ -330,7 +330,15 @@ mod tests {
         let temp = Temp::new();
         let store = Storage::at(&temp.0);
         let mut game = GameState::with_content(41, pioneer_data::load().unwrap());
+        game.apply(pioneer_sim::Command::Configure {
+            trail_id: "oregon".into(),
+            era_id: "1848".into(),
+            occupation_id: "banker".into(),
+            party: vec!["Ada".into(), "Ben".into(), "Clara".into(), "Dora".into(), "Eli".into()],
+            departure_month: 3,
+        });
         game.status = pioneer_sim::RunStatus::Failed;
+        assert!(game.validate().is_ok());
         game.pending_event = Some(game.content.events[0].id.clone());
         store.save_session("terminal-corrupt", &game).unwrap();
         let before = fs::read(temp.0.join("save.json")).unwrap();
