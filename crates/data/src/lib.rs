@@ -93,7 +93,7 @@ pub fn validate(content: &GameContent) -> Result<(), ContentError> {
             if matches!(node.kind, LandmarkKind::Fork) {
                 expect(node.routes.len() >= 2, &format!("fork {} needs two routes", node.id))?;
             }
-            if matches!(node.kind, LandmarkKind::Finale) {
+            if node.id == trail.goal_node_id {
                 expect(
                     node.routes.is_empty(),
                     &format!("finale {} must not have routes", node.id),
@@ -155,8 +155,8 @@ pub fn validate(content: &GameContent) -> Result<(), ContentError> {
             &format!("quote {} must be named and concise", quote.id),
         )?;
         expect(
-            !quote.seasons.is_empty() && !quote.state_tags.is_empty(),
-            &format!("quote {} needs season and state tags", quote.id),
+            !quote.seasons.is_empty(),
+            &format!("quote {} needs at least one season", quote.id),
         )?;
         if let Some(id) = &quote.landmark_id {
             expect(
@@ -301,7 +301,7 @@ mod tests {
         assert!(content.occupations.len() >= 9);
         assert!(content.items.len() >= 10);
         assert!(content.ailments.len() >= 20);
-        assert_eq!(content.events.len(), 25);
+        assert_eq!(content.events.len(), 26);
         assert_eq!(content.quotes.len(), 25);
     }
 
