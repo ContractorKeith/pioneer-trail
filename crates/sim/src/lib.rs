@@ -7,6 +7,7 @@ pub mod calendar;
 pub mod content;
 pub mod economy;
 pub mod health;
+pub mod minigame;
 pub mod party;
 pub mod rng;
 pub mod score;
@@ -17,6 +18,7 @@ pub use calendar::{days_in_month, is_leap_year, CalendarDate};
 pub use content::*;
 pub use economy::{Counteroffer, Market, NpcTrain};
 pub use health::AilmentStage;
+pub use minigame::{MinigameKind, MinigameSession};
 pub use party::{Relationships, Skills, Trait};
 pub use state::{
     Command, CommandError, CrossMethod, GameState, Outcome, Pace, RationLevel, RunStatus,

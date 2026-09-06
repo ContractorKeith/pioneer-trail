@@ -4,6 +4,7 @@ use crate::{
     content::*,
     economy::{Counteroffer, Market, NpcTrain},
     health::{advance, PartyMember},
+    minigame::{MinigameKind, MinigameSession},
     rng::SimRng,
     score,
     weather::{Terrain, WeatherState},
@@ -121,6 +122,10 @@ pub struct GameState {
     pub npcs: Vec<NpcTrain>,
     #[serde(default)]
     pub pending_counteroffer: Option<Counteroffer>,
+    #[serde(default)]
+    pub active_minigame: Option<MinigameSession>,
+    #[serde(default)]
+    pub loose_bullets: u8,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum Command {
@@ -185,13 +190,15 @@ pub enum Command {
         member_index: usize,
         ailment_id: String,
     },
+    BeginHunt,
     HuntResult {
         food_lbs: u32,
-        ammo_boxes_used: u32,
+        shots: u32,
     },
     RaftResult {
         cargo_lost_lbs: u32,
         casualties: u8,
+        completed: bool,
     },
 }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -270,6 +277,8 @@ impl GameState {
                 last_reputation_day: None,
             }],
             pending_counteroffer: None,
+            active_minigame: None,
+            loose_bullets: 0,
         }
     }
     pub fn apply(&mut self, c: Command) -> Vec<Outcome> {
@@ -278,6 +287,16 @@ impl GameState {
     pub fn try_apply(&mut self, c: Command) -> Result<Vec<Outcome>, CommandError> {
         if matches!(self.status, RunStatus::Arrived | RunStatus::Failed) {
             return Err(CommandError::InvalidPhase);
+        }
+        if let Some(session) = &self.active_minigame {
+            let matching_result = matches!(
+                (&session.kind, &c),
+                (MinigameKind::Hunt, Command::HuntResult { .. })
+                    | (MinigameKind::Raft, Command::RaftResult { .. })
+            );
+            if !matching_result {
+                return Err(CommandError::InvalidPhase);
+            }
         }
         if self.pending_event.is_some() && !matches!(c, Command::Respond { .. }) {
             return Err(CommandError::InvalidPhase);
@@ -353,11 +372,10 @@ impl GameState {
             Command::Respond { event_id, choice_id } => self.respond(&event_id, &choice_id),
             Command::Talk => self.talk(),
             Command::Treat { member_index, ailment_id } => self.treat(member_index, &ailment_id),
-            Command::HuntResult { food_lbs, ammo_boxes_used } => {
-                self.hunt(food_lbs, ammo_boxes_used)
-            }
-            Command::RaftResult { cargo_lost_lbs, casualties } => {
-                self.raft(cargo_lost_lbs, casualties)
+            Command::BeginHunt => self.begin_hunt(),
+            Command::HuntResult { food_lbs, shots } => self.hunt(food_lbs, shots),
+            Command::RaftResult { cargo_lost_lbs, casualties, completed } => {
+                self.raft(cargo_lost_lbs, casualties, completed)
             }
         }
     }
@@ -558,12 +576,12 @@ impl GameState {
         self.miles += moved;
         self.route_miles_remaining -= moved;
         out.push(Outcome::DayAdvanced { day: self.day, miles: self.miles, weather: self.weather });
-        self.due(&mut out);
-        if self.pending_event.is_none() {
-            self.event(&mut out)
-        }
-        if !matches!(self.status, RunStatus::Failed) {
-            self.landmark(&mut out);
+        self.landmark(&mut out);
+        if !matches!(self.status, RunStatus::Arrived | RunStatus::Failed) {
+            self.due(&mut out);
+            if self.pending_event.is_none() {
+                self.event(&mut out)
+            }
         }
         Ok(out)
     }
@@ -591,15 +609,36 @@ impl GameState {
         if !matches!(self.status, RunStatus::AwaitingFork(_)) {
             return Err(CommandError::InvalidPhase);
         }
-        let node = self.node()?;
-        let r = node
-            .routes
-            .iter()
-            .find(|x| x.id == id)
-            .ok_or_else(|| CommandError::UnknownId(id.into()))?;
-        let target_id = r.target_id.clone();
-        let distance = r.distance_miles;
-        let label = r.label.clone();
+        let (at_dalles, route) = {
+            let node = self.node()?;
+            let route = node
+                .routes
+                .iter()
+                .find(|route| route.id == id)
+                .ok_or_else(|| CommandError::UnknownId(id.into()))?
+                .clone();
+            (node.id == "the_dalles", route)
+        };
+        if at_dalles && id == "columbia" {
+            self.active_minigame = Some(MinigameSession {
+                kind: MinigameKind::Raft,
+                seed: self.rng.stream("rafting").gen(),
+                ammo_available: 0,
+            });
+            return Ok(vec![Outcome::Message("The Columbia current takes hold.".into())]);
+        }
+        if at_dalles && id == "barlow" {
+            if self.era_id.as_deref() == Some("1843") {
+                return Err(CommandError::InvalidChoice);
+            }
+            if self.cash_cents < 500 {
+                return Err(CommandError::InsufficientCash);
+            }
+            self.cash_cents -= 500;
+        }
+        let target_id = route.target_id;
+        let distance = route.distance_miles;
+        let label = route.label;
         self.target_node_id = Some(target_id);
         self.route_miles_remaining = distance;
         self.status = RunStatus::Travelling;
@@ -704,32 +743,109 @@ impl GameState {
         p.health = p.health.saturating_add(15).min(100);
         Ok(vec![Outcome::Treated { member_index: i, ailment_id: a.into() }])
     }
-    fn hunt(&mut self, food: u32, ammo: u32) -> Result<Vec<Outcome>, CommandError> {
-        self.traveling()?;
-        if (food > 0 && ammo == 0)
-            || food > 500
-            || self.weight().checked_add(food).ok_or(CommandError::CapacityExceeded)? > 2400
-            || !self.inventory.remove("ammunition", ammo)
+    fn begin_hunt(&mut self) -> Result<Vec<Outcome>, CommandError> {
+        self.at_camp()?;
+        if self.pending_event.is_some() || self.active_minigame.is_some() {
+            return Err(CommandError::InvalidPhase);
+        }
+        let ammunition = self
+            .inventory
+            .get("ammunition")
+            .checked_mul(20)
+            .and_then(|shots| shots.checked_add(u32::from(self.loose_bullets)))
+            .ok_or(CommandError::CapacityExceeded)?;
+        if ammunition == 0 {
+            return Err(CommandError::InvalidChoice);
+        }
+        self.active_minigame = Some(MinigameSession {
+            kind: MinigameKind::Hunt,
+            seed: self.rng.stream("hunting").gen(),
+            ammo_available: ammunition,
+        });
+        Ok(vec![Outcome::Message("Hunt begun.".into())])
+    }
+    fn hunt(&mut self, food: u32, shots: u32) -> Result<Vec<Outcome>, CommandError> {
+        let session = self.active_minigame.clone().ok_or(CommandError::InvalidPhase)?;
+        if session.kind != MinigameKind::Hunt
+            || shots > session.ammo_available.min(20)
+            || (food > 0 && shots == 0)
         {
             return Err(CommandError::InvalidChoice);
         }
-        self.inventory.add("food", food);
+        let ammunition = self
+            .inventory
+            .get("ammunition")
+            .checked_mul(20)
+            .and_then(|available| available.checked_add(u32::from(self.loose_bullets)))
+            .ok_or(CommandError::CapacityExceeded)?;
+        if ammunition < session.ammo_available || shots > ammunition {
+            return Err(CommandError::InvalidChoice);
+        }
+        let bag_limit = if self.occupation_id.as_deref() == Some("hunter") { 200 } else { 150 };
+        if food > bag_limit {
+            return Err(CommandError::InvalidChoice);
+        }
+        let added_food = food.min(self.max_addable("food").unwrap_or(0));
+        let ammunition_after = ammunition - shots;
+        let boxes_after = ammunition_after / 20;
+        let loose_after = u8::try_from(ammunition_after % 20).expect("remainder is below 20");
+        self.inventory.quantities.insert("ammunition".into(), boxes_after);
+        self.loose_bullets = loose_after;
+        self.inventory.add("food", added_food);
+        self.active_minigame = None;
         let mut outcomes = Vec::new();
         self.pass_camp_day(&mut outcomes, false);
-        outcomes.push(Outcome::Message(format!("Brought back {} lbs of food", food)));
+        outcomes.push(Outcome::Message(format!("Brought back {added_food} lbs of food")));
         Ok(outcomes)
     }
-    fn raft(&mut self, lost: u32, casualties: u8) -> Result<Vec<Outcome>, CommandError> {
-        if !matches!(self.status, RunStatus::AtLandmark(_))
-            || !matches!(self.current_landmark().map(|node| node.kind), Some(LandmarkKind::Finale))
+    fn raft(
+        &mut self,
+        lost: u32,
+        casualties: u8,
+        completed: bool,
+    ) -> Result<Vec<Outcome>, CommandError> {
+        let session = self.active_minigame.clone().ok_or(CommandError::InvalidPhase)?;
+        if session.kind != MinigameKind::Raft
+            || self.current_node_id.as_deref() != Some("the_dalles")
+            || !matches!(self.status, RunStatus::AwaitingFork(_))
+            || lost > 120
+            || casualties > 4
         {
-            return Err(CommandError::InvalidPhase);
+            return Err(CommandError::InvalidChoice);
         }
+        let route = self
+            .node()?
+            .routes
+            .iter()
+            .find(|route| route.id == "columbia")
+            .ok_or(CommandError::InvalidChoice)?
+            .clone();
         self.inventory.remove("food", lost);
-        for p in self.party.iter_mut().filter(|p| p.alive).take(casualties as usize) {
-            p.alive = false
+        let mut outcomes = Vec::new();
+        for member in self.party.iter_mut().filter(|member| member.alive).take(casualties as usize)
+        {
+            member.health = 0;
+            member.alive = false;
+            outcomes.push(Outcome::MemberDied { name: member.name.clone() });
         }
-        Ok(vec![Outcome::Message("Rafting result recorded".into())])
+        self.active_minigame = None;
+        self.pass_camp_day(&mut outcomes, false);
+        if completed && self.party.iter().any(|member| member.alive) {
+            self.miles = self.miles.saturating_add(route.distance_miles);
+            self.current_node_id = Some(route.target_id.clone());
+            self.target_node_id = None;
+            self.route_miles_remaining = 0;
+            self.status = RunStatus::Arrived;
+            outcomes.push(Outcome::ArrivedAt { landmark_id: route.target_id });
+            outcomes.push(Outcome::Score { points: self.score() });
+        } else if self.party.iter().any(|member| member.alive) {
+            self.current_node_id = Some("the_dalles".into());
+            self.target_node_id = None;
+            self.route_miles_remaining = 0;
+            self.status = RunStatus::AwaitingFork("the_dalles".into());
+        }
+        outcomes.push(Outcome::Message("Rafting result recorded".into()));
+        Ok(outcomes)
     }
     fn forage(&mut self) -> Result<Vec<Outcome>, CommandError> {
         self.at_camp()?;
@@ -1149,7 +1265,12 @@ impl GameState {
     }
     fn market_at(&self, market_id: &str) -> Market {
         self.markets.get(market_id).cloned().unwrap_or_else(|| Market {
-            normal_stock: self.content.items.iter().map(|item| (item.id.clone(), item.limit.max(20))).collect(),
+            normal_stock: self
+                .content
+                .items
+                .iter()
+                .map(|item| (item.id.clone(), item.limit.max(20)))
+                .collect(),
             stock: self
                 .content
                 .items
@@ -1173,6 +1294,7 @@ impl GameState {
             || !(3..=7).contains(&self.departure_month)
             || self.day > 3660
             || self.cash_cents < 0
+            || self.loose_bullets >= 20
             || self.party.iter().any(|member| {
                 member.health > 100
                     || !(0..=100).contains(&member.morale)
@@ -1281,6 +1403,35 @@ impl GameState {
                 )? != (offer.offered_value_cents, offer.wanted_value_cents)
             {
                 return Err(CommandError::InvalidSetup);
+            }
+        }
+        if let Some(session) = &self.active_minigame {
+            if self.pending_event.is_some() {
+                return Err(CommandError::InvalidSetup);
+            }
+            match session.kind {
+                MinigameKind::Hunt => {
+                    let available = self
+                        .inventory
+                        .get("ammunition")
+                        .checked_mul(20)
+                        .and_then(|shots| shots.checked_add(u32::from(self.loose_bullets)))
+                        .ok_or(CommandError::InvalidSetup)?;
+                    if session.ammo_available == 0
+                        || session.ammo_available != available
+                        || self.at_camp().is_err()
+                    {
+                        return Err(CommandError::InvalidSetup);
+                    }
+                }
+                MinigameKind::Raft => {
+                    if session.ammo_available != 0
+                        || self.current_node_id.as_deref() != Some("the_dalles")
+                        || !matches!(self.status, RunStatus::AwaitingFork(_))
+                    {
+                        return Err(CommandError::InvalidSetup);
+                    }
+                }
             }
         }
         Ok(())
@@ -1649,11 +1800,14 @@ impl GameState {
             _ => Season::Winter,
         }
     }
-    fn terrain(&self) -> Terrain {
+    pub fn terrain(&self) -> Terrain {
         match self.current_node_id.as_deref().unwrap_or_default() {
-            id if id.contains("mountain") || id.contains("pass") => Terrain::Mountains,
+            id if id.contains("sierra") || id.contains("mountain") || id.contains("pass") => {
+                Terrain::Mountains
+            }
+            "salt_desert" | "humboldt" => Terrain::Desert,
+            "willamette" | "barlow" => Terrain::Forest,
             id if id.contains("river") => Terrain::RiverValley,
-            id if id.contains("fort") => Terrain::Plains,
             _ => Terrain::Plains,
         }
     }
@@ -1765,6 +1919,88 @@ mod tests {
         npc.inventory.insert("clothing".into(), 4);
         game
     }
+    fn minigame_content() -> GameContent {
+        let mut content = GameContent::starter();
+        content.items.push(ItemDefinition {
+            id: "ammunition".into(),
+            name: "Ammunition".into(),
+            unit: "box".into(),
+            price_cents: 200,
+            weight_lbs: 1,
+            limit: 99,
+        });
+        content.occupations.push(OccupationDefinition {
+            id: "hunter".into(),
+            name: "Hunter".into(),
+            starting_cash_cents: 40_000,
+            score_multiplier: 2.5,
+            perk: "Carries more meat".into(),
+        });
+        content.trails[0].goal_node_id = "willamette".into();
+        content.trails[0].nodes = vec![
+            LandmarkDefinition {
+                id: "independence".into(),
+                name: "Start".into(),
+                mile: 0,
+                kind: LandmarkKind::Town,
+                routes: vec![RouteDefinition {
+                    id: "main".into(),
+                    label: "Dalles".into(),
+                    target_id: "the_dalles".into(),
+                    distance_miles: 10,
+                }],
+                river: None,
+                store: true,
+            },
+            LandmarkDefinition {
+                id: "the_dalles".into(),
+                name: "The Dalles".into(),
+                mile: 1813,
+                kind: LandmarkKind::Finale,
+                routes: vec![
+                    RouteDefinition {
+                        id: "barlow".into(),
+                        label: "Barlow".into(),
+                        target_id: "willamette".into(),
+                        distance_miles: 72,
+                    },
+                    RouteDefinition {
+                        id: "columbia".into(),
+                        label: "Columbia".into(),
+                        target_id: "willamette".into(),
+                        distance_miles: 72,
+                    },
+                ],
+                river: None,
+                store: false,
+            },
+            LandmarkDefinition {
+                id: "willamette".into(),
+                name: "Goal".into(),
+                mile: 1885,
+                kind: LandmarkKind::Finale,
+                routes: vec![],
+                river: None,
+                store: false,
+            },
+        ];
+        content
+    }
+    fn minigame_game(seed: u64, occupation: &str) -> GameState {
+        let mut game = GameState::with_content(seed, minigame_content());
+        game.apply(Command::Configure {
+            trail_id: "oregon".into(),
+            era_id: "1848".into(),
+            occupation_id: occupation.into(),
+            party: vec!["Ada".into(), "Ben".into(), "Clara".into(), "David".into(), "Eve".into()],
+            departure_month: 4,
+        });
+        game.apply(Command::Buy { item_id: "oxen".into(), quantity: 1 });
+        game.apply(Command::Buy { item_id: "food".into(), quantity: 100 });
+        game.apply(Command::Buy { item_id: "ammunition".into(), quantity: 2 });
+        game.apply(Command::Depart);
+        game
+    }
     fn assert_rejected_without_mutation(game: &mut GameState, command: Command) {
         let before = serde_json::to_value(&*game).unwrap();
         assert!(matches!(game.apply(command).as_slice(), [Outcome::Rejected(_)]));
@@ -1827,6 +2063,42 @@ mod tests {
         game.apply(Command::TravelDay);
         assert_eq!(game.status, RunStatus::Arrived);
         assert_eq!(game.miles, 25);
+    }
+    #[test]
+    fn arrival_does_not_leave_an_unanswerable_pending_event() {
+        let mut content = GameContent::starter();
+        content.trails[0].nodes[0].routes[0].distance_miles = 1;
+        content.events.push(EventDefinition {
+            id: "last_day".into(),
+            text: "Too late".into(),
+            weight: 0,
+            conditions: vec![Condition::Always],
+            effects: vec![],
+            choices: vec![EventChoice {
+                id: "answer".into(),
+                label: "Answer".into(),
+                conditions: vec![],
+                effects: vec![],
+            }],
+        });
+        let mut game = GameState::with_content(2, content);
+        game.apply(Command::Configure {
+            trail_id: "oregon".into(),
+            era_id: "1848".into(),
+            occupation_id: "farmer".into(),
+            party: vec!["A".into(), "B".into(), "C".into(), "D".into(), "E".into()],
+            departure_month: 4,
+        });
+        game.apply(Command::Buy { item_id: "oxen".into(), quantity: 1 });
+        game.apply(Command::Buy { item_id: "food".into(), quantity: 100 });
+        game.apply(Command::Depart);
+        game.scheduled_events.push(PendingEvent { event_id: "last_day".into(), due_day: 1 });
+        let outcomes = game.apply(Command::TravelDay);
+        assert_eq!(game.status, RunStatus::Arrived);
+        assert!(game.pending_event.is_none());
+        assert!(outcomes.iter().all(
+            |outcome| !matches!(outcome, Outcome::Event { event_id, .. } if event_id == "last_day")
+        ));
     }
     #[test]
     fn rejected_command_does_not_mutate_state() {
@@ -2178,6 +2450,119 @@ mod tests {
         game.party[0].ailment_days.insert("measles".into(), 5);
         game.progress_ailments(&mut Vec::new());
         assert!(!game.party[0].ailments.contains(&"measles".into()));
+    }
+
+    #[test]
+    fn hunt_session_gates_commands_and_consumes_exact_bullets() {
+        let mut game = minigame_game(18, "farmer");
+        let day = game.day;
+        game.apply(Command::BeginHunt);
+        let session = game.active_minigame.clone().unwrap();
+        assert_eq!(session.kind, MinigameKind::Hunt);
+        assert_eq!(session.ammo_available, 40);
+        assert_rejected_without_mutation(&mut game, Command::SetPace(Pace::Grueling));
+        game.apply(Command::HuntResult { food_lbs: 50, shots: 3 });
+        assert!(game.active_minigame.is_none());
+        assert_eq!(game.inventory.get("ammunition"), 1);
+        assert_eq!(game.loose_bullets, 17);
+        assert_eq!(game.day, day + 1);
+        assert_eq!(game.inventory.get("food"), 135);
+        assert_rejected_without_mutation(&mut game, Command::HuntResult { food_lbs: 0, shots: 0 });
+    }
+
+    #[test]
+    fn hunt_result_limits_are_atomic_and_hunter_has_larger_bag() {
+        let mut game = minigame_game(19, "farmer");
+        game.apply(Command::BeginHunt);
+        assert_rejected_without_mutation(
+            &mut game,
+            Command::HuntResult { food_lbs: 151, shots: 1 },
+        );
+        assert_rejected_without_mutation(&mut game, Command::HuntResult { food_lbs: 1, shots: 21 });
+        assert_rejected_without_mutation(&mut game, Command::HuntResult { food_lbs: 1, shots: 0 });
+        let mut hunter = minigame_game(19, "hunter");
+        hunter.apply(Command::BeginHunt);
+        hunter.apply(Command::HuntResult { food_lbs: 200, shots: 1 });
+        assert!(hunter.inventory.get("food") >= 285);
+    }
+
+    #[test]
+    fn rafting_abort_and_completion_are_one_time_and_apply_route_distance() {
+        let mut game = minigame_game(20, "farmer");
+        game.current_node_id = Some("the_dalles".into());
+        game.status = RunStatus::AwaitingFork("the_dalles".into());
+        game.miles = 1813;
+        let day = game.day;
+        game.apply(Command::ChooseRoute { route_id: "columbia".into() });
+        assert!(matches!(
+            game.active_minigame,
+            Some(MinigameSession { kind: MinigameKind::Raft, .. })
+        ));
+        assert_rejected_without_mutation(&mut game, Command::Continue);
+        game.apply(Command::RaftResult { cargo_lost_lbs: 10, casualties: 1, completed: false });
+        assert!(game.active_minigame.is_none());
+        assert_eq!(game.status, RunStatus::AwaitingFork("the_dalles".into()));
+        assert_eq!(game.day, day + 1);
+        assert!(!game.party[0].alive && game.party[0].health == 0);
+        game.apply(Command::ChooseRoute { route_id: "columbia".into() });
+        game.apply(Command::RaftResult { cargo_lost_lbs: 0, casualties: 0, completed: true });
+        assert_eq!(game.status, RunStatus::Arrived);
+        assert_eq!(game.current_node_id.as_deref(), Some("willamette"));
+        assert_eq!(game.miles, 1885);
+        assert_rejected_without_mutation(
+            &mut game,
+            Command::RaftResult { cargo_lost_lbs: 0, casualties: 0, completed: true },
+        );
+    }
+
+    #[test]
+    fn rafting_caps_and_barlow_rules_preserve_rejected_state() {
+        let mut game = minigame_game(21, "farmer");
+        game.current_node_id = Some("the_dalles".into());
+        game.status = RunStatus::AwaitingFork("the_dalles".into());
+        game.apply(Command::ChooseRoute { route_id: "columbia".into() });
+        assert_rejected_without_mutation(
+            &mut game,
+            Command::RaftResult { cargo_lost_lbs: 121, casualties: 0, completed: false },
+        );
+        assert_rejected_without_mutation(
+            &mut game,
+            Command::RaftResult { cargo_lost_lbs: 0, casualties: 5, completed: false },
+        );
+        game.active_minigame = None;
+        game.cash_cents = 500;
+        game.era_id = Some("1843".into());
+        game.content.eras.push(EraDefinition {
+            id: "1843".into(),
+            name: "1843".into(),
+            year: 1843,
+        });
+        assert_rejected_without_mutation(
+            &mut game,
+            Command::ChooseRoute { route_id: "barlow".into() },
+        );
+        game.era_id = Some("1848".into());
+        game.apply(Command::ChooseRoute { route_id: "barlow".into() });
+        assert_eq!(game.cash_cents, 0);
+        assert_eq!(game.status, RunStatus::Travelling);
+    }
+
+    #[test]
+    fn minigame_save_validation_and_terrain_mapping_reject_impossible_sessions() {
+        let mut game = minigame_game(22, "farmer");
+        game.apply(Command::BeginHunt);
+        game.validate().unwrap();
+        game.loose_bullets = 20;
+        assert_eq!(game.validate(), Err(CommandError::InvalidSetup));
+        game.loose_bullets = 0;
+        game.active_minigame.as_mut().unwrap().ammo_available = 1;
+        assert_eq!(game.validate(), Err(CommandError::InvalidSetup));
+        game.current_node_id = Some("sierra".into());
+        assert_eq!(game.terrain(), Terrain::Mountains);
+        game.current_node_id = Some("salt_desert".into());
+        assert_eq!(game.terrain(), Terrain::Desert);
+        game.current_node_id = Some("willamette".into());
+        assert_eq!(game.terrain(), Terrain::Forest);
     }
 
     proptest::proptest! {
