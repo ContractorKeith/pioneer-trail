@@ -65,6 +65,7 @@ pub struct HuntingGame {
     crosshair: (i16, i16),
     ticks: u16,
     shots: u16,
+    ammo: u16,
     food: u16,
     capacity: u16,
     finished: bool,
@@ -78,6 +79,7 @@ impl HuntingGame {
             crosshair: (40, 11),
             ticks: 0,
             shots: 0,
+            ammo: 20,
             food: 0,
             capacity: if hunter { 200 } else { 150 },
             finished: false,
@@ -155,6 +157,10 @@ impl HuntingGame {
         }
     }
     fn shoot(&mut self) {
+        if self.ammo == 0 {
+            return;
+        }
+        self.ammo -= 1;
         self.shots = self.shots.saturating_add(1);
         for target in &mut self.targets {
             if target.alive
@@ -211,11 +217,11 @@ impl HuntingGame {
                 .cell_mut((area.x, area.y + 23))
                 .unwrap()
                 .set_symbol(&format!(
-                    " HUNT  {:02}s  FOOD {}/{}  SHOTS {} ",
+                    " HUNT  {:02}s  FOOD {}/{}  AMMO {} ",
                     30 - self.ticks / TICKS_PER_SECOND,
                     self.food,
                     self.capacity,
-                    self.shots
+                    self.ammo
                 ))
                 .set_fg(Color::White);
         }
@@ -244,11 +250,11 @@ mod tests {
         assert_eq!(g.result().food_lbs, 0)
     }
     #[test]
-    fn shots_do_not_underflow() {
+    fn ammo_does_not_underflow() {
         let mut g = HuntingGame::new(1, Biome::Desert, false);
         for _ in 0..1000 {
             g.handle_key(KeyCode::Char(' '))
         }
-        assert_eq!(g.result().shots, 1000)
+        assert_eq!(g.result().shots, 20)
     }
 }
