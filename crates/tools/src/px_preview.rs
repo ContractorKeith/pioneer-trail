@@ -8,6 +8,8 @@ use std::{
 use anyhow::Context;
 use clap::Parser;
 use crossterm::{
+    cursor::{Hide, Show},
+    event::{self, Event},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -22,6 +24,16 @@ struct Args {
     /// Palette: truecolor, 256, 16, or mono.
     #[arg(long, default_value = "truecolor")]
     color: String,
+}
+
+/// Restores the terminal even when drawing or polling returns an error.
+struct TerminalGuard;
+
+impl Drop for TerminalGuard {
+    fn drop(&mut self) {
+        let _ = disable_raw_mode();
+        let _ = execute!(io::stdout(), Show, LeaveAlternateScreen);
+    }
 }
 
 fn main() -> anyhow::Result<()> {
@@ -39,22 +51,29 @@ fn main() -> anyhow::Result<()> {
         PxImage::parse(&source).with_context(|| format!("parsing {}", args.path.display()))?;
     enable_raw_mode()?;
     let mut output = stdout();
-    execute!(output, EnterAlternateScreen)?;
+    execute!(output, EnterAlternateScreen, Hide)?;
+    let _guard = TerminalGuard;
     let mut terminal = Terminal::new(CrosstermBackend::new(output))?;
-    terminal.draw(|frame| {
-        render(
-            &image,
-            frame.buffer_mut(),
-            Rect::new(0, 0, image.width(), image.cell_height()),
-            mode,
-        )
-    })?;
+    let draw = |terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>| -> anyhow::Result<()> {
+        terminal.draw(|frame| {
+            render(
+                &image,
+                frame.buffer_mut(),
+                Rect::new(0, 0, image.width(), image.cell_height()),
+                mode,
+            )
+        })?;
+        Ok(())
+    };
+    draw(&mut terminal)?;
     loop {
-        if crossterm::event::poll(std::time::Duration::from_millis(100))? {
-            break;
+        if event::poll(std::time::Duration::from_millis(100))? {
+            match event::read()? {
+                Event::Key(_) => break,
+                Event::Resize(_, _) => draw(&mut terminal)?,
+                _ => {}
+            }
         }
     }
-    disable_raw_mode()?;
-    execute!(io::stdout(), LeaveAlternateScreen)?;
     Ok(())
 }

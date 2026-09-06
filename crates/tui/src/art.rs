@@ -140,7 +140,7 @@ impl fmt::Display for PxError {
             Self::InvalidPixel { line, column, found } => {
                 write!(f, "invalid pixel {found:?} at line {line}, column {column}")
             }
-            Self::TooLarge => write!(f, "sprite dimensions exceed 65535 pixels"),
+            Self::TooLarge => write!(f, "sprite dimensions exceed 256 pixels"),
         }
     }
 }
@@ -204,12 +204,14 @@ impl ColorMode {
 /// Images are clipped to both `area` and the destination buffer.
 pub fn render(image: &PxImage, buffer: &mut Buffer, area: Rect, mode: ColorMode) {
     let bounds = area.intersection(buffer.area);
-    let columns = image.width.min(bounds.width);
-    let rows = image.cell_height().min(bounds.height);
+    let source_x = bounds.x.saturating_sub(area.x);
+    let source_y = bounds.y.saturating_sub(area.y);
+    let columns = image.width.saturating_sub(source_x).min(bounds.width);
+    let rows = image.cell_height().saturating_sub(source_y).min(bounds.height);
     for y in 0..rows {
         for x in 0..columns {
-            let top = image.pixel(x, y * 2);
-            let bottom = image.pixel(x, y * 2 + 1);
+            let top = image.pixel(source_x + x, (source_y + y) * 2);
+            let bottom = image.pixel(source_x + x, (source_y + y) * 2 + 1);
             let cell =
                 buffer.cell_mut((bounds.x + x, bounds.y + y)).expect("clipped to buffer bounds");
             if mode == ColorMode::Mono {
@@ -227,19 +229,25 @@ pub fn render(image: &PxImage, buffer: &mut Buffer, area: Rect, mode: ColorMode)
                 cell.set_symbol(glyph).set_fg(Color::White).set_bg(Color::Black);
                 continue;
             }
-            match (top, bottom) {
-                (None, None) => continue,
-                (Some(top), None) => {
-                    cell.set_symbol("▀").set_fg(mode.color(top)).set_bg(Color::Black)
-                }
-                (None, Some(bottom)) => {
-                    cell.set_symbol("▄").set_fg(mode.color(bottom)).set_bg(Color::Black)
-                }
-                (Some(top), Some(bottom)) => {
-                    cell.set_symbol("▀").set_fg(mode.color(top)).set_bg(mode.color(bottom))
-                }
-            };
+            if top.is_none() && bottom.is_none() {
+                continue;
+            }
+            let (old_top, old_bottom) = cell_halves(cell.symbol(), cell.fg, cell.bg);
+            let top = top.map(|pixel| mode.color(pixel)).unwrap_or(old_top);
+            let bottom = bottom.map(|pixel| mode.color(pixel)).unwrap_or(old_bottom);
+            cell.set_symbol("▀").set_fg(top).set_bg(bottom);
         }
+    }
+}
+
+/// Recovers the colors represented by the renderer's half-block cell. Unknown
+/// terminal glyphs are treated as a solid foreground color.
+fn cell_halves(symbol: &str, fg: Color, bg: Color) -> (Color, Color) {
+    match symbol {
+        "▀" => (fg, bg),
+        "▄" => (bg, fg),
+        " " => (bg, bg),
+        _ => (fg, fg),
     }
 }
 
@@ -297,5 +305,90 @@ mod tests {
         let mut buffer = Buffer::empty(Rect::new(0, 0, 1, 1));
         render(&image, &mut buffer, Rect::new(0, 0, 1, 1), ColorMode::Mono);
         assert_eq!(buffer.cell((0, 0)).unwrap().symbol(), "░");
+    }
+
+    #[test]
+    fn partial_transparency_preserves_each_existing_half() {
+        let base = PxImage::parse("G\nB\n").unwrap();
+        let top = PxImage::parse("W\n.\n").unwrap();
+        let bottom = PxImage::parse(".\nO\n").unwrap();
+        let mut buffer = Buffer::empty(Rect::new(0, 0, 1, 1));
+        render(&base, &mut buffer, Rect::new(0, 0, 1, 1), ColorMode::TrueColor);
+        render(&top, &mut buffer, Rect::new(0, 0, 1, 1), ColorMode::TrueColor);
+        let cell = buffer.cell((0, 0)).unwrap();
+        assert_eq!((cell.fg, cell.bg), (Color::Rgb(255, 255, 255), Color::Rgb(27, 154, 254)));
+        render(&bottom, &mut buffer, Rect::new(0, 0, 1, 1), ColorMode::TrueColor);
+        let cell = buffer.cell((0, 0)).unwrap();
+        assert_eq!((cell.fg, cell.bg), (Color::Rgb(255, 255, 255), Color::Rgb(242, 106, 0)));
+    }
+
+    #[test]
+    fn clipping_advances_the_source_origin() {
+        let image = PxImage::parse("WO\nBG\n").unwrap();
+        let mut buffer = Buffer::empty(Rect::new(2, 0, 1, 1));
+        render(&image, &mut buffer, Rect::new(1, 0, 2, 1), ColorMode::Ansi256);
+        let cell = buffer.cell((2, 0)).unwrap();
+        assert_eq!((cell.fg, cell.bg), (Color::Indexed(202), Color::Indexed(40)));
+    }
+
+    #[test]
+    fn every_embedded_sprite_is_valid_and_has_its_expected_size() {
+        for file in pioneer_data::ART.files() {
+            let path = file.path().to_str().unwrap();
+            if !path.ends_with(".px") {
+                continue;
+            }
+            let image = PxImage::parse(file.contents_utf8().unwrap())
+                .unwrap_or_else(|error| panic!("{path}: {error}"));
+            let expected = if path.ends_with("title.px")
+                || path.contains("terrain_")
+                || [
+                    "kansas_river",
+                    "big_blue",
+                    "green_river",
+                    "snake_river",
+                    "columbia",
+                    "fort_",
+                    "map_oregon",
+                ]
+                .iter()
+                .any(|name| path.contains(name))
+                || [
+                    "the_dalles",
+                    "willamette",
+                    "soda_springs",
+                    "south_pass",
+                    "chimney_rock",
+                    "independence_rock",
+                    "blue_mountains",
+                ]
+                .iter()
+                .any(|name| path.contains(name))
+            {
+                (80, 32)
+            } else if path.contains("wagon_") {
+                (40, 20)
+            } else if path.contains("ox_") {
+                (20, 10)
+            } else if path.ends_with("tombstone.px") {
+                (8, 10)
+            } else if path.ends_with("raft.px") {
+                (12, 6)
+            } else if path.contains("rock_") {
+                (6, 4)
+            } else if path.contains("crosshair_") {
+                (13, 11)
+            } else {
+                (16, 10)
+            };
+            assert_eq!((image.width(), image.height()), expected, "{path}");
+        }
+        assert_eq!(
+            pioneer_data::ART
+                .files()
+                .filter(|file| file.path().extension().is_some_and(|ext| ext == "px"))
+                .count(),
+            49
+        );
     }
 }

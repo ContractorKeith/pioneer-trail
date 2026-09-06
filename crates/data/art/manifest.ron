@@ -1,1 +1,12 @@
-(wagon_frames:["wagon_0.px","wagon_1.px","wagon_2.px","wagon_3.px"], terrain:["terrain_plains.px","terrain_hills.px","terrain_mountains.px","terrain_desert.px","terrain_forest.px","terrain_river_valley.px"])
+(
+  wagon: (frames: ["wagon_0.px", "wagon_1.px", "wagon_2.px", "wagon_3.px"], fps: 4),
+  ox: (frames: ["ox_0.px", "ox_1.px"], fps: 4),
+  terrain: ["terrain_plains.px", "terrain_hills.px", "terrain_mountains.px", "terrain_desert.px", "terrain_forest.px", "terrain_river_valley.px"],
+  rivers: ["kansas_river.px", "big_blue.px", "green_river.px", "snake_river.px", "columbia.px"],
+  forts: ["fort_kearney.px", "fort_laramie.px", "fort_bridger.px", "fort_hall.px", "fort_boise.px", "fort_walla_walla.px"],
+  landmarks: ["chimney_rock.px", "independence_rock.px", "south_pass.px", "soda_springs.px", "blue_mountains.px", "the_dalles.px", "willamette.px"],
+  layers: (far: ["terrain_hills.px", "terrain_mountains.px"], near: ["terrain_plains.px", "terrain_forest.px", "terrain_river_valley.px"], actors: ["wagon_0.px", "ox_0.px", "tombstone.px"]),
+  hunting: (animals: ["buffalo_0.px", "buffalo_1.px", "bear_0.px", "bear_1.px", "deer_0.px", "deer_1.px", "rabbit_0.px", "rabbit_1.px", "squirrel_0.px", "squirrel_1.px"], crosshair: ["crosshair_0.px", "crosshair_1.px"], fps: 6),
+  rafting: (raft: "raft.px", rocks: ["rock_0.px", "rock_1.px", "rock_2.px"], fps: 30),
+  map: "map_oregon.px",
+)
