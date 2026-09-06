@@ -1,7 +1,7 @@
 //! A command-only reference player for reproducible journeys and balance reports.
 
 use anyhow::{bail, Result};
-use pioneer_sim::{Command, CrossMethod, GameContent, GameState, Outcome, RunStatus};
+use pioneer_sim::{Command, CrossMethod, GameContent, GameState, MinigameKind, Outcome, RunStatus};
 
 #[derive(Debug, Clone)]
 pub struct RunConfig {
@@ -17,7 +17,7 @@ impl Default for RunConfig {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RunSummary {
     pub seed: u64,
     pub arrived: bool,
@@ -58,6 +58,7 @@ pub fn journey(
     }
     submit(&mut game, Command::Depart)?;
     let mut last_shop = None;
+    let mut survival_camp_days = 0;
     for _ in 0..5000 {
         if matches!(game.status, RunStatus::Arrived | RunStatus::Failed) {
             return Ok(RunSummary {
@@ -70,17 +71,20 @@ pub fn journey(
             });
         }
         let command = if let Some(session) = &game.active_minigame {
-            // The reference pilot holds the center lane for the entire real course.
-            // Use the same collision world as interactive play, not a fabricated success.
-            let mut raft = crate::minigame::rafting::RaftingGame::new(session.seed);
-            while !raft.is_finished() {
-                raft.tick();
-            }
-            let result = raft.result();
-            Command::RaftResult {
-                cargo_lost_lbs: result.cargo_lost_lbs.into(),
-                casualties: result.casualties,
-                completed: result.completed,
+            let mut encounter = crate::minigame::host::LiveMinigame::from_session(&game)
+                .expect("active simulation session");
+            loop {
+                if let Some(result) = encounter.result() {
+                    break result;
+                }
+                if session.kind == MinigameKind::Hunt {
+                    // A practiced text-mode hunter selects the first visible target.
+                    encounter.text_key(crossterm::event::KeyCode::Char('1'));
+                    encounter.text_key(crossterm::event::KeyCode::Char(' '));
+                } else {
+                    // The reference pilot holds center in the real collision world.
+                    encounter.tick();
+                }
             }
         } else if let Some(id) = &game.pending_event {
             let event = game
@@ -131,14 +135,26 @@ pub fn journey(
                         .iter()
                         .enumerate()
                         .find(|(_, member)| member.alive && !member.ailments.is_empty());
+                    let doctor_present =
+                        game.party.iter().any(|member| member.alive && member.skills.medicine >= 4);
                     if let Some((index, member)) =
-                        sick.filter(|_| game.inventory.get("medicine") > 0)
+                        sick.filter(|_| game.inventory.get("medicine") > 0 || doctor_present)
                     {
                         Command::Treat {
                             member_index: index,
                             ailment_id: member.ailments[0].clone(),
                         }
+                    } else if game.inventory.get("food") < 75 && survival_camp_days < 4 {
+                        survival_camp_days += 1;
+                        if game.inventory.get("ammunition") > 0 || game.loose_bullets > 0 {
+                            Command::BeginHunt
+                        } else if matches!(game.terrain(), pioneer_sim::Terrain::RiverValley) {
+                            Command::Fish
+                        } else {
+                            Command::Forage
+                        }
                     } else {
+                        survival_camp_days = 0;
                         Command::Continue
                     }
                 }
@@ -179,7 +195,11 @@ fn submit(game: &mut GameState, command: Command) -> Result<Vec<Outcome>> {
 fn buy_up_to(game: &mut GameState, item: &str, maximum: u32) {
     // Quantity search uses the shop command so prices and stock stay simulation rules.
     // Rejected purchases must leave state untouched, an invariant tested in sim.
-    for quantity in (1..=maximum).rev() {
+    let Some(price) = game.price_cents(item).filter(|price| *price > 0) else {
+        return;
+    };
+    let affordable = u32::try_from(game.cash_cents / price).unwrap_or(0);
+    for quantity in (1..=maximum.min(affordable)).rev() {
         let outcomes = game.apply(Command::Buy { item_id: item.into(), quantity });
         if !outcomes.iter().any(|outcome| matches!(outcome, Outcome::Rejected(_))) {
             break;
@@ -207,5 +227,49 @@ impl BalanceSummary {
 
     pub fn arrival_percent(&self) -> f64 {
         100.0 * f64::from(self.arrivals) / f64::from(self.runs.max(1))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn low_cash_reference_uses_real_hunts_and_can_arrive() {
+        let content = pioneer_data::load().unwrap();
+        for occupation in ["farmer", "hunter"] {
+            let config = RunConfig { occupation: occupation.into(), ..RunConfig::default() };
+            let mut hunted = false;
+            let arrivals = (0..8)
+                .filter(|seed| {
+                    journey(&content, *seed, &config, |game, _| {
+                        hunted |= game
+                            .active_minigame
+                            .as_ref()
+                            .is_some_and(|s| s.kind == MinigameKind::Hunt);
+                    })
+                    .unwrap()
+                    .arrived
+                })
+                .count();
+            assert!(hunted, "{occupation} must use its ammunition");
+            assert!(arrivals > 0, "{occupation} must have a viable seeded journey");
+        }
+    }
+
+    #[test]
+    fn survival_reference_remains_deterministic() {
+        let content = pioneer_data::load().unwrap();
+        let config = RunConfig { occupation: "farmer".into(), ..RunConfig::default() };
+        let mut left_log = Vec::new();
+        let left =
+            journey(&content, 42, &config, |_, outcomes| left_log.extend_from_slice(outcomes))
+                .unwrap();
+        let mut right_log = Vec::new();
+        let right =
+            journey(&content, 42, &config, |_, outcomes| right_log.extend_from_slice(outcomes))
+                .unwrap();
+        assert_eq!(left, right);
+        assert_eq!(left_log, right_log);
     }
 }
