@@ -136,6 +136,19 @@ pub enum Command {
         wanted_item: String,
         wanted_quantity: u32,
     },
+    InviteNpc {
+        npc_id: String,
+    },
+    DismissNpc {
+        npc_id: String,
+    },
+    AcceptCounteroffer {
+        npc_id: String,
+        offered_item: String,
+        offered_quantity: u32,
+        wanted_item: String,
+        wanted_quantity: u32,
+    },
     Configure {
         trail_id: String,
         era_id: String,
@@ -285,6 +298,21 @@ impl GameState {
             } => {
                 self.barter(&npc_id, &offered_item, offered_quantity, &wanted_item, wanted_quantity)
             }
+            Command::InviteNpc { npc_id } => self.invite_npc(&npc_id),
+            Command::DismissNpc { npc_id } => self.dismiss_npc(&npc_id),
+            Command::AcceptCounteroffer {
+                npc_id,
+                offered_item,
+                offered_quantity,
+                wanted_item,
+                wanted_quantity,
+            } => self.barter(
+                &npc_id,
+                &offered_item,
+                offered_quantity.saturating_add(1),
+                &wanted_item,
+                wanted_quantity,
+            ),
             Command::Configure { trail_id, era_id, occupation_id, party, departure_month } => {
                 self.configure(trail_id, era_id, occupation_id, party, departure_month)
             }
@@ -397,12 +425,35 @@ impl GameState {
             .items
             .iter()
             .find(|x| x.id == id)
-            .ok_or_else(|| CommandError::UnknownId(id.into()))?;
-        let cost =
-            item.price_cents.checked_mul(i64::from(n)).ok_or(CommandError::InsufficientCash)?;
+            .ok_or_else(|| CommandError::UnknownId(id.into()))?
+            .clone();
+        let season_markup = match self.season() {
+            Season::Winter => 25,
+            Season::Summer => 10,
+            _ => 0,
+        };
+        let current_weight = self.weight();
+        let market_id = self.current_node_id.clone().unwrap_or_default();
+        let market = self.markets.entry(market_id).or_insert_with(|| Market {
+            stock: self
+                .content
+                .items
+                .iter()
+                .map(|item| (item.id.clone(), item.limit.max(20)))
+                .collect(),
+            reputation: self.reputation,
+            last_restock_day: self.day,
+        });
+        market.replenish(self.day);
+        if market.stock.get(id).copied().unwrap_or_default() < n {
+            return Err(CommandError::InvalidChoice);
+        }
+        let cost = market
+            .price(item.price_cents, season_markup)
+            .checked_mul(i64::from(n))
+            .ok_or(CommandError::InsufficientCash)?;
         if self.inventory.get(id).checked_add(n).ok_or(CommandError::CapacityExceeded)? > item.limit
-            || self
-                .weight()
+            || current_weight
                 .checked_add(item.weight_lbs.checked_mul(n).ok_or(CommandError::CapacityExceeded)?)
                 .ok_or(CommandError::CapacityExceeded)?
                 > 2400
@@ -414,6 +465,7 @@ impl GameState {
         }
         self.cash_cents -= cost;
         self.inventory.add(id, n);
+        *market.stock.entry(id.into()).or_default() -= n;
         Ok(vec![Outcome::Purchased { item_id: id.into(), quantity: n, cost_cents: cost }])
     }
     fn travel(&mut self) -> Result<Vec<Outcome>, CommandError> {
@@ -735,6 +787,38 @@ impl GameState {
         *npc.inventory.entry(wanted_item.into()).or_default() -= wanted_quantity;
         self.reputation = self.reputation.saturating_add(1);
         Ok(vec![Outcome::Message("Trade accepted.".into())])
+    }
+    fn invite_npc(&mut self, npc_id: &str) -> Result<Vec<Outcome>, CommandError> {
+        self.at_camp()?;
+        let npc = self
+            .npcs
+            .iter_mut()
+            .find(|npc| npc.id == npc_id)
+            .ok_or_else(|| CommandError::UnknownId(npc_id.into()))?;
+        if npc.reputation + self.reputation < 0 || self.party.len() >= 12 {
+            return Err(CommandError::InvalidChoice);
+        }
+        npc.recurring = false;
+        self.party.push(PartyMember::new(npc.name.clone()));
+        self.reputation = self.reputation.saturating_add(2);
+        Ok(vec![Outcome::Message(format!("{} joins the party.", npc.name))])
+    }
+    fn dismiss_npc(&mut self, npc_id: &str) -> Result<Vec<Outcome>, CommandError> {
+        self.at_camp()?;
+        let npc = self
+            .npcs
+            .iter_mut()
+            .find(|npc| npc.id == npc_id)
+            .ok_or_else(|| CommandError::UnknownId(npc_id.into()))?;
+        if npc.recurring {
+            return Err(CommandError::InvalidChoice);
+        }
+        if let Some(index) = self.party.iter().position(|member| member.name == npc.name) {
+            self.party.remove(index);
+        }
+        npc.recurring = true;
+        self.reputation = self.reputation.saturating_sub(1);
+        Ok(vec![Outcome::Message(format!("{} leaves the party.", npc.name))])
     }
     pub fn score(&self) -> u32 {
         let mul = self
@@ -1472,6 +1556,33 @@ mod tests {
         assert!(!game.party[0].alive);
         assert_eq!(game.party[0].health, 0);
         assert_eq!(game.inventory.get("food"), 476);
+    }
+
+    #[test]
+    fn market_stock_depletes_and_npc_trade_is_atomic() {
+        let mut game = GameState::new(8);
+        game.apply(Command::Configure {
+            trail_id: "oregon".into(),
+            era_id: "1848".into(),
+            occupation_id: "farmer".into(),
+            party: vec!["A".into(), "B".into(), "C".into(), "D".into(), "E".into()],
+            departure_month: 4,
+        });
+        game.apply(Command::Buy { item_id: "food".into(), quantity: 10 });
+        assert_eq!(game.markets["independence"].stock["food"], 1_990);
+        let before = serde_json::to_value(&game).unwrap();
+        assert!(matches!(
+            game.apply(Command::Barter {
+                npc_id: "emigrant_train".into(),
+                offered_item: "food".into(),
+                offered_quantity: 0,
+                wanted_item: "food".into(),
+                wanted_quantity: 1
+            })
+            .as_slice(),
+            [Outcome::Rejected(_)]
+        ));
+        assert_eq!(serde_json::to_value(&game).unwrap(), before);
     }
 
     proptest::proptest! {
