@@ -1056,7 +1056,11 @@ impl App {
         let outer = Block::default().borders(Borders::ALL).title(self.title());
         frame.render_widget(outer, area);
         let inner = area.inner(Margin { horizontal: 2, vertical: 1 });
-        let chunks = Layout::vertical([Constraint::Min(5), Constraint::Length(5)]).split(inner);
+        let wide_store_art =
+            self.screen == Screen::Store && !self.settings.no_art && area.width >= 110;
+        let content =
+            if wide_store_art { Rect::new(inner.x, inner.y, 78, inner.height) } else { inner };
+        let chunks = Layout::vertical([Constraint::Min(5), Constraint::Length(5)]).split(content);
         let lines = self
             .body()
             .into_iter()
@@ -1066,7 +1070,25 @@ impl App {
             Paragraph::new(lines).wrap(ratatui::widgets::Wrap { trim: false }),
             chunks[0],
         );
-        self.render_trail_log(frame, chunks[1]);
+        self.render_trail_log(
+            frame,
+            if wide_store_art {
+                Rect::new(content.x, chunks[1].y, 78, chunks[1].height)
+            } else {
+                chunks[1]
+            },
+        );
+        if wide_store_art {
+            self.render_store_vignette(
+                frame,
+                Rect::new(
+                    content.right() + 2,
+                    inner.y + 1,
+                    inner.right() - content.right() - 2,
+                    14,
+                ),
+            );
+        }
     }
     fn title(&self) -> &'static str {
         match self.screen {
@@ -1092,7 +1114,8 @@ impl App {
             Block::default().style(Style::default().bg(Color::Black).fg(Color::White)),
             area,
         );
-        let canvas = Rect::new(area.x + (area.width - 80) / 2, area.y, 80, 16);
+        let canvas_height = if self.screen == Screen::Journey { 14 } else { 16 };
+        let canvas = Rect::new(area.x + (area.width - 80) / 2, area.y, 80, canvas_height);
         let mode = self.color_mode();
         if self.screen == Screen::Title {
             art::render(
@@ -1156,16 +1179,16 @@ impl App {
             };
             art::embedded(file).expect("terrain art")
         });
-        art::render(background, frame.buffer_mut(), canvas, mode);
+        art::render_section(background, frame.buffer_mut(), canvas, 2, mode);
         let moving = matches!(self.game.status, pioneer_sim::RunStatus::Travelling);
         let phase = if moving { self.animation_tick % 4 } else { 0 };
         for (file, x, y) in
-            [(format!("ox_{}.px", phase % 2), 10, 10), (format!("wagon_{phase}.px"), 32, 5)]
+            [(format!("ox_{}.px", phase % 2), 10, 8), (format!("wagon_{phase}.px"), 32, 3)]
         {
             art::render(
                 art::embedded(&file).expect("wagon animation"),
                 frame.buffer_mut(),
-                Rect::new(canvas.x + x, canvas.y + y, 80 - x, 16 - y),
+                Rect::new(canvas.x + x, canvas.y + y, 80 - x, 14 - y),
                 mode,
             );
         }
@@ -1175,7 +1198,11 @@ impl App {
                 "{month:02}/{day:02}/{year} · {} mi · {name} · {:?}",
                 self.game.miles, self.game.weather
             )),
-            Rect::new(canvas.x, canvas.y + 16, 80, 1),
+            Rect::new(canvas.x, canvas.y + 15, 80, 1),
+        );
+        frame.render_widget(
+            Paragraph::new(self.trail_advice()),
+            Rect::new(canvas.x + 2, canvas.y + 14, 76, 1),
         );
         frame.render_widget(
             Paragraph::new(format!(
@@ -1186,7 +1213,7 @@ impl App {
                 self.game.rations,
                 self.game.party.iter().filter(|m| m.alive).count()
             )),
-            Rect::new(canvas.x, canvas.y + 17, 80, 1),
+            Rect::new(canvas.x, canvas.y + 16, 80, 1),
         );
         for (i, label) in
             ["Continue", "Supplies", "Map", "Pace", "Rations", "Rest", "Hunt", "Talk", "Buy"]
@@ -1195,19 +1222,19 @@ impl App {
         {
             frame.render_widget(
                 Paragraph::new(format!("{} {} {label}", marker(i == self.cursor), i + 1)),
-                Rect::new(canvas.x + (i % 3) as u16 * 26, canvas.y + 18 + (i / 3) as u16, 26, 1),
+                Rect::new(canvas.x + (i % 3) as u16 * 26, canvas.y + 17 + (i / 3) as u16, 26, 1),
             );
         }
         frame.render_widget(
             Paragraph::new(
                 "a travel · i treat · u trade · f forage · g fish · v party · Esc title",
             ),
-            Rect::new(canvas.x, canvas.y + 21, 80, 1),
+            Rect::new(canvas.x, canvas.y + 20, 80, 1),
         );
         if let Some(last) = self.log.last() {
             frame.render_widget(
                 Paragraph::new(last.clone()).wrap(ratatui::widgets::Wrap { trim: true }),
-                Rect::new(canvas.x, canvas.y + 22, 80, 2),
+                Rect::new(canvas.x, canvas.y + 21, 80, 3),
             );
         }
         if area.height >= 30 {
@@ -1231,6 +1258,26 @@ impl App {
                 Rect::new(canvas.x, canvas.y + 25, 80, area.height - 25),
             );
         }
+    }
+    fn render_store_vignette(&self, frame: &mut Frame, area: Rect) {
+        use crate::art;
+        frame.render_widget(
+            Paragraph::new("MATT'S COUNTER").style(Style::default().fg(Color::LightYellow)),
+            Rect::new(area.x, area.y, area.width, 1),
+        );
+        art::render_at(
+            art::embedded("wagon_0.px").expect("wagon art"),
+            frame.buffer_mut(),
+            area,
+            i32::from(area.x).saturating_sub(4),
+            i32::from(area.y + 3),
+            self.color_mode(),
+        );
+        frame.render_widget(
+            Paragraph::new("Pack steady.\nKeep room for food.")
+                .style(Style::default().fg(Color::White)),
+            Rect::new(area.x, area.y + 12, area.width, 2),
+        );
     }
     fn render_scene_vignette(&self, frame: &mut Frame, canvas: Rect, mode: crate::art::ColorMode) {
         use crate::art;
@@ -2067,6 +2114,18 @@ mod tests {
     #[test]
     fn snapshots_at_120x40() {
         insta::assert_snapshot!("screens_120x40", all_screens(120, 40));
+    }
+    #[test]
+    fn journey_tip_keeps_status_and_latest_log_at_80x24() {
+        let view = render(Screen::Journey, 80, 24);
+        assert!(view.contains("Food 1500 lb · $1080.00 · Steady/Filling · 5 alive"));
+        assert!(view.contains("1500 lb: up to 100 ration days"));
+        assert!(view.contains("The wagon is ready. Five travelers set out from Independence."));
+    }
+    #[test]
+    fn store_vignette_uses_only_wide_terminals() {
+        assert!(!render(Screen::Store, 80, 24).contains("MATT'S COUNTER"));
+        assert!(render(Screen::Store, 120, 40).contains("MATT'S COUNTER"));
     }
     #[test]
     fn outcome_vignettes_keep_the_summary_and_trail_log_visible() {
