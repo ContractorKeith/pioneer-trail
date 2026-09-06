@@ -7,8 +7,19 @@ and manage supplies, weather, illness, rivers, events, and hard choices.
 
 ![A Pioneer Trail journey in a terminal](assets/pioneer-trail.gif)
 
-The project is playable from source. Public release binaries, crates.io publication, and Homebrew
-distribution are not yet verified. Until then, use the source commands below.
+## Play
+
+On macOS or Linux with Homebrew:
+
+```bash
+brew install contractorkeith/tap/pioneer-trail
+pioneer-trail
+```
+
+Or download a binary for macOS, Linux, or Windows from
+[GitHub Releases](https://github.com/ContractorKeith/pioneer-trail/releases/latest).
+For your first journey, try Banker, March, Oregon, 1848. Crates.io publication is still pending;
+the Homebrew formula builds directly from the released source.
 
 ## Play from source
 
@@ -62,4 +73,4 @@ Read [the player guide](docs/PLAYING.md) before your first trip. [Build status](
 maps the current implementation to the original plan and records deliberate limits. The original
 [design and phase plan](docs/PLAN.md) remains the project roadmap.
 
-Future verified releases will appear on [GitHub Releases](https://github.com/ContractorKeith/pioneer-trail/releases/latest).
+See [release acceptance](docs/RELEASE_ACCEPTANCE.md) for v0.1.0 verification and known limits.

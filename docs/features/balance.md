@@ -1,5 +1,9 @@
 # Balance report
 
+Recorded results: [v0.1.0 survival-aware policy, 450,000 runs](balance-survival.md) and
+[shopping-only baseline, 450,000 runs](balance-shopping-baseline.md). These measure different
+reference policies, not a before/after change to game rules.
+
 `balance-report` runs the reference headless player repeatedly and writes CSV tables to standard output.
 
 The reference buys a fixed outfit, chooses the first affordable event response, uses ferries when

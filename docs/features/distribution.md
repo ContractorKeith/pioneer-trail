@@ -37,8 +37,15 @@ cargo publish -p pioneer-trail
 
 ## Homebrew
 
-The intended distribution path is a source formula in the ContractorKeith
-Homebrew tap. It builds the path workspace from source and does not depend on
-crates.io publication. A formula and tap publication remain TODO until the
-GitHub release process has been exercised; do not claim the tap is live before
-that release is published.
+The [published source formula](https://github.com/ContractorKeith/homebrew-tap/blob/main/Formula/pioneer-trail.rb)
+builds the tagged workspace and does not depend on crates.io publication:
+
+```bash
+brew install contractorkeith/tap/pioneer-trail
+pioneer-trail
+```
+
+Version 0.1.0 was installed from source on Apple Silicon, then passed `brew test` and
+`brew audit --strict`. Tap commit: `162d5b8`. Its tagged source archive SHA256 is
+`cd75168a49e76d9228f9ba1549cedb3ac08f3629c24640ce1ea87a346ba6eca5`.
+See [release acceptance](../RELEASE_ACCEPTANCE.md) for the separate public binary check.
