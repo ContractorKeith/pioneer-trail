@@ -2,7 +2,7 @@
 name = "pioneer-tools"
 version.workspace = true
 edition.workspace = true
-license-file.workspace = true
+license.workspace = true
 repository.workspace = true
 authors.workspace = true
 readme.workspace = true

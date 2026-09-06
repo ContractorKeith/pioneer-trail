@@ -6,7 +6,6 @@ members = ["crates/sim", "crates/data", "crates/tui", "crates/tools"]
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
-license-file = "LICENSE"
 repository = "https://github.com/ContractorKeith/pioneer-trail"
 authors = ["Keith Bloemendaal <keith@dutchbuiltnc.com>"]
 readme = "README.md"

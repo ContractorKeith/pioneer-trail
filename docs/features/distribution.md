@@ -20,14 +20,25 @@ for a pushed version tag.
    archive to smoke-test the binary.
 
 The workflow uses the repository `GITHUB_TOKEN` with `contents: write` to
-create the GitHub Release. No credential is needed for a manual workflow run,
-which builds artifacts but cannot publish. Publishing crates later requires a
-crates.io token with publish permission; keep it in a GitHub Actions secret
-rather than a repository file.
+create the GitHub Release. Manually dispatching a workflow requires a GitHub
+account authorized to run repository Actions, but needs no additional release
+secret and cannot publish. The repository currently has no crates.io publish
+token configured, so crate publication is blocked until a
+`CARGO_REGISTRY_TOKEN` secret with publish permission is added.
+
+When that token exists and the previous package has resolved on crates.io,
+publish dependent crates in this order:
+
+```bash
+cargo publish -p pioneer-sim
+cargo publish -p pioneer-data
+cargo publish -p pioneer-trail
+```
 
 ## Homebrew
 
 The intended distribution path is a source formula in the ContractorKeith
-Homebrew tap. A formula and tap publication remain TODO until the crate and
-GitHub release process have been exercised; do not claim the tap is live before
+Homebrew tap. It builds the path workspace from source and does not depend on
+crates.io publication. A formula and tap publication remain TODO until the
+GitHub release process has been exercised; do not claim the tap is live before
 that release is published.
