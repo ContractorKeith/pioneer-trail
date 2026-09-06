@@ -1,6 +1,8 @@
 //! Deterministic trail graves for map and crossing scenes.
 
 use crate::persist::{History, RunRecord};
+use pioneer_sim::rng::SimRng;
+use rand::Rng;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Grave {
@@ -12,14 +14,24 @@ pub struct Grave {
     pub local: bool,
 }
 
-/// Returns seeded fictional graves plus failed local journeys visible on this trail segment.
-pub fn graves(history: &History, seed: u64, trail: &str, era: u16, max_miles: u32) -> Vec<Grave> {
-    if max_miles == 0 {
+/// Returns seeded fictional graves plus failed local journeys for a full trail.
+///
+/// `trail_extent_miles` must be the trail's fixed total length, never the
+/// party's current mileage, so seeded graves remain stable while travelling.
+pub fn graves(
+    history: &History,
+    seed: u64,
+    trail: &str,
+    era: u16,
+    trail_extent_miles: u32,
+) -> Vec<Grave> {
+    if trail_extent_miles == 0 {
         return Vec::new();
     }
 
-    let mut result = seeded_graves(seed, trail, era, max_miles);
-    result.extend(history.runs.iter().filter_map(|run| local_grave(run, trail, max_miles)));
+    let mut result = seeded_graves(seed, trail, era, trail_extent_miles);
+    result
+        .extend(history.runs.iter().filter_map(|run| local_grave(run, trail, trail_extent_miles)));
     result.sort_by(|left, right| {
         left.mile
             .cmp(&right.mile)
@@ -27,6 +39,7 @@ pub fn graves(history: &History, seed: u64, trail: &str, era: u16, max_miles: u3
             .then_with(|| left.date.cmp(&right.date))
             .then_with(|| left.cause.cmp(&right.cause))
             .then_with(|| left.epitaph.cmp(&right.epitaph))
+            .then_with(|| right.local.cmp(&left.local))
     });
     result.dedup_by(|left, right| {
         left.mile == right.mile
@@ -38,7 +51,7 @@ pub fn graves(history: &History, seed: u64, trail: &str, era: u16, max_miles: u3
     result
 }
 
-fn seeded_graves(seed: u64, trail: &str, era: u16, max_miles: u32) -> Vec<Grave> {
+fn seeded_graves(seed: u64, trail: &str, era: u16, trail_extent_miles: u32) -> Vec<Grave> {
     const LEADERS: [&str; 5] =
         ["Elias Ward", "Martha Bell", "Jonas Pike", "Clara Reed", "Samuel Vail"];
     const CAUSES: [&str; 5] =
@@ -51,19 +64,19 @@ fn seeded_graves(seed: u64, trail: &str, era: u16, max_miles: u32) -> Vec<Grave>
         "The road ended, love did not.",
     ];
 
-    let mut state = seed ^ stable_hash(trail).rotate_left(17) ^ u64::from(era).rotate_left(41);
-    let count = 3 + usize::try_from(next(&mut state) % 3).unwrap();
+    let mut rng = SimRng::new(seed);
+    let stream_name = format!("legacy-graves:{trail}:{era}");
+    let stream = rng.stream(&stream_name);
+    let count = stream.gen_range(3..=5);
     (0..count)
         .map(|index| {
-            let leader =
-                LEADERS[(usize::try_from(next(&mut state)).unwrap() + index) % LEADERS.len()];
-            let cause = CAUSES[(usize::try_from(next(&mut state)).unwrap() + index) % CAUSES.len()];
-            let epitaph =
-                EPITAPHS[(usize::try_from(next(&mut state)).unwrap() + index) % EPITAPHS.len()];
+            let leader = LEADERS[(stream.gen_range(0..LEADERS.len()) + index) % LEADERS.len()];
+            let cause = CAUSES[(stream.gen_range(0..CAUSES.len()) + index) % CAUSES.len()];
+            let epitaph = EPITAPHS[(stream.gen_range(0..EPITAPHS.len()) + index) % EPITAPHS.len()];
             Grave {
                 leader: leader.into(),
-                mile: 1 + u32::try_from(next(&mut state) % u64::from(max_miles)).unwrap(),
-                date: format!("{era} day {}", 20 + (next(&mut state) % 220)),
+                mile: stream.gen_range(1..=trail_extent_miles),
+                date: format!("{} day {}", era.saturating_sub(1), stream.gen_range(20..=239)),
                 cause: cause.into(),
                 epitaph: epitaph.into(),
                 local: false,
@@ -72,8 +85,8 @@ fn seeded_graves(seed: u64, trail: &str, era: u16, max_miles: u32) -> Vec<Grave>
         .collect()
 }
 
-fn local_grave(run: &RunRecord, trail: &str, max_miles: u32) -> Option<Grave> {
-    if run.arrived || run.survivors != 0 || run.trail != trail || run.miles > max_miles {
+fn local_grave(run: &RunRecord, trail: &str, trail_extent_miles: u32) -> Option<Grave> {
+    if run.arrived || run.survivors != 0 || run.trail != trail || run.miles > trail_extent_miles {
         return None;
     }
     let cause = clean(&run.cause, "Trail ended");
@@ -96,20 +109,6 @@ fn clean(value: &str, fallback: &str) -> String {
     } else {
         value.into()
     }
-}
-
-fn stable_hash(value: &str) -> u64 {
-    value.bytes().fold(0xcbf2_9ce4_8422_2325, |hash, byte| {
-        (hash ^ u64::from(byte)).wrapping_mul(0x0000_0100_0000_01b3)
-    })
-}
-
-fn next(state: &mut u64) -> u64 {
-    *state = state.wrapping_add(0x9e37_79b9_7f4a_7c15);
-    let mut value = *state;
-    value = (value ^ (value >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
-    value = (value ^ (value >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
-    value ^ (value >> 31)
 }
 
 #[cfg(test)]
@@ -142,6 +141,14 @@ mod tests {
         assert_ne!(first, graves(&history, 8, "oregon", 1848, 1_000));
         assert!((3..=5).contains(&first.len()));
         assert!(first.iter().all(|grave| !grave.local));
+        assert!(first.iter().all(|grave| grave.date.starts_with("1847 day ")));
+
+        let different_history = History { runs: vec![run("oregon", 0, 400, "Westward")] };
+        let seeded_with_history = graves(&different_history, 7, "oregon", 1848, 1_000)
+            .into_iter()
+            .filter(|grave| !grave.local)
+            .collect::<Vec<_>>();
+        assert_eq!(first, seeded_with_history);
     }
 
     #[test]
@@ -179,16 +186,27 @@ mod tests {
     }
 
     #[test]
+    fn duplicate_local_history_makes_one_grave() {
+        let record = run("oregon", 0, 400, "Westward");
+        let history = History { runs: vec![record.clone(), record] };
+        let matching = graves(&history, 2, "oregon", 1848, 500)
+            .into_iter()
+            .filter(|grave| grave.local && grave.epitaph == "Westward")
+            .count();
+        assert_eq!(matching, 1);
+    }
+
+    #[test]
     fn malformed_history_fields_are_bounded_and_printable() {
         let malformed_epitaph = "\u{0007}".repeat(100);
         let mut record = run("oregon", 0, 400, &malformed_epitaph);
-        record.leader = "\nAda".repeat(100);
+        record.leader = "é".repeat(100);
         record.cause = "\t".repeat(100);
         let history = History { runs: vec![record] };
         let local =
             graves(&history, 2, "oregon", 1848, 500).into_iter().find(|grave| grave.local).unwrap();
         for field in [&local.leader, &local.date, &local.cause, &local.epitaph] {
-            assert!(field.len() <= 80 && !field.chars().any(char::is_control));
+            assert!(field.chars().count() <= 80 && !field.chars().any(char::is_control));
         }
     }
 }
