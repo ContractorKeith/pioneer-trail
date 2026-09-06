@@ -917,13 +917,18 @@ mod tests {
         app.select();
         app.cursor = app.game.content.items.len();
         app.select();
+        let mut saw_event = false;
         for _ in 0..100 {
             match app.screen {
-                Screen::Event => app.select(),
+                Screen::Event => {
+                    saw_event = true;
+                    app.select()
+                }
                 Screen::River => break,
                 _ => app.apply(Command::Continue),
             }
         }
+        assert!(saw_event, "seeded loaded-content journey should exercise an event choice");
         assert_eq!(app.screen, Screen::River);
         let root = std::env::temp_dir().join(format!("pioneer-tui-phase-{}", std::process::id()));
         let _ = std::fs::create_dir_all(&root);
