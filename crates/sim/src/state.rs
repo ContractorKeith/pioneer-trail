@@ -1696,9 +1696,14 @@ impl GameState {
             || self.loose_bullets >= 20
             || self.last_fresh_food_day.is_some_and(|day| day > self.day)
             || self.party.iter().any(|member| {
-                member.health > 100
+                member.name.trim().is_empty()
+                    || member.name.chars().count() > 24
+                    || member.name.chars().any(char::is_control)
+                    || member.age > 100
+                    || member.health > 100
                     || !(0..=100).contains(&member.morale)
                     || (member.alive && member.health == 0)
+                    || (!member.alive && member.health != 0)
             })
         {
             return Err(CommandError::InvalidSetup);
@@ -3188,6 +3193,20 @@ mod tests {
     }
 
     #[test]
+    fn saved_party_profiles_reject_invalid_names_and_health() {
+        let game = run(9);
+        assert!(game.validate().is_ok());
+        for name in ["", "\u{1b}[2J", "A name longer than twenty-four characters"] {
+            let mut corrupt = game.clone();
+            corrupt.party[0].name = name.into();
+            assert!(corrupt.validate().is_err());
+        }
+        let mut corrupt = game;
+        corrupt.party[0].alive = false;
+        assert!(corrupt.validate().is_err());
+    }
+
+    #[test]
     fn rejected_command_does_not_mutate_state() {
         let mut game = GameState::new(2);
         let before = serde_json::to_string(&game).unwrap();
@@ -3426,6 +3445,7 @@ mod tests {
                 wanted_quantity: 1,
             });
         }
+
         assert_eq!(game.reputation, 1);
         assert_eq!(game.npcs[0].reputation, 1);
         assert_eq!(game.npcs[0].last_reputation_day, Some(game.day));
