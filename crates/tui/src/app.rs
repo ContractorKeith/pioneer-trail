@@ -1236,9 +1236,15 @@ impl App {
                         job.score_multiplier,
                         job.perk
                     )));
-                    lines.push(Line::from(
-                        "Starting funds affect your shopping choices, not the trail's rules.",
-                    ));
+                    lines.push(Line::from(match job.id.as_str() {
+                        "carpenter" => {
+                            "Carpenter: $800 starts lean. Plan food and hunt; repairs cost less."
+                        }
+                        "banker" => {
+                            "Banker: $1,600 buys a strong first load and better fort prices."
+                        }
+                        _ => "Starting funds affect your shopping choices, not the trail's rules.",
+                    }));
                 }
             }
             Screen::SetupParty => {
@@ -1276,13 +1282,21 @@ impl App {
                         advice.food_days
                     )));
                     lines.push(Line::from(advice.target_line(&self.game)));
-                    lines.push(Line::from(format!(
-                        "Target food: {} lb ({} days). Buy missing goods for ${:.2}; ${:.2} remains.",
-                        advice.target_food_lbs,
-                        advice.target_food_days,
-                        advice.completion_cost_cents as f64 / 100.0,
-                        advice.cash_after_cents as f64 / 100.0,
-                    )));
+                    lines.push(Line::from(if advice.affordable {
+                        format!(
+                            "Target food: {} lb ({} days). Buy missing goods for ${:.2}; ${:.2} remains.",
+                            advice.target_food_lbs,
+                            advice.target_food_days,
+                            advice.completion_cost_cents as f64 / 100.0,
+                            advice.cash_after_cents as f64 / 100.0,
+                        )
+                    } else {
+                        format!(
+                            "Priority list costs ${:.2}, short by ${:.2}. Food follows oxen and clothes.",
+                            advice.completion_cost_cents as f64 / 100.0,
+                            advice.shortfall_cents as f64 / 100.0,
+                        )
+                    }));
                     lines.push(Line::from(
                         "Prioritize oxen, food, clothes, and one spare wheel. Extras are your call.",
                     ));
@@ -1314,7 +1328,9 @@ impl App {
                 )));
                 lines.push(Line::from("Enter buys · S sells at half price · ? outfitting advice"));
                 if let Some(item) = self.game.content.items.get(self.cursor) {
-                    if let Some(detail) = advice.selected_item_line(&self.game, &item.id) {
+                    if let Some(detail) =
+                        advice.selected_item_line(&self.game, &item.id, self.store_quantity)
+                    {
                         lines.push(Line::from(detail));
                     }
                 }
@@ -1941,6 +1957,33 @@ mod tests {
         assert_eq!(app.draft.names[0], "hjkl 7");
         app.handle_key(KeyEvent::from(KeyCode::Backspace));
         assert_eq!(app.draft.names[0], "hjkl ");
+    }
+    #[test]
+    fn occupation_copy_explains_carpenter_food_planning_and_banker_advantage() {
+        let mut app = App::new(pioneer_data::load().unwrap(), 1, Settings::default());
+        app.screen = Screen::SetupOccupation;
+        app.cursor = app
+            .game
+            .content
+            .occupations
+            .iter()
+            .position(|occupation| occupation.id == "carpenter")
+            .unwrap();
+        let carpenter =
+            app.body().into_iter().map(|line| line.to_string()).collect::<Vec<_>>().join("\n");
+        assert!(carpenter.contains("$800 starts lean"));
+        assert!(carpenter.contains("Plan food and hunt"));
+        app.cursor = app
+            .game
+            .content
+            .occupations
+            .iter()
+            .position(|occupation| occupation.id == "banker")
+            .unwrap();
+        let banker =
+            app.body().into_iter().map(|line| line.to_string()).collect::<Vec<_>>().join("\n");
+        assert!(banker.contains("$1,600"));
+        assert!(banker.contains("better fort prices"));
     }
     #[test]
     fn store_quantity_can_buy_bulk_food() {
