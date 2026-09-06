@@ -1,8 +1,9 @@
 //! Deterministic trail graves for map and crossing scenes.
 
 use crate::persist::{History, RunRecord};
-use pioneer_sim::rng::SimRng;
+use pioneer_sim::{rng::SimRng, LandmarkDefinition, TrailDefinition};
 use rand::Rng;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Grave {
@@ -12,6 +13,86 @@ pub struct Grave {
     pub cause: String,
     pub epitaph: String,
     pub local: bool,
+}
+
+/// Returns the longest weighted start-to-goal route through a trail graph.
+///
+/// Invalid graphs fall back to their furthest landmark mile so grave placement
+/// remains bounded even if content is malformed.
+pub fn trail_extent(trail: &TrailDefinition) -> u32 {
+    let fallback = trail.nodes.iter().map(|node| node.mile).max().unwrap_or_default();
+    let nodes = trail.nodes.iter().map(|node| (node.id.as_str(), node)).collect::<HashMap<_, _>>();
+    if nodes.len() != trail.nodes.len()
+        || !nodes.contains_key(trail.start_node_id.as_str())
+        || !nodes.contains_key(trail.goal_node_id.as_str())
+        || nodes.values().any(|node| {
+            node.routes.iter().any(|route| !nodes.contains_key(route.target_id.as_str()))
+        })
+    {
+        return fallback;
+    }
+
+    let mut visits = HashMap::new();
+    if nodes.keys().any(|node_id| has_cycle(node_id, &nodes, &mut visits)) {
+        return fallback;
+    }
+
+    longest_to_goal(
+        trail.start_node_id.as_str(),
+        trail.goal_node_id.as_str(),
+        &nodes,
+        &mut HashMap::new(),
+    )
+    .unwrap_or(fallback)
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Visit {
+    Visiting,
+    Done,
+}
+
+fn has_cycle<'a>(
+    node_id: &'a str,
+    nodes: &HashMap<&'a str, &'a LandmarkDefinition>,
+    visits: &mut HashMap<&'a str, Visit>,
+) -> bool {
+    match visits.get(node_id) {
+        Some(Visit::Visiting) => return true,
+        Some(Visit::Done) => return false,
+        None => {}
+    }
+    visits.insert(node_id, Visit::Visiting);
+    let cycle = nodes[node_id]
+        .routes
+        .iter()
+        .any(|route| has_cycle(route.target_id.as_str(), nodes, visits));
+    visits.insert(node_id, Visit::Done);
+    cycle
+}
+
+fn longest_to_goal<'a>(
+    node_id: &'a str,
+    goal_id: &str,
+    nodes: &HashMap<&'a str, &'a LandmarkDefinition>,
+    memo: &mut HashMap<&'a str, u32>,
+) -> Option<u32> {
+    if node_id == goal_id {
+        return Some(0);
+    }
+    if let Some(distance) = memo.get(node_id) {
+        return Some(*distance);
+    }
+    let distance = nodes[node_id]
+        .routes
+        .iter()
+        .filter_map(|route| {
+            longest_to_goal(route.target_id.as_str(), goal_id, nodes, memo)
+                .and_then(|remaining| route.distance_miles.checked_add(remaining))
+        })
+        .max()?;
+    memo.insert(node_id, distance);
+    Some(distance)
 }
 
 /// Returns seeded fictional graves plus failed local journeys for a full trail.
@@ -114,6 +195,38 @@ fn clean(value: &str, fallback: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use pioneer_sim::{LandmarkKind, RouteDefinition};
+
+    fn route(target_id: &str, distance_miles: u32) -> RouteDefinition {
+        RouteDefinition {
+            id: format!("to-{target_id}"),
+            label: target_id.into(),
+            target_id: target_id.into(),
+            distance_miles,
+        }
+    }
+
+    fn node(id: &str, mile: u32, routes: Vec<RouteDefinition>) -> LandmarkDefinition {
+        LandmarkDefinition {
+            id: id.into(),
+            name: id.into(),
+            mile,
+            kind: LandmarkKind::Landmark,
+            routes,
+            river: None,
+            store: false,
+        }
+    }
+
+    fn trail(nodes: Vec<LandmarkDefinition>) -> TrailDefinition {
+        TrailDefinition {
+            id: "test".into(),
+            name: "Test Trail".into(),
+            start_node_id: "start".into(),
+            goal_node_id: "goal".into(),
+            nodes,
+        }
+    }
 
     fn run(trail: &str, survivors: usize, miles: u32, epitaph: &str) -> RunRecord {
         RunRecord {
@@ -208,5 +321,42 @@ mod tests {
         for field in [&local.leader, &local.date, &local.cause, &local.epitaph] {
             assert!(field.chars().count() <= 80 && !field.chars().any(char::is_control));
         }
+    }
+
+    #[test]
+    fn trail_extent_chooses_the_longest_fork_without_summing_branches() {
+        let trail = trail(vec![
+            node("start", 0, vec![route("left", 3), route("right", 2)]),
+            node("left", 3, vec![route("goal", 4)]),
+            node("right", 2, vec![route("goal", 10)]),
+            node("goal", 12, vec![]),
+        ]);
+
+        assert_eq!(trail_extent(&trail), 12);
+    }
+
+    #[test]
+    fn trail_extent_uses_furthest_landmark_for_cycles() {
+        let trail = trail(vec![
+            node("start", 0, vec![route("loop", 5)]),
+            node("loop", 5, vec![route("start", 5)]),
+            node("goal", 70, vec![]),
+        ]);
+
+        assert_eq!(trail_extent(&trail), 70);
+    }
+
+    #[test]
+    fn embedded_trail_extents_include_long_branches() {
+        let content = pioneer_data::load().expect("embedded content");
+        let extents = content
+            .trails
+            .iter()
+            .map(|trail| (trail.id.as_str(), trail_extent(trail)))
+            .collect::<HashMap<_, _>>();
+
+        assert_eq!(extents["oregon"], 2_037);
+        assert_eq!(extents["california"], 2_150);
+        assert_eq!(extents["mormon"], 1_415);
     }
 }
