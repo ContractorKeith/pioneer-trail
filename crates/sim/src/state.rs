@@ -497,7 +497,8 @@ impl GameState {
             return Ok(vec![Outcome::Message("Your wagon cannot move without oxen.".into())]);
         }
         let season = self.season();
-        self.weather_state.advance(&mut self.rng, season);
+        let climate = self.region().climate;
+        self.weather_state.advance_in(&mut self.rng, season, climate);
         self.weather = self.weather_state.kind;
         self.spoil_food();
         let eat = match self.rations {
@@ -673,7 +674,7 @@ impl GameState {
         if !matches!(self.status, RunStatus::AwaitingRiver(_)) {
             return Err(CommandError::InvalidPhase);
         }
-        let river = self.node()?.river.clone().ok_or(CommandError::InvalidPhase)?;
+        self.node()?.river.as_ref().ok_or(CommandError::InvalidPhase)?;
         if self.node()?.routes.len() != 1 {
             return Err(CommandError::InvalidPhase);
         }
@@ -689,14 +690,14 @@ impl GameState {
         let risk = self.crossing_risk(m).ok_or(CommandError::InvalidPhase)?;
         if m == CrossMethod::Guide {
             if self.current_node_id.as_deref() != Some("snake_river")
-                || self.inventory.get("clothing") < 3
+                || self.inventory.get("clothing") < self.guide_cost()
             {
                 return Err(CommandError::InvalidChoice);
             }
-            self.inventory.remove("clothing", 3);
+            self.inventory.remove("clothing", self.guide_cost());
         }
         if m == CrossMethod::Ferry {
-            let cost = river.ferry_cost_cents.ok_or(CommandError::InvalidChoice)?;
+            let cost = self.ferry_cost().ok_or(CommandError::InvalidChoice)?;
             if self.cash_cents < cost {
                 return Err(CommandError::InsufficientCash);
             }
@@ -1360,8 +1361,21 @@ impl GameState {
         (date.year, date.month, date.day)
     }
     pub fn can_shop(&self) -> bool {
+        let era_rules = self.era_rules();
         matches!(self.status, RunStatus::Outfitting | RunStatus::AtLandmark(_))
-            && self.current_landmark().is_some_and(|node| node.store)
+            && self
+                .current_landmark()
+                .is_some_and(|node| node.store && !era_rules.unavailable_stores.contains(&node.id))
+    }
+    /// Current ferry fee after the selected era's game-balance modifier.
+    pub fn ferry_cost(&self) -> Option<i64> {
+        let rules = self.era_rules();
+        let base = self.node().ok()?.river.as_ref()?.ferry_cost_cents?;
+        rules.ferries_available.then(|| Self::apply_percent(base, rules.ferry_fee_percent))
+    }
+    /// Clothing sets required for the Snake River guide in the selected era.
+    pub fn guide_cost(&self) -> u32 {
+        self.era_rules().guide_cost_clothing
     }
     pub fn price_cents(&self, item_id: &str) -> Option<i64> {
         self.content.items.iter().find(|item| item.id == item_id).map(|item| {
@@ -1375,6 +1389,9 @@ impl GameState {
     }
     fn shop_unit_price(&self, market: &Market, item: &ItemDefinition) -> i64 {
         let mut price = market.price_for(&item.id, item.price_cents, self.season_markup());
+        price = Self::apply_percent(price, self.era_rules().price_percent);
+        let reputation_percent = self.reputation.clamp(-10, 10);
+        price = Self::apply_percent(price, (100 - reputation_percent) as u16);
         let discount = match self.occupation_id.as_deref() {
             Some("banker")
                 if matches!(
@@ -1393,6 +1410,16 @@ impl GameState {
                 .clamp(1, i128::from(i64::MAX)) as i64;
         }
         price
+    }
+    fn apply_percent(amount: i64, percent: u16) -> i64 {
+        (i128::from(amount) * i128::from(percent) / 100).clamp(1, i128::from(i64::MAX)) as i64
+    }
+    fn era_rules(&self) -> EraRules {
+        self.era_id
+            .as_ref()
+            .and_then(|id| self.content.era_rules.get(id))
+            .cloned()
+            .unwrap_or_default()
     }
     fn season_markup(&self) -> i64 {
         match self.season() {
@@ -1647,7 +1674,10 @@ impl GameState {
             .events
             .iter()
             .filter(|e| e.weight > 0 && e.conditions.iter().all(|c| self.matches(c)))
-            .map(|e| (e.id.clone(), e.weight))
+            .filter_map(|e| {
+                let weight = self.event_weight(e);
+                (weight > 0).then(|| (e.id.clone(), weight))
+            })
             .collect();
         let event_odds = match self.difficulty {
             Difficulty::Easy => 10,
@@ -1679,6 +1709,11 @@ impl GameState {
                 self.pending_event = Some(e.id)
             }
         }
+    }
+    fn event_weight(&self, event: &EventDefinition) -> u32 {
+        let percent = self.era_rules().event_weight_percent.get(&event.id).copied().unwrap_or(100);
+        ((u64::from(event.weight) * u64::from(percent) / 100).max(1)).min(u64::from(u32::MAX))
+            as u32
     }
     fn matches(&self, c: &Condition) -> bool {
         match c {
@@ -1906,7 +1941,8 @@ impl GameState {
         }
         self.day = self.day.saturating_add(1);
         let season = self.season();
-        self.weather_state.advance(&mut self.rng, season);
+        let climate = self.region().climate;
+        self.weather_state.advance_in(&mut self.rng, season, climate);
         self.weather = self.weather_state.kind;
         self.spoil_food();
         if resting {
@@ -2036,22 +2072,19 @@ impl GameState {
         }
     }
     pub fn terrain(&self) -> Terrain {
+        self.region().terrain
+    }
+    fn region(&self) -> Region {
+        if self.content.regions.is_empty() {
+            return Region::plains();
+        }
         let node_id = if self.status == RunStatus::Travelling {
             self.target_node_id.as_deref().or(self.current_node_id.as_deref())
         } else {
             self.current_node_id.as_deref()
         }
         .unwrap_or_default();
-        match node_id {
-            id if id.contains("sierra") || id.contains("mountain") || id.contains("pass") => {
-                Terrain::Mountains
-            }
-            "salt_desert" | "humboldt" => Terrain::Desert,
-            "willamette" | "barlow" => Terrain::Forest,
-            "chimney_rock" | "independence_rock" => Terrain::Hills,
-            id if id.contains("river") => Terrain::RiverValley,
-            _ => Terrain::Plains,
-        }
+        self.content.regions.get(node_id).copied().unwrap_or_else(Region::plains)
     }
 }
 #[cfg(test)]
@@ -2138,6 +2171,13 @@ mod tests {
                 store: false,
             },
         ];
+        content.regions = BTreeMap::from([
+            ("independence".into(), Region::plains()),
+            ("river".into(), Region::river_valley()),
+            ("fork".into(), Region::plains()),
+            ("detour".into(), Region::hills()),
+            ("willamette".into(), Region::forest()),
+        ]);
         content
     }
     fn run(seed: u64) -> GameState {
@@ -2226,6 +2266,22 @@ mod tests {
                 store: false,
             },
         ];
+        content.regions = BTreeMap::from([
+            ("independence".into(), Region::plains()),
+            ("the_dalles".into(), Region::river_valley()),
+            ("willamette".into(), Region::forest()),
+            (
+                "sierra".into(),
+                Region {
+                    terrain: Terrain::Mountains,
+                    climate: crate::weather::ClimateZone::Mountain,
+                },
+            ),
+            (
+                "salt_desert".into(),
+                Region { terrain: Terrain::Desert, climate: crate::weather::ClimateZone::Arid },
+            ),
+        ]);
         content
     }
     fn minigame_game(seed: u64, occupation: &str) -> GameState {
@@ -2677,7 +2733,10 @@ mod tests {
             party: vec!["A".into(), "B".into(), "C".into(), "D".into(), "E".into()],
             departure_month: 4,
         });
+        assert_eq!(game.price_cents("food"), Some(20));
+        game.reputation = 10;
         let quote = game.price_cents("food").unwrap();
+        assert_eq!(quote, 18);
         let cash_before = game.cash_cents;
         assert!(
             matches!(game.apply(Command::Buy { item_id: "food".into(), quantity: 10 }).as_slice(),
@@ -2701,6 +2760,7 @@ mod tests {
         assert!(game.last_fresh_food_day.is_none());
         game.content.items.iter_mut().find(|item| item.id == "food").unwrap().limit = 5_000;
         game.inventory.quantities.insert("food".into(), 2_400);
+        game.content.regions.insert("river".into(), Region::river_valley());
         game.current_node_id = Some("river".into());
         game.target_node_id = Some("river".into());
         assert!(matches!(game.apply(Command::Fish).as_slice(), outcomes
@@ -2984,6 +3044,92 @@ mod tests {
         river.weather_state.river_depth_bonus = 2;
         assert_eq!(river.effective_depth(), Some(4));
         assert!(river.crossing_risk(CrossMethod::Ford).unwrap() > 0);
+    }
+
+    #[test]
+    fn era_rules_change_purchase_ferry_and_service_availability_and_survive_save() {
+        let mut content = branch_content();
+        content.eras.extend([
+            EraDefinition { id: "1843".into(), name: "1843".into(), year: 1843 },
+            EraDefinition { id: "1852".into(), name: "1852".into(), year: 1852 },
+        ]);
+        content.era_rules = BTreeMap::from([
+            (
+                "1843".into(),
+                EraRules {
+                    price_percent: 100,
+                    ferry_fee_percent: 100,
+                    ferries_available: false,
+                    guide_cost_clothing: 4,
+                    unavailable_stores: vec!["independence".into()],
+                    event_weight_percent: BTreeMap::new(),
+                },
+            ),
+            (
+                "1852".into(),
+                EraRules {
+                    price_percent: 110,
+                    ferry_fee_percent: 110,
+                    ferries_available: true,
+                    guide_cost_clothing: 2,
+                    unavailable_stores: vec![],
+                    event_weight_percent: BTreeMap::new(),
+                },
+            ),
+        ]);
+        content.regions = BTreeMap::from([
+            ("independence".into(), Region::plains()),
+            ("river".into(), Region::river_valley()),
+            ("fork".into(), Region::plains()),
+            ("detour".into(), Region::hills()),
+            ("willamette".into(), Region::forest()),
+        ]);
+
+        let names = vec!["A".into(), "B".into(), "C".into(), "D".into(), "E".into()];
+        let mut demand = GameState::with_content(27, content.clone());
+        demand.apply(Command::Configure {
+            trail_id: "oregon".into(),
+            era_id: "1852".into(),
+            occupation_id: "farmer".into(),
+            party: names.clone(),
+            departure_month: 4,
+        });
+        assert_eq!(demand.price_cents("food"), Some(22));
+        assert!(matches!(
+            demand.apply(Command::Buy { item_id: "food".into(), quantity: 1 }).as_slice(),
+            [Outcome::Purchased { cost_cents: 22, .. }]
+        ));
+        demand.current_node_id = Some("river".into());
+        demand.status = RunStatus::AwaitingRiver("river".into());
+        assert_eq!(demand.ferry_cost(), Some(110));
+        assert_eq!(demand.guide_cost(), 2);
+        let cash = demand.cash_cents;
+        demand.apply(Command::CrossRiver { method: CrossMethod::Ferry });
+        assert_eq!(demand.cash_cents, cash - 110);
+        let restored: GameState =
+            serde_json::from_str(&serde_json::to_string(&demand).unwrap()).unwrap();
+        assert_eq!(restored.content.era_rules, demand.content.era_rules);
+
+        let mut limited = GameState::with_content(28, content);
+        limited.apply(Command::Configure {
+            trail_id: "oregon".into(),
+            era_id: "1843".into(),
+            occupation_id: "farmer".into(),
+            party: names,
+            departure_month: 4,
+        });
+        assert!(!limited.can_shop());
+        assert_rejected_without_mutation(
+            &mut limited,
+            Command::Buy { item_id: "food".into(), quantity: 1 },
+        );
+        limited.current_node_id = Some("river".into());
+        limited.status = RunStatus::AwaitingRiver("river".into());
+        assert_eq!(limited.ferry_cost(), None);
+        assert_rejected_without_mutation(
+            &mut limited,
+            Command::CrossRiver { method: CrossMethod::Ferry },
+        );
     }
 
     proptest::proptest! {
