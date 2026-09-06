@@ -68,6 +68,7 @@ pub struct App {
     animation_tick: u64,
     epitaph: String,
     trade: TradeDraft,
+    graves: Vec<crate::legacy::Grave>,
 }
 impl App {
     pub fn new(content: GameContent, seed: u64, settings: Settings) -> Self {
@@ -96,6 +97,7 @@ impl App {
                 wanted_quantity: 1,
                 ..TradeDraft::default()
             },
+            graves: Vec::new(),
         }
     }
     pub fn with_storage(mut self, storage: Storage) -> Self {
@@ -136,7 +138,7 @@ impl App {
                 .trails
                 .iter()
                 .find(|t| Some(&t.id) == self.game.trail_id.as_ref())
-                .map_or(1, |t| t.nodes.len()),
+                .map_or(1, |t| t.nodes.len() + self.graves.len()),
             Screen::Pace | Screen::Rations | Screen::Rest => 3,
             Screen::Treat => self.game.party.len(),
             Screen::Trade => 9,
@@ -624,6 +626,8 @@ impl App {
     }
     fn apply(&mut self, command: Command) {
         let previous_screen = self.screen;
+        let previous_miles = self.game.miles;
+        let configuring = matches!(&command, Command::Configure { .. });
         let retain_screen = matches!(
             &command,
             Command::Buy { .. }
@@ -640,6 +644,20 @@ impl App {
             && outcomes.iter().all(|outcome| matches!(outcome, Outcome::Rejected(_)));
         for outcome in outcomes {
             self.outcome(outcome);
+        }
+        if configuring && !rejected {
+            self.load_graves();
+        }
+        let passed = self
+            .graves
+            .iter()
+            .filter(|grave| grave.mile > previous_miles && grave.mile <= self.game.miles)
+            .map(|grave| {
+                format!("Grave at mile {}: {} — {}", grave.mile, grave.leader, grave.epitaph)
+            })
+            .collect::<Vec<_>>();
+        for note in passed {
+            self.note(note);
         }
         self.autosave();
         self.sync_screen();
@@ -747,6 +765,8 @@ impl App {
                     self.run_id = run_id;
                     self.game = game;
                     self.recorded = false;
+                    self.minigame = None;
+                    self.load_graves();
                     self.sync_screen();
                 }
                 Err(error) => self.note(format!("Saved journey is invalid: {error}")),
@@ -772,6 +792,31 @@ impl App {
             self.note("No local storage is attached.");
         }
         self.screen = Screen::Hall;
+    }
+    fn load_graves(&mut self) {
+        let history = match self.storage.as_ref().map(Storage::load_history).transpose() {
+            Ok(history) => history.unwrap_or_default(),
+            Err(error) => {
+                self.note(format!("Could not read local graves: {error}"));
+                crate::persist::History::default()
+            }
+        };
+        self.graves = self
+            .game
+            .content
+            .trails
+            .iter()
+            .find(|trail| Some(&trail.id) == self.game.trail_id.as_ref())
+            .map(|trail| {
+                crate::legacy::graves(
+                    &history,
+                    self.game.rng.seed(),
+                    &trail.id,
+                    self.game.date().0 as u16,
+                    trail.nodes.iter().map(|node| node.mile).max().unwrap_or(0),
+                )
+            })
+            .unwrap_or_default();
     }
     fn record_run(&mut self) {
         if self.recorded {
@@ -1106,8 +1151,11 @@ impl App {
             }
             Screen::Map => {
                 lines.push(Line::from(format!(
-                    "Position: {} miles · destination {:?} · {} miles remaining",
-                    self.game.miles, self.game.target_node_id, self.game.route_miles_remaining
+                    "{} miles · {:?} · next {} ({} mi)",
+                    self.game.miles,
+                    self.game.weather,
+                    self.game.target_node_id.as_deref().unwrap_or("camp"),
+                    self.game.route_miles_remaining
                 )));
                 if let Some(trail) = self
                     .game
@@ -1116,19 +1164,40 @@ impl App {
                     .iter()
                     .find(|trail| Some(&trail.id) == self.game.trail_id.as_ref())
                 {
-                    for node in trail.nodes.iter().skip(self.cursor).take(12) {
-                        lines.push(Line::from(format!(
-                            "{} {}: {} miles",
-                            if Some(&node.id) == self.game.current_node_id.as_ref() {
-                                "►"
-                            } else {
-                                " "
-                            },
-                            node.name,
-                            node.mile
-                        )));
+                    let mut entries = trail
+                        .nodes
+                        .iter()
+                        .map(|node| {
+                            format!(
+                                "{} {}: {} miles",
+                                if Some(&node.id) == self.game.current_node_id.as_ref() {
+                                    "►"
+                                } else {
+                                    " "
+                                },
+                                node.name,
+                                node.mile
+                            )
+                        })
+                        .collect::<Vec<_>>();
+                    entries.extend(self.graves.iter().map(|grave| {
+                        format!(
+                            "† Mile {} · {} · {}{}",
+                            grave.mile,
+                            grave.leader,
+                            grave.date,
+                            if grave.local { " [local]" } else { "" }
+                        )
+                    }));
+                    lines.extend(entries.into_iter().skip(self.cursor).take(11).map(Line::from));
+                    if let Some(grave) = self
+                        .cursor
+                        .checked_sub(trail.nodes.len())
+                        .and_then(|index| self.graves.get(index))
+                    {
+                        lines.push(Line::from(format!("{}: {}", grave.cause, grave.epitaph)));
                     }
-                    lines.push(Line::from("↑↓ scroll trail landmarks"));
+                    lines.push(Line::from("↑↓ scroll landmarks and graves"));
                 }
             }
             Screen::Pace => lines.extend(menu(&["Steady", "Strenuous", "Grueling"], self.cursor)),

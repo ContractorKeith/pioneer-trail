@@ -4,6 +4,7 @@ pub mod art;
 pub mod art_manifest;
 pub mod headless;
 pub mod input;
+pub mod legacy;
 pub mod minigame;
 pub mod persist;
 pub mod screens;

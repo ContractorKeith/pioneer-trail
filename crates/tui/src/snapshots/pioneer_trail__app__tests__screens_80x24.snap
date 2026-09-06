@@ -214,7 +214,7 @@ The wagon is ready. Five travelers set out from Independence.
 === Map ===
 ┌PIONEER TRAIL─────────────────────────────────────────────────────────────────┐
 │ PIONEER TRAIL                                                                │
-│ Position: 0 miles · destination Some("kansas_river") · 102 miles remaining   │
+│ 0 miles · Clear · next kansas_river (102 mi)                                 │
 │ ► Independence, Missouri: 0 miles                                            │
 │   Kansas River Crossing: 102 miles                                           │
 │   Big Blue River Crossing: 185 miles                                         │
@@ -226,9 +226,9 @@ The wagon is ready. Five travelers set out from Independence.
 │   Green River Crossing: 989 miles                                            │
 │   Fort Bridger: 1151 miles                                                   │
 │   Soda Springs: 1143 miles                                                   │
-│   Fort Hall: 1200 miles                                                      │
-│ ↑↓ scroll trail landmarks                                                    │
+│ ↑↓ scroll landmarks and graves                                               │
 │ Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                 │
+│                                                                              │
 │                                                                              │
 │ TRAIL LOG─────────────────────────────────────────────────────────────────── │
 │ The wagon is ready. Five travelers set out from Independence.                │
