@@ -10,9 +10,9 @@ Choose an occupation, month, trail, and era, name your party, then buy supplies 
 Independence. A seed makes the same setup and command sequence repeatable. Pass a number with
 `--seed`, or copy the displayed `pt-` seed code.
 
-For a forgiving first trip, choose Banker and March. Start with three oxen, 1,500 pounds of food,
-five clothing sets, ten rounds of ammunition, one wheel, axle, and tongue, two medicine kits, and
-one tool set. Keep supply bags below 2,400 pounds.
+For a forgiving first trip, choose Banker and March. Start with three yokes of oxen (six animals),
+1,500 pounds of food, five clothing sets, ten boxes of ammunition (200 rounds), one wheel, axle,
+and tongue, two medicine kits, and one tool set. Keep wagon cargo below 2,400 pounds.
 
 ## Keyboard controls
 
