@@ -642,6 +642,7 @@ dependencies = [
  "clap",
  "crossterm",
  "pioneer-data",
+ "pioneer-sim",
  "pioneer-trail",
  "ratatui",
 ]
