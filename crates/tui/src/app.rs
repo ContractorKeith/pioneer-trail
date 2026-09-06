@@ -1402,7 +1402,7 @@ impl App {
                             node.name,
                             river.width_feet,
                             self.game.effective_depth().unwrap_or(river.depth_feet),
-                            river.ferry_cost_cents.map_or("unavailable".into(), |v| format!(
+                            self.game.ferry_cost().map_or("unavailable".into(), |v| format!(
                                 "${:.2}",
                                 v as f64 / 100.
                             ))
@@ -1415,7 +1415,10 @@ impl App {
                         "Caulk wagon and float",
                         "Ferry (if available)",
                         "Wait one day",
-                        "Hire guide (Snake River: 3 clothing sets)",
+                        &format!(
+                            "Hire guide (Snake River: {} clothing sets)",
+                            self.game.guide_cost()
+                        ),
                     ],
                     self.cursor,
                 ));

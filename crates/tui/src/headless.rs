@@ -97,17 +97,12 @@ pub fn journey(
             Command::Respond { event_id: id.clone(), choice_id: choice.id.clone() }
         } else {
             match &game.status {
-                RunStatus::AwaitingRiver(id) => {
-                    let river = node(&game, id)?
-                        .river
-                        .as_ref()
-                        .ok_or_else(|| anyhow::anyhow!("River {id} has no crossing data"))?;
-                    let method =
-                        if river.ferry_cost_cents.is_some_and(|cost| cost <= game.cash_cents) {
-                            CrossMethod::Ferry
-                        } else {
-                            CrossMethod::Caulk
-                        };
+                RunStatus::AwaitingRiver(_) => {
+                    let method = if game.ferry_cost().is_some_and(|cost| cost <= game.cash_cents) {
+                        CrossMethod::Ferry
+                    } else {
+                        CrossMethod::Caulk
+                    };
                     Command::CrossRiver { method }
                 }
                 RunStatus::AwaitingFork(id) => {
@@ -121,7 +116,7 @@ pub fn journey(
                     Command::ChooseRoute { route_id: route.id.clone() }
                 }
                 RunStatus::AtLandmark(id) => {
-                    if last_shop.as_ref() != Some(id) && node(&game, id)?.store {
+                    if last_shop.as_ref() != Some(id) && game.can_shop() {
                         last_shop = Some(id.clone());
                         let food = 1500u32.saturating_sub(game.inventory.get("food"));
                         buy_up_to(&mut game, "food", food);
