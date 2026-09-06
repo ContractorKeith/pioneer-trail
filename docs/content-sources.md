@@ -39,5 +39,22 @@ integer miles are deliberately rounded cumulative gameplay distances.
   They are kept in ranges suitable for the crossing simulation and should not
   be cited as survey data.
 
+## Availability rules for the simulation/UI
+
+The current shared trail schema has no era-eligibility field. Until that
+compatible extension lands, the setup UI must offer the Mormon trail only for
+1848, 1852, and 1866, and must hide the Barlow Road choice before 1846. The
+Oregon route remains selectable in 1843, but its Columbia finale is the only
+historically available option in that era. The Dalles is modeled as a river
+crossing node (rather than a terminal node) because it offers those two
+different continuation choices.
+
 Source review: 2026-09-06. Content prose is original fiction informed by these
 historical routes; it does not reproduce text from a trail game or source.
+
+## Content inventory status
+
+The first playable catalogue intentionally contains 25 fully authored events
+and 25 named talk entries. The remaining 125 events and 175 quotes are tracked
+as future authored batches for issue #2; this baseline does not claim that the
+full inventory is complete.
