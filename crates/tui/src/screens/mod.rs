@@ -18,6 +18,7 @@ pub enum Screen {
     River,
     Event,
     Score,
+    Epitaph,
     Hall,
     Settings,
     Seed,

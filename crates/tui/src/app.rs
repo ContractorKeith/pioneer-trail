@@ -63,6 +63,7 @@ pub struct App {
     seed_text: String,
     recorded: bool,
     animation_tick: u64,
+    epitaph: String,
 }
 impl App {
     pub fn new(content: GameContent, seed: u64, settings: Settings) -> Self {
@@ -83,6 +84,7 @@ impl App {
             seed_text: String::new(),
             recorded: false,
             animation_tick: 0,
+            epitaph: String::new(),
         }
     }
     pub fn with_storage(mut self, storage: Storage) -> Self {
@@ -117,6 +119,13 @@ impl App {
             Screen::SetupOccupation => self.game.content.occupations.len(),
             Screen::Store => self.game.content.items.len() + 1,
             Screen::Journey => 9,
+            Screen::Map => self
+                .game
+                .content
+                .trails
+                .iter()
+                .find(|t| Some(&t.id) == self.game.trail_id.as_ref())
+                .map_or(1, |t| t.nodes.len()),
             Screen::Pace | Screen::Rations | Screen::Rest => 3,
             Screen::Treat => self.game.party.len(),
             Screen::River => 5,
@@ -142,6 +151,19 @@ impl App {
         if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('q') {
             self.quit = true;
             return;
+        }
+        if self.screen == Screen::Epitaph {
+            match key.code {
+                KeyCode::Char(c) if !c.is_control() && self.epitaph.chars().count() < 80 => {
+                    self.epitaph.push(c);
+                    return;
+                }
+                KeyCode::Backspace => {
+                    self.epitaph.pop();
+                    return;
+                }
+                _ => {}
+            }
         }
         if self.screen == Screen::SetupParty && self.cursor < 5 {
             match key.code {
@@ -207,6 +229,7 @@ impl App {
                     self.pending_event = None;
                     self.minigame_request = None;
                     self.log.clear();
+                    self.epitaph.clear();
                     self.screen = Screen::SetupTrail;
                     self.cursor = self.draft.trail;
                 }
@@ -379,6 +402,15 @@ impl App {
                 }
                 Err(error) => self.note(error.to_string()),
             },
+            Screen::Epitaph => {
+                if let Some(storage) = &self.storage {
+                    if let Err(error) = storage.set_epitaph(&self.run_id, &self.epitaph) {
+                        self.note(format!("Could not save epitaph: {error}"));
+                        return;
+                    }
+                }
+                self.screen = Screen::Score;
+            }
             Screen::Score
             | Screen::Hall
             | Screen::Settings
@@ -420,6 +452,17 @@ impl App {
             (Screen::Journey, 't') => self.screen = Screen::Talk,
             (Screen::Journey, 'i') => self.screen = Screen::Treat,
             (Screen::Journey, 'b') if self.game.can_shop() => self.screen = Screen::Store,
+            (Screen::Score, 'e') => self.screen = Screen::Epitaph,
+            (Screen::Settings, 's') => {
+                use crate::persist::Speed;
+                self.settings.speed = match self.settings.speed {
+                    Speed::Instant => Speed::Fast,
+                    Speed::Fast => Speed::Normal,
+                    Speed::Normal => Speed::Slow,
+                    Speed::Slow => Speed::Instant,
+                };
+                self.save_settings();
+            }
             (Screen::Settings, 'c') => {
                 self.settings.color = match self.settings.color {
                     crate::persist::ColorMode::Truecolor => crate::persist::ColorMode::Indexed,
@@ -465,6 +508,7 @@ impl App {
             | Screen::Treat
             | Screen::Minigame => Screen::Journey,
             Screen::Score => Screen::Title,
+            Screen::Epitaph => Screen::Score,
             Screen::Fork | Screen::River | Screen::Event => Screen::Journey,
             Screen::Journey => Screen::Title,
         }
@@ -559,6 +603,7 @@ impl App {
                 Ok(()) => {
                     self.run_id = run_id;
                     self.game = game;
+                    self.recorded = false;
                     self.sync_screen();
                 }
                 Err(error) => self.note(format!("Saved journey is invalid: {error}")),
@@ -917,7 +962,7 @@ impl App {
                     .iter()
                     .find(|trail| Some(&trail.id) == self.game.trail_id.as_ref())
                 {
-                    for node in &trail.nodes {
+                    for node in trail.nodes.iter().skip(self.cursor).take(12) {
                         lines.push(Line::from(format!(
                             "{} {}: {} miles",
                             if Some(&node.id) == self.game.current_node_id.as_ref() {
@@ -929,6 +974,7 @@ impl App {
                             node.mile
                         )));
                     }
+                    lines.push(Line::from("↑↓ scroll trail landmarks"));
                 }
             }
             Screen::Pace => lines.extend(menu(&["Steady", "Strenuous", "Grueling"], self.cursor)),
@@ -948,8 +994,32 @@ impl App {
                     ));
                 }
             }
-            Screen::River => lines
-                .extend(menu(&["Ford", "Caulk wagon", "Ferry", "Wait", "Hire guide"], self.cursor)),
+            Screen::River => {
+                if let Some(node) = self.game.current_landmark() {
+                    if let Some(river) = &node.river {
+                        lines.push(Line::from(format!(
+                            "{} · width {} ft · depth {} ft · ferry {}",
+                            node.name,
+                            river.width_feet,
+                            river.depth_feet,
+                            river.ferry_cost_cents.map_or("unavailable".into(), |v| format!(
+                                "${:.2}",
+                                v as f64 / 100.
+                            ))
+                        )));
+                    }
+                }
+                lines.extend(menu(
+                    &[
+                        "Ford (risk cargo and lives)",
+                        "Caulk wagon and float",
+                        "Ferry (if available)",
+                        "Wait one day",
+                        "Hire guide (Snake River: 3 clothing sets)",
+                    ],
+                    self.cursor,
+                ));
+            }
             Screen::Event => {
                 lines.push(Line::from("A decision is required:"));
                 if let Some(id) = &self.pending_event {
@@ -957,14 +1027,19 @@ impl App {
                         self.game.content.events.iter().find(|event| &event.id == id)
                     {
                         lines.push(Line::from(event.text.clone()));
-                        lines.extend(menu(
-                            &event
-                                .choices
-                                .iter()
-                                .map(|choice| choice.label.as_str())
-                                .collect::<Vec<_>>(),
-                            self.cursor,
-                        ));
+                        for (i, choice) in event.choices.iter().enumerate() {
+                            lines.push(Line::from(format!(
+                                "{} {}. {}{}",
+                                marker(i == self.cursor),
+                                i + 1,
+                                choice.label,
+                                if self.game.choice_available(choice) {
+                                    ""
+                                } else {
+                                    " [unavailable]"
+                                }
+                            )));
+                        }
                     }
                 }
             }
@@ -1002,7 +1077,11 @@ impl App {
                         lines.push(Line::from(format!("Share this world: {code}")));
                     }
                 }
-                lines.push(Line::from("Enter returns to title."));
+                lines.push(Line::from("[E] Write an epitaph · Enter returns to title."));
+            }
+            Screen::Epitaph => {
+                lines.push(Line::from("Write up to 80 characters. Enter saves; Esc cancels."));
+                lines.push(Line::from(format!("{}▏", self.epitaph)));
             }
             Screen::Hall => {
                 if self.hall.is_empty() {
@@ -1014,20 +1093,22 @@ impl App {
                 }
             }
             Screen::Settings => lines.push(Line::from(format!(
-                "[C]olor {:?}  [B]ell {}  [A]rt text-only {}",
-                self.settings.color, self.settings.bell, self.settings.no_art
+                "[C]olor {:?}  [B]ell {}  [A]rt text-only {}  [S]peed {:?}",
+                self.settings.color, self.settings.bell, self.settings.no_art, self.settings.speed
             ))),
             Screen::Seed => lines.push(Line::from(format!("Enter world code: {}", self.seed_text))),
             Screen::Treat => {
                 for (index, member) in self.game.party.iter().enumerate() {
                     lines.push(Line::from(format!(
-                        "{} {}: {:?}",
+                        "{} {}: health {} morale {} · {}",
                         marker(index == self.cursor),
                         member.name,
-                        member.ailments
+                        member.health,
+                        member.morale,
+                        if member.alive { member.ailments.join(", ") } else { "deceased".into() }
                     )));
                 }
-                lines.push(Line::from("Enter treats the first listed ailment."));
+                lines.push(Line::from("Enter treats the selected traveler's first ailment."));
             }
             Screen::Minigame => {
                 lines.push(Line::from("A real-time trail action has been requested."))
@@ -1095,7 +1176,65 @@ mod tests {
     use ratatui::{backend::TestBackend, Terminal};
 
     fn render(screen: Screen, width: u16, height: u16) -> String {
-        let mut app = App::new(GameContent::starter(), 7, Settings::default());
+        let mut app = App::new(pioneer_data::load().unwrap(), 7, Settings::default());
+        if !matches!(
+            screen,
+            Screen::Title
+                | Screen::SetupTrail
+                | Screen::SetupOccupation
+                | Screen::SetupParty
+                | Screen::SetupDeparture
+                | Screen::Settings
+                | Screen::Seed
+        ) {
+            app.game.apply(Command::Configure {
+                trail_id: "oregon".into(),
+                era_id: "1848".into(),
+                occupation_id: "banker".into(),
+                party: ["Ada", "James", "Ruth", "Thomas", "Clara"].map(str::to_owned).to_vec(),
+                departure_month: 3,
+            });
+            for (item, quantity) in
+                [("oxen", 3), ("food", 1500), ("clothing", 5), ("ammunition", 10), ("medicine", 2)]
+            {
+                app.game.apply(Command::Buy { item_id: item.into(), quantity });
+            }
+            if screen != Screen::Store {
+                app.game.apply(Command::Depart);
+            }
+            app.log = vec!["The wagon is ready. Five travelers set out from Independence.".into()];
+            match screen {
+                Screen::River => {
+                    app.game.current_node_id = Some("kansas_river".into());
+                    app.game.target_node_id = None;
+                    app.game.route_miles_remaining = 0;
+                    app.game.miles = 102;
+                    app.game.day = 9;
+                    app.game.status = pioneer_sim::RunStatus::AwaitingRiver("kansas_river".into());
+                }
+                Screen::Fork => {
+                    app.game.current_node_id = Some("south_pass".into());
+                    app.game.status = pioneer_sim::RunStatus::AwaitingFork("south_pass".into());
+                }
+                Screen::Event => {
+                    app.pending_event = Some("wheel".into());
+                    app.game.pending_event = app.pending_event.clone();
+                }
+                Screen::Score | Screen::Epitaph => {
+                    app.game.status = pioneer_sim::RunStatus::Arrived;
+                    app.game.miles = 1885;
+                    app.game.day = 155;
+                }
+                Screen::Hall => {
+                    app.hall = vec!["Ada  3200 points".into(), "Clara  2800 points".into()];
+                }
+                Screen::Treat => {
+                    app.game.party[1].ailments = vec!["fever".into()];
+                    app.game.party[1].health = 68;
+                }
+                _ => {}
+            }
+        }
         app.screen = screen;
         let backend = TestBackend::new(width, height);
         let mut terminal = Terminal::new(backend).unwrap();
@@ -1130,6 +1269,7 @@ mod tests {
             Screen::River,
             Screen::Event,
             Screen::Score,
+            Screen::Epitaph,
             Screen::Hall,
             Screen::Settings,
             Screen::Seed,
@@ -1152,6 +1292,39 @@ mod tests {
         let mut app = App::new(GameContent::starter(), 1, Settings::default());
         app.handle_key(KeyEvent::from(crossterm::event::KeyCode::Enter));
         assert_eq!(app.screen, Screen::SetupTrail);
+    }
+    #[test]
+    fn rejected_event_choice_remains_visible_and_resolvable() {
+        let mut app = App::new(pioneer_data::load().unwrap(), 7, Settings::default());
+        app.game.apply(Command::Configure {
+            trail_id: "oregon".into(),
+            era_id: "1848".into(),
+            occupation_id: "banker".into(),
+            party: vec!["A".into(); 5],
+            departure_month: 3,
+        });
+        app.game.pending_event = Some("wheel".into());
+        app.sync_screen();
+        app.select(); // No spare wheel: rejected.
+        assert_eq!(app.pending_event.as_deref(), Some("wheel"));
+        assert_eq!(app.screen, Screen::Event);
+        assert!(app.body().iter().any(|line| format!("{line:?}").contains("unavailable")));
+        app.cursor = 1;
+        app.select();
+        assert!(app.game.pending_event.is_none());
+    }
+    #[test]
+    fn name_key_release_is_ignored_and_control_q_quits() {
+        let mut app = App::new(GameContent::starter(), 1, Settings::default());
+        app.screen = Screen::SetupParty;
+        app.handle_key(KeyEvent::new_with_kind(
+            KeyCode::Char('a'),
+            KeyModifiers::NONE,
+            KeyEventKind::Release,
+        ));
+        assert_eq!(app.draft.names[0], "Leader");
+        app.handle_key(KeyEvent::new(KeyCode::Char('q'), KeyModifiers::CONTROL));
+        assert!(app.should_quit());
     }
     #[test]
     fn party_name_input_keeps_navigation_letters_and_spaces() {

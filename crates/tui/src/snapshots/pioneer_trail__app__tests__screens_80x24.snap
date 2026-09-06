@@ -33,11 +33,11 @@ expression: "all_screens(80, 24)"
 ┌PIONEER TRAIL─────────────────────────────────────────────────────────────────┐
 │ PIONEER TRAIL                                                                │
 │ Choose Trail (Up/Down) · Left/Right era · Enter                              │
-│ Era: 1848                                                                    │
+│ Era: First Great Emigration                                                  │
 │ ► 1. Oregon Trail                                                            │
+│   2. California Trail                                                        │
+│   3. Mormon Pioneer Trail                                                    │
 │ Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                 │
-│                                                                              │
-│                                                                              │
 │                                                                              │
 │                                                                              │
 │                                                                              │
@@ -58,17 +58,17 @@ expression: "all_screens(80, 24)"
 === SetupOccupation ===
 ┌PIONEER TRAIL─────────────────────────────────────────────────────────────────┐
 │ PIONEER TRAIL                                                                │
-│ ► 1. Farmer                                                                  │
-│ $400 · score ×3 · Hardy oxen                                                 │
+│ ► 1. Banker                                                                  │
+│   2. Merchant                                                                │
+│   3. Doctor                                                                  │
+│   4. Blacksmith                                                              │
+│   5. Carpenter                                                               │
+│   6. Hunter / Trapper                                                        │
+│   7. Preacher                                                                │
+│   8. Farmer                                                                  │
+│   9. Soldier                                                                 │
+│ $1600 · score ×1 · Haggles for better fort prices.                           │
 │ Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                 │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
 │                                                                              │
 │                                                                              │
 │                                                                              │
@@ -136,24 +136,24 @@ expression: "all_screens(80, 24)"
 === Store ===
 ┌GENERAL STORE─────────────────────────────────────────────────────────────────┐
 │ GENERAL STORE                                                                │
-│ ► Oxen  $40.00  owned 0                                                      │
-│   Food  $0.20  owned 0                                                       │
-│   Clothing  $10.00  owned 0                                                  │
-│   Medicine  $15.00  owned 0                                                  │
-│   Leave  Qty 1 [←/→]  Cash $0.00  Weight 0 lb                                │
+│ ► Oxen  $40.00  owned 3                                                      │
+│   Food  $0.20  owned 1500                                                    │
+│   Clothing  $10.00  owned 5                                                  │
+│   Ammunition  $2.00  owned 10                                                │
+│   Wagon wheel  $10.00  owned 0                                               │
+│   Wagon axle  $10.00  owned 0                                                │
+│   Wagon tongue  $10.00  owned 0                                              │
+│   Medicine  $15.00  owned 2                                                  │
+│   Tools  $25.00  owned 0                                                     │
+│   Trade goods  $20.00  owned 0                                               │
+│   Depart  Qty 1 [←/→]  Cash $1080.00  Weight 1524 lb                         │
 │ Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                 │
 │                                                                              │
 │                                                                              │
 │                                                                              │
 │                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
 │ TRAIL LOG─────────────────────────────────────────────────────────────────── │
-│ Choose New Journey to begin.                                                 │
+│ The wagon is ready. Five travelers set out from Independence.                │
 │                                                                              │
 │                                                                              │
 │                                                                              │
@@ -162,32 +162,37 @@ expression: "all_screens(80, 24)"
 === Journey ===
                                                                                 
                                                                                 
-                                                                                
 ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
  ▀▀▀▀▀▀▀▀ ▀▀▀▀▀▀▀▀ ▀▀▀▀▀▀▀▀ ▀▀▀▀▀▀▀▀ ▀▀▀▀▀▀▀▀ ▀▀▀▀▀▀▀▀ ▀▀▀▀▀▀▀▀ ▀▀▀▀▀▀▀▀ ▀▀▀▀▀▀▀
-                                       ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀               
-                                    ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀            
-                                   ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀           
-                                   ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀           
-                                 ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀         
-          ▀▀  ▀▀                 ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀         
-            ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀      ▀▀▀▀▀▀                      ▀▀▀▀▀▀           
-     ▀▀▀    ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀    ▀▀▀▀▀▀▀▀       ▀▀▀        ▀▀▀▀▀▀▀▀▀▀ ▀▀▀      
-    ▀▀ ▀▀   ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀   ▀▀▀▀▀▀▀▀      ▀▀ ▀▀      ▀▀ ▀▀▀▀▀▀▀▀▀▀ ▀▀     
-             ▀▀▀ ▀▀▀    ▀▀▀ ▀▀     ▀▀▀▀▀▀                      ▀▀▀▀▀▀           
+                                                            ▀▀▀▀▀▀▀▀▀           
+                                       ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀           
+                                    ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀           
+           ▀▀▀▀▀▀▀▀                ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀           
+    ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀          ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀ ▀▀▀▀▀▀▀▀▀▀
 ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
-03/01/1848 · 0 mi · Open trail · Clear                                          
-Food 0 lb · $0.00 · Steady/Filling · 0 alive                                    
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+03/01/1848 · 0 mi · Independence, Missouri · Clear                              
+Food 1500 lb · $1080.00 · Steady/Filling · 5 alive                              
 ► 1 Continue                2 Supplies                3 Map                     
   4 Pace                    5 Rations                 6 Rest                    
   7 Hunt                    8 Talk                    9 Buy                     
 ↑↓/jk move · Enter act · i treat · Esc title · Ctrl-Q save/quit                 
-Choose New Journey to begin.                                                    
+The wagon is ready. Five travelers set out from Independence.                   
                                                                                 
 
 === Supplies ===
 ┌PIONEER TRAIL─────────────────────────────────────────────────────────────────┐
 │ PIONEER TRAIL                                                                │
+│ ammunition: 10                                                               │
+│ clothing: 5                                                                  │
+│ food: 1500                                                                   │
+│ medicine: 2                                                                  │
+│ oxen: 3                                                                      │
 │ Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                 │
 │                                                                              │
 │                                                                              │
@@ -199,13 +204,8 @@ Choose New Journey to begin.
 │                                                                              │
 │                                                                              │
 │                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
 │ TRAIL LOG─────────────────────────────────────────────────────────────────── │
-│ Choose New Journey to begin.                                                 │
+│ The wagon is ready. Five travelers set out from Independence.                │
 │                                                                              │
 │                                                                              │
 │                                                                              │
@@ -214,24 +214,24 @@ Choose New Journey to begin.
 === Map ===
 ┌PIONEER TRAIL─────────────────────────────────────────────────────────────────┐
 │ PIONEER TRAIL                                                                │
-│ Position: 0 miles · destination None · 0 miles remaining                     │
+│ Position: 0 miles · destination Some("kansas_river") · 102 miles remaining   │
+│ ► Independence, Missouri: 0 miles                                            │
+│   Kansas River Crossing: 102 miles                                           │
+│   Big Blue River Crossing: 185 miles                                         │
+│   Fort Kearney: 304 miles                                                    │
+│   Chimney Rock: 554 miles                                                    │
+│   Fort Laramie: 640 miles                                                    │
+│   Independence Rock: 830 miles                                               │
+│   South Pass: 932 miles                                                      │
+│   Green River Crossing: 989 miles                                            │
+│   Fort Bridger: 1151 miles                                                   │
+│   Soda Springs: 1143 miles                                                   │
+│   Fort Hall: 1200 miles                                                      │
+│ ↑↓ scroll trail landmarks                                                    │
 │ Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                 │
 │                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
 │ TRAIL LOG─────────────────────────────────────────────────────────────────── │
-│ Choose New Journey to begin.                                                 │
+│ The wagon is ready. Five travelers set out from Independence.                │
 │                                                                              │
 │                                                                              │
 │                                                                              │
@@ -257,7 +257,7 @@ Choose New Journey to begin.
 │                                                                              │
 │                                                                              │
 │ TRAIL LOG─────────────────────────────────────────────────────────────────── │
-│ Choose New Journey to begin.                                                 │
+│ The wagon is ready. Five travelers set out from Independence.                │
 │                                                                              │
 │                                                                              │
 │                                                                              │
@@ -283,7 +283,7 @@ Choose New Journey to begin.
 │                                                                              │
 │                                                                              │
 │ TRAIL LOG─────────────────────────────────────────────────────────────────── │
-│ Choose New Journey to begin.                                                 │
+│ The wagon is ready. Five travelers set out from Independence.                │
 │                                                                              │
 │                                                                              │
 │                                                                              │
@@ -309,7 +309,7 @@ Choose New Journey to begin.
 │                                                                              │
 │                                                                              │
 │ TRAIL LOG─────────────────────────────────────────────────────────────────── │
-│ Choose New Journey to begin.                                                 │
+│ The wagon is ready. Five travelers set out from Independence.                │
 │                                                                              │
 │                                                                              │
 │                                                                              │
@@ -335,7 +335,7 @@ Choose New Journey to begin.
 │                                                                              │
 │                                                                              │
 │ TRAIL LOG─────────────────────────────────────────────────────────────────── │
-│ Choose New Journey to begin.                                                 │
+│ The wagon is ready. Five travelers set out from Independence.                │
 │                                                                              │
 │                                                                              │
 │                                                                              │
@@ -344,7 +344,12 @@ Choose New Journey to begin.
 === Treat ===
 ┌PIONEER TRAIL─────────────────────────────────────────────────────────────────┐
 │ PIONEER TRAIL                                                                │
-│ Enter treats the first listed ailment.                                       │
+│ ► Ada: health 100 morale 50 ·                                                │
+│   James: health 68 morale 50 · fever                                         │
+│   Ruth: health 100 morale 50 ·                                               │
+│   Thomas: health 100 morale 50 ·                                             │
+│   Clara: health 100 morale 50 ·                                              │
+│ Enter treats the selected traveler's first ailment.                          │
 │ Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                 │
 │                                                                              │
 │                                                                              │
@@ -355,13 +360,8 @@ Choose New Journey to begin.
 │                                                                              │
 │                                                                              │
 │                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
 │ TRAIL LOG─────────────────────────────────────────────────────────────────── │
-│ Choose New Journey to begin.                                                 │
+│ The wagon is ready. Five travelers set out from Independence.                │
 │                                                                              │
 │                                                                              │
 │                                                                              │
@@ -371,6 +371,8 @@ Choose New Journey to begin.
 ┌PIONEER TRAIL─────────────────────────────────────────────────────────────────┐
 │ PIONEER TRAIL                                                                │
 │ Choose a route:                                                              │
+│ ► 1. Green River shortcut                                                    │
+│   2. Fort Bridger road                                                       │
 │ Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                 │
 │                                                                              │
 │                                                                              │
@@ -384,10 +386,8 @@ Choose New Journey to begin.
 │                                                                              │
 │                                                                              │
 │                                                                              │
-│                                                                              │
-│                                                                              │
 │ TRAIL LOG─────────────────────────────────────────────────────────────────── │
-│ Choose New Journey to begin.                                                 │
+│ The wagon is ready. Five travelers set out from Independence.                │
 │                                                                              │
 │                                                                              │
 │                                                                              │
@@ -396,11 +396,12 @@ Choose New Journey to begin.
 === River ===
 ┌PIONEER TRAIL─────────────────────────────────────────────────────────────────┐
 │ PIONEER TRAIL                                                                │
-│ ► 1. Ford                                                                    │
-│   2. Caulk wagon                                                             │
-│   3. Ferry                                                                   │
-│   4. Wait                                                                    │
-│   5. Hire guide                                                              │
+│ Kansas River Crossing · width 620 ft · depth 4 ft · ferry $5.00              │
+│ ► 1. Ford (risk cargo and lives)                                             │
+│   2. Caulk wagon and float                                                   │
+│   3. Ferry (if available)                                                    │
+│   4. Wait one day                                                            │
+│   5. Hire guide (Snake River: 3 clothing sets)                               │
 │ Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                 │
 │                                                                              │
 │                                                                              │
@@ -411,9 +412,8 @@ Choose New Journey to begin.
 │                                                                              │
 │                                                                              │
 │                                                                              │
-│                                                                              │
 │ TRAIL LOG─────────────────────────────────────────────────────────────────── │
-│ Choose New Journey to begin.                                                 │
+│ The wagon is ready. Five travelers set out from Independence.                │
 │                                                                              │
 │                                                                              │
 │                                                                              │
@@ -423,6 +423,9 @@ Choose New Journey to begin.
 ┌PIONEER TRAIL─────────────────────────────────────────────────────────────────┐
 │ PIONEER TRAIL                                                                │
 │ A decision is required:                                                      │
+│ A wheel splits on a hidden stone.                                            │
+│ ► 1. Fit the spare wheel [unavailable]                                       │
+│   2. Leave the wagon to limp                                                 │
 │ Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                 │
 │                                                                              │
 │                                                                              │
@@ -435,11 +438,8 @@ Choose New Journey to begin.
 │                                                                              │
 │                                                                              │
 │                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
 │ TRAIL LOG─────────────────────────────────────────────────────────────────── │
-│ Choose New Journey to begin.                                                 │
+│ The wagon is ready. Five travelers set out from Independence.                │
 │                                                                              │
 │                                                                              │
 │                                                                              │
@@ -448,8 +448,34 @@ Choose New Journey to begin.
 === Score ===
 ┌JOURNEY COMPLETE──────────────────────────────────────────────────────────────┐
 │ JOURNEY COMPLETE                                                             │
-│ The journey has ended. · Score 0 · 0 days · 0 miles                          │
-│ Enter returns to title.                                                      │
+│ Arrived! · Score 2864 · 155 days · 1885 miles                                │
+│ Ada: survived, health 100                                                    │
+│ James: survived, health 100                                                  │
+│ Ruth: survived, health 100                                                   │
+│ Thomas: survived, health 100                                                 │
+│ Clara: survived, health 100                                                  │
+│ Share this world: pt-0000000000003hs                                         │
+│ [E] Write an epitaph · Enter returns to title.                               │
+│ Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                 │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│ TRAIL LOG─────────────────────────────────────────────────────────────────── │
+│ The wagon is ready. Five travelers set out from Independence.                │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+=== Epitaph ===
+┌PIONEER TRAIL─────────────────────────────────────────────────────────────────┐
+│ PIONEER TRAIL                                                                │
+│ Write up to 80 characters. Enter saves; Esc cancels.                         │
+│ ▏                                                                            │
 │ Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                 │
 │                                                                              │
 │                                                                              │
@@ -465,7 +491,7 @@ Choose New Journey to begin.
 │                                                                              │
 │                                                                              │
 │ TRAIL LOG─────────────────────────────────────────────────────────────────── │
-│ Choose New Journey to begin.                                                 │
+│ The wagon is ready. Five travelers set out from Independence.                │
 │                                                                              │
 │                                                                              │
 │                                                                              │
@@ -474,7 +500,8 @@ Choose New Journey to begin.
 === Hall ===
 ┌PIONEER TRAIL─────────────────────────────────────────────────────────────────┐
 │ PIONEER TRAIL                                                                │
-│ No completed journeys yet.                                                   │
+│ Ada  3200 points                                                             │
+│ Clara  2800 points                                                           │
 │ Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                 │
 │                                                                              │
 │                                                                              │
@@ -489,9 +516,8 @@ Choose New Journey to begin.
 │                                                                              │
 │                                                                              │
 │                                                                              │
-│                                                                              │
 │ TRAIL LOG─────────────────────────────────────────────────────────────────── │
-│ Choose New Journey to begin.                                                 │
+│ The wagon is ready. Five travelers set out from Independence.                │
 │                                                                              │
 │                                                                              │
 │                                                                              │
@@ -500,7 +526,7 @@ Choose New Journey to begin.
 === Settings ===
 ┌PIONEER TRAIL─────────────────────────────────────────────────────────────────┐
 │ PIONEER TRAIL                                                                │
-│ [C]olor Truecolor  [B]ell false  [A]rt text-only false                       │
+│ [C]olor Truecolor  [B]ell false  [A]rt text-only false  [S]peed Normal       │
 │ Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                 │
 │                                                                              │
 │                                                                              │
@@ -569,7 +595,7 @@ Choose New Journey to begin.
 │                                                                              │
 │                                                                              │
 │ TRAIL LOG─────────────────────────────────────────────────────────────────── │
-│ Choose New Journey to begin.                                                 │
+│ The wagon is ready. Five travelers set out from Independence.                │
 │                                                                              │
 │                                                                              │
 │                                                                              │
