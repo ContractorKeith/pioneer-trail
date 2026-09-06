@@ -35,6 +35,9 @@ struct Cli {
     /// Render using monochrome glyphs.
     #[arg(long)]
     mono: bool,
+    /// Keep saves/settings in a separate directory (useful for portable or test runs).
+    #[arg(long, value_name = "DIR")]
+    save_dir: Option<std::path::PathBuf>,
 }
 
 fn parse_month(value: &str) -> Result<u8, String> {
@@ -114,7 +117,25 @@ fn main() -> anyhow::Result<()> {
         std::io::stdin().is_terminal() && std::io::stdout().is_terminal(),
         "Pioneer Trail needs an interactive terminal. Use --headless-sim N for batch runs."
     );
-    let storage = Storage::platform()?;
+    anyhow::ensure!(
+        content.trails.iter().any(|trail| trail.id == config.trail),
+        "Unknown trail: {}",
+        config.trail
+    );
+    anyhow::ensure!(
+        content.eras.iter().any(|era| era.id == config.era),
+        "Unknown era: {}",
+        config.era
+    );
+    anyhow::ensure!(
+        content.occupations.iter().any(|job| job.id == config.occupation),
+        "Unknown occupation: {}",
+        config.occupation
+    );
+    let storage = match cli.save_dir {
+        Some(path) => Storage::at(path),
+        None => Storage::platform()?,
+    };
     let mut settings = storage.load_settings()?;
     settings.no_art |= cli.no_art;
     if cli.mono {
