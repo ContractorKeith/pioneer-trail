@@ -3,7 +3,13 @@
 //! Rules: no I/O, no terminal, fully deterministic given a seed.
 //! The UI drives the sim exclusively through [`GameState::apply`].
 
+pub mod content;
+pub mod health;
 pub mod rng;
+pub mod score;
 pub mod state;
 
-pub use state::{Command, GameState, Outcome};
+pub use content::*;
+pub use state::{
+    Command, CommandError, CrossMethod, GameState, Outcome, Pace, RationLevel, RunStatus,
+};
