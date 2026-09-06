@@ -434,7 +434,7 @@ impl GameState {
         };
         let current_weight = self.weight();
         let market_id = self.current_node_id.clone().unwrap_or_default();
-        let market = self.markets.entry(market_id).or_insert_with(|| Market {
+        let mut market = self.markets.get(&market_id).cloned().unwrap_or_else(|| Market {
             stock: self
                 .content
                 .items
@@ -449,7 +449,7 @@ impl GameState {
             return Err(CommandError::InvalidChoice);
         }
         let cost = market
-            .price(item.price_cents, season_markup)
+            .price_for(id, item.price_cents, season_markup)
             .checked_mul(i64::from(n))
             .ok_or(CommandError::InsufficientCash)?;
         if self.inventory.get(id).checked_add(n).ok_or(CommandError::CapacityExceeded)? > item.limit
@@ -466,6 +466,7 @@ impl GameState {
         self.cash_cents -= cost;
         self.inventory.add(id, n);
         *market.stock.entry(id.into()).or_default() -= n;
+        self.markets.insert(market_id, market);
         Ok(vec![Outcome::Purchased { item_id: id.into(), quantity: n, cost_cents: cost }])
     }
     fn travel(&mut self) -> Result<Vec<Outcome>, CommandError> {
@@ -745,20 +746,36 @@ impl GameState {
             })
             .count() as u32
             * 10;
-        let food = self.rng.stream("forage").gen_range(5..=25) + bonus;
+        let food = (self.rng.stream("forage").gen_range(5..=25) + bonus).min(
+            self.content
+                .items
+                .iter()
+                .find(|item| item.id == "food")
+                .map_or(0, |item| item.limit.saturating_sub(self.inventory.get("food"))),
+        );
         self.inventory.add("food", food);
-        self.pass_camp_day(&mut Vec::new(), false);
-        Ok(vec![Outcome::Message(format!("Foraged {food} lbs of food."))])
+        let mut outcomes = Vec::new();
+        self.pass_camp_day(&mut outcomes, false);
+        outcomes.push(Outcome::Message(format!("Foraged {food} lbs of food.")));
+        Ok(outcomes)
     }
     fn fish(&mut self) -> Result<Vec<Outcome>, CommandError> {
         self.at_camp()?;
         if !matches!(self.terrain(), Terrain::RiverValley) {
             return Err(CommandError::InvalidPhase);
         }
-        let food = self.rng.stream("fishing").gen_range(10..=45);
+        let food = self.rng.stream("fishing").gen_range(10..=45).min(
+            self.content
+                .items
+                .iter()
+                .find(|item| item.id == "food")
+                .map_or(0, |item| item.limit.saturating_sub(self.inventory.get("food"))),
+        );
         self.inventory.add("food", food);
-        self.pass_camp_day(&mut Vec::new(), false);
-        Ok(vec![Outcome::Message(format!("Caught {food} lbs of fish."))])
+        let mut outcomes = Vec::new();
+        self.pass_camp_day(&mut outcomes, false);
+        outcomes.push(Outcome::Message(format!("Caught {food} lbs of fish.")));
+        Ok(outcomes)
     }
     fn sell(&mut self, item_id: &str, quantity: u32) -> Result<Vec<Outcome>, CommandError> {
         if !self.can_shop() || quantity == 0 || !self.inventory.remove(item_id, quantity) {
@@ -899,7 +916,8 @@ impl GameState {
             self.markets.get(self.current_node_id.as_deref().unwrap_or_default()).map_or(
                 item.price_cents,
                 |market| {
-                    market.price(
+                    market.price_for(
+                        item_id,
                         item.price_cents,
                         match self.season() {
                             Season::Winter => 25,
@@ -1355,14 +1373,6 @@ impl GameState {
             if member.health == 0 {
                 member.alive = false;
                 out.push(Outcome::MemberDied { name: member.name.clone() });
-            }
-            for ailment in member.ailments.clone() {
-                let days = member.ailment_days.entry(ailment.clone()).or_default();
-                *days = days.saturating_add(1);
-                if *days >= 10 && member.health >= 55 {
-                    member.ailments.retain(|id| id != &ailment);
-                    member.ailment_days.remove(&ailment);
-                }
             }
         }
         self.progress_ailments(out);

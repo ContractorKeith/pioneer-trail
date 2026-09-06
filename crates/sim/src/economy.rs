@@ -7,12 +7,12 @@ pub struct Market {
     pub last_restock_day: u32,
 }
 impl Market {
-    pub fn price(&self, base: i64, season_markup: i64) -> i64 {
+    pub fn price_for(&self, item_id: &str, base: i64, season_markup: i64) -> i64 {
         (base
             * (100
                 + season_markup
                 + i64::from(
-                    100u32.saturating_sub(*self.stock.values().next().unwrap_or(&100)).min(50),
+                    100u32.saturating_sub(*self.stock.get(item_id).unwrap_or(&100)).min(50),
                 ))
             / 100)
             .max(1)
