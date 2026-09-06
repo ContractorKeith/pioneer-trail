@@ -138,7 +138,7 @@ fn main() -> anyhow::Result<()> {
     };
     let mut settings = storage.load_settings()?;
     settings.no_art |= cli.no_art;
-    if cli.mono {
+    if cli.mono || std::env::var_os("NO_COLOR").is_some_and(|value| !value.is_empty()) {
         settings.color = pioneer_trail::persist::ColorMode::Mono;
     }
     let mut game = App::new(content, seed, settings).with_defaults(&config).with_storage(storage);
