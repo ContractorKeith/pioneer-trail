@@ -476,7 +476,7 @@ impl App {
                 Ok(()) => {
                     self.run_id = run_id;
                     self.game = game;
-                    self.screen = Screen::Journey;
+                    self.sync_screen();
                 }
                 Err(error) => self.note(format!("Saved journey is invalid: {error}")),
             },
@@ -540,6 +540,17 @@ impl App {
     }
     pub fn render(&mut self, frame: &mut Frame) {
         let area = frame.area();
+        if area.width < 80 || area.height < 24 {
+            frame.render_widget(
+                Paragraph::new(format!(
+                    "PIONEER TRAIL requires 80×24. Current size: {}×{}.",
+                    area.width, area.height
+                ))
+                .block(Block::default().borders(Borders::ALL).title("RESIZE TERMINAL")),
+                area,
+            );
+            return;
+        }
         let outer = Block::default().borders(Borders::ALL).title(self.title());
         frame.render_widget(outer, area);
         let inner = area.inner(Margin { horizontal: 2, vertical: 1 });
@@ -663,7 +674,7 @@ impl App {
                 {
                     for node in &trail.nodes {
                         lines.push(Line::from(format!(
-                                        "{} {}: {} miles",
+                            "{} {}: {} miles",
                             if Some(&node.id) == self.game.current_node_id.as_ref() {
                                 "►"
                             } else {
@@ -862,7 +873,9 @@ mod tests {
     fn party_name_input_keeps_navigation_letters_and_spaces() {
         let mut app = App::new(GameContent::starter(), 1, Settings::default());
         app.screen = Screen::SetupParty;
-        for key in ['h', 'j', 'k', 'l', ' ', '7'] { app.handle_key(KeyEvent::from(KeyCode::Char(key))); }
+        for key in ['h', 'j', 'k', 'l', ' ', '7'] {
+            app.handle_key(KeyEvent::from(KeyCode::Char(key)));
+        }
         assert_eq!(app.draft.names[0], "hjkl 7");
         app.handle_key(KeyEvent::from(KeyCode::Backspace));
         assert_eq!(app.draft.names[0], "hjkl ");
@@ -870,9 +883,59 @@ mod tests {
     #[test]
     fn store_quantity_can_buy_bulk_food() {
         let mut app = App::new(GameContent::starter(), 2, Settings::default());
-        app.apply(Command::Configure { trail_id: "oregon".into(), era_id: "1848".into(), occupation_id: "farmer".into(), party: vec!["A".into(), "B".into(), "C".into(), "D".into(), "E".into()], departure_month: 4 });
-        app.screen = Screen::Store; app.cursor = 1; app.store_quantity = 2_000; app.select();
+        app.apply(Command::Configure {
+            trail_id: "oregon".into(),
+            era_id: "1848".into(),
+            occupation_id: "farmer".into(),
+            party: vec!["A".into(), "B".into(), "C".into(), "D".into(), "E".into()],
+            departure_month: 4,
+        });
+        app.screen = Screen::Store;
+        app.cursor = 1;
+        app.store_quantity = 2_000;
+        app.select();
         assert_eq!(app.game.inventory.get("food"), 2_000);
         assert_eq!(app.screen, Screen::Store);
+    }
+    #[test]
+    fn loaded_content_journey_keeps_mandatory_phases_after_resume() {
+        let content = pioneer_data::load().unwrap();
+        let mut app = App::new(content, 41, Settings::default());
+        app.apply(Command::Configure {
+            trail_id: "oregon".into(),
+            era_id: "1848".into(),
+            occupation_id: "banker".into(),
+            party: vec!["A".into(), "B".into(), "C".into(), "D".into(), "E".into()],
+            departure_month: 4,
+        });
+        app.screen = Screen::Store;
+        app.cursor = app.game.content.items.iter().position(|item| item.id == "oxen").unwrap();
+        app.store_quantity = 3;
+        app.select();
+        app.cursor = app.game.content.items.iter().position(|item| item.id == "food").unwrap();
+        app.store_quantity = 2_000;
+        app.select();
+        app.cursor = app.game.content.items.len();
+        app.select();
+        for _ in 0..100 {
+            match app.screen {
+                Screen::Event => app.select(),
+                Screen::River => break,
+                _ => app.apply(Command::Continue),
+            }
+        }
+        assert_eq!(app.screen, Screen::River);
+        let root = std::env::temp_dir().join(format!("pioneer-tui-phase-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&root);
+        let storage = Storage::at(&root);
+        storage.save_session("phase", &app.game).unwrap();
+        let mut resumed =
+            App::new(app.game.content.clone(), 99, Settings::default()).with_storage(storage);
+        resumed.cursor = 1;
+        resumed.select();
+        assert_eq!(resumed.screen, Screen::River);
+        resumed.back();
+        assert_eq!(resumed.screen, Screen::River);
+        let _ = std::fs::remove_dir_all(root);
     }
 }

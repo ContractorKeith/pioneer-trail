@@ -1,4 +1,4 @@
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Input {
@@ -15,6 +15,9 @@ pub enum Input {
 }
 
 pub fn decode(key: KeyEvent) -> Input {
+    if !matches!(key.kind, KeyEventKind::Press | KeyEventKind::Repeat) {
+        return Input::None;
+    }
     match key.code {
         KeyCode::Up | KeyCode::Char('k') => Input::Up,
         KeyCode::Down | KeyCode::Char('j') => Input::Down,
