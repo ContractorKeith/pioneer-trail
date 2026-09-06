@@ -1,0 +1,16 @@
+[package]
+name = "pioneer-tools"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Dev tools for Pioneer Trail: px-preview, balance-report, event-lint."
+
+[[bin]]
+name = "event-lint"
+path = "src/event_lint.rs"
+
+[dependencies]
+pioneer-data = { path = "../data" }
+anyhow = { workspace = true }
