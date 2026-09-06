@@ -8,7 +8,9 @@ polished, keyboard-only game at 80×24 published on crates.io and a Homebrew tap
 **Full design and phase plan: `docs/PLAN.md`. Visual system (palette, `.px` format, layouts): `docs/DESIGN.md`. Read both before starting any phase.**
 
 ## Status
-skeleton — last touched 2026-09-06. Next: Phase 1 (`crates/sim` core + headless runner).
+active integration — core journey, terminal play, scenes, encounters, saves, and accessibility work
+are implemented; phases 6–9 are being integrated and verified. See `docs/BUILD_STATUS.md` for the
+player-visible mapping. Do not treat this as a publication claim.
 
 ## Commands
 ```bash

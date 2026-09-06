@@ -20,6 +20,8 @@ Legal note: "The Oregon Trail" is a trademark (Gameloft/HMH). We use our own nam
 and our own art. Mechanics and public-domain history (landmarks, distances, diseases) are fair game.
 Do not paste original text, epitaphs, or sprites.
 
+Current implementation status: [BUILD_STATUS.md](BUILD_STATUS.md).
+
 ---
 
 ## 1. Player-facing overview
