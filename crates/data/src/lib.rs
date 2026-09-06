@@ -158,7 +158,7 @@ pub fn validate(content: &GameContent) -> Result<(), ContentError> {
         )?;
         expect(
             !quote.seasons.is_empty(),
-            &format!("quote {} needs season and state tags", quote.id),
+            &format!("quote {} needs at least one season", quote.id),
         )?;
         if let Some(id) = &quote.landmark_id {
             expect(
