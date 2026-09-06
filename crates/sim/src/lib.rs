@@ -15,7 +15,7 @@ pub mod weather;
 
 pub use calendar::{days_in_month, is_leap_year, CalendarDate};
 pub use content::*;
-pub use economy::Market;
+pub use economy::{Market, NpcTrain};
 pub use party::{Relationships, Skills, Trait};
 pub use state::{
     Command, CommandError, CrossMethod, GameState, Outcome, Pace, RationLevel, RunStatus,

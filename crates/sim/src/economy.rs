@@ -26,3 +26,16 @@ impl Market {
         }
     }
 }
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct NpcTrain {
+    pub id: String,
+    pub name: String,
+    pub reputation: i16,
+    pub inventory: BTreeMap<String, u32>,
+    pub recurring: bool,
+}
+impl NpcTrain {
+    pub fn accepts(&self, offered: u32, wanted: u32, reputation: i16) -> bool {
+        i64::from(offered) + i64::from(reputation.max(0)) / 10 >= i64::from(wanted)
+    }
+}

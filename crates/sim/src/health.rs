@@ -1,5 +1,6 @@
 use crate::party::{Relationships, Skills, Trait};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PartyMember {
@@ -16,6 +17,8 @@ pub struct PartyMember {
     pub skills: Skills,
     #[serde(default)]
     pub relationships: Relationships,
+    #[serde(default)]
+    pub ailment_days: BTreeMap<String, u16>,
 }
 
 impl PartyMember {
@@ -30,6 +33,7 @@ impl PartyMember {
             traits: Vec::new(),
             skills: Skills::default(),
             relationships: Relationships::default(),
+            ailment_days: BTreeMap::new(),
         }
     }
 }

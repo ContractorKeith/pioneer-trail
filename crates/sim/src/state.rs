@@ -2,7 +2,7 @@
 use crate::{
     calendar::CalendarDate,
     content::*,
-    economy::Market,
+    economy::{Market, NpcTrain},
     health::{advance, PartyMember},
     rng::SimRng,
     score,
@@ -117,10 +117,25 @@ pub struct GameState {
     pub reputation: i16,
     #[serde(default)]
     pub markets: BTreeMap<String, Market>,
+    #[serde(default)]
+    pub npcs: Vec<NpcTrain>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum Command {
     SetDifficulty(Difficulty),
+    Forage,
+    Fish,
+    Sell {
+        item_id: String,
+        quantity: u32,
+    },
+    Barter {
+        npc_id: String,
+        offered_item: String,
+        offered_quantity: u32,
+        wanted_item: String,
+        wanted_quantity: u32,
+    },
     Configure {
         trail_id: String,
         era_id: String,
@@ -231,6 +246,13 @@ impl GameState {
             ox_fatigue: 0,
             reputation: 0,
             markets: BTreeMap::new(),
+            npcs: vec![NpcTrain {
+                id: "emigrant_train".into(),
+                name: "Holloway family".into(),
+                reputation: 0,
+                inventory: BTreeMap::from([("food".into(), 100)]),
+                recurring: true,
+            }],
         }
     }
     pub fn apply(&mut self, c: Command) -> Vec<Outcome> {
@@ -250,6 +272,18 @@ impl GameState {
                 }
                 self.difficulty = difficulty;
                 Ok(vec![Outcome::Message("Difficulty changed".into())])
+            }
+            Command::Forage => self.forage(),
+            Command::Fish => self.fish(),
+            Command::Sell { item_id, quantity } => self.sell(&item_id, quantity),
+            Command::Barter {
+                npc_id,
+                offered_item,
+                offered_quantity,
+                wanted_item,
+                wanted_quantity,
+            } => {
+                self.barter(&npc_id, &offered_item, offered_quantity, &wanted_item, wanted_quantity)
             }
             Command::Configure { trail_id, era_id, occupation_id, party, departure_month } => {
                 self.configure(trail_id, era_id, occupation_id, party, departure_month)
@@ -625,6 +659,68 @@ impl GameState {
         }
         Ok(vec![Outcome::Message("Rafting result recorded".into())])
     }
+    fn forage(&mut self) -> Result<Vec<Outcome>, CommandError> {
+        self.at_camp()?;
+        let bonus = self
+            .party
+            .iter()
+            .filter(|member| member.traits.contains(&crate::party::Trait::Herbalist))
+            .count() as u32
+            * 10;
+        let food = self.rng.stream("forage").gen_range(5..=25) + bonus;
+        self.inventory.add("food", food);
+        self.pass_camp_day(&mut Vec::new(), false);
+        Ok(vec![Outcome::Message(format!("Foraged {food} lbs of food."))])
+    }
+    fn fish(&mut self) -> Result<Vec<Outcome>, CommandError> {
+        self.at_camp()?;
+        if !matches!(self.terrain(), Terrain::RiverValley) {
+            return Err(CommandError::InvalidPhase);
+        }
+        let food = self.rng.stream("fishing").gen_range(10..=45);
+        self.inventory.add("food", food);
+        self.pass_camp_day(&mut Vec::new(), false);
+        Ok(vec![Outcome::Message(format!("Caught {food} lbs of fish."))])
+    }
+    fn sell(&mut self, item_id: &str, quantity: u32) -> Result<Vec<Outcome>, CommandError> {
+        if !self.can_shop() || quantity == 0 || !self.inventory.remove(item_id, quantity) {
+            return Err(CommandError::InvalidChoice);
+        }
+        let price =
+            self.price_cents(item_id).ok_or_else(|| CommandError::UnknownId(item_id.into()))? / 2;
+        self.cash_cents = self.cash_cents.saturating_add(price.saturating_mul(i64::from(quantity)));
+        Ok(vec![Outcome::Message(format!("Sold {quantity} {item_id}."))])
+    }
+    fn barter(
+        &mut self,
+        npc_id: &str,
+        offered_item: &str,
+        offered_quantity: u32,
+        wanted_item: &str,
+        wanted_quantity: u32,
+    ) -> Result<Vec<Outcome>, CommandError> {
+        self.at_camp()?;
+        if offered_quantity == 0 || wanted_quantity == 0 {
+            return Err(CommandError::InvalidChoice);
+        }
+        let npc = self
+            .npcs
+            .iter_mut()
+            .find(|npc| npc.id == npc_id)
+            .ok_or_else(|| CommandError::UnknownId(npc_id.into()))?;
+        if self.inventory.get(offered_item) < offered_quantity
+            || npc.inventory.get(wanted_item).copied().unwrap_or_default() < wanted_quantity
+            || !npc.accepts(offered_quantity, wanted_quantity, self.reputation)
+        {
+            return Err(CommandError::InvalidChoice);
+        }
+        self.inventory.remove(offered_item, offered_quantity);
+        self.inventory.add(wanted_item, wanted_quantity);
+        *npc.inventory.entry(offered_item.into()).or_default() += offered_quantity;
+        *npc.inventory.entry(wanted_item.into()).or_default() -= wanted_quantity;
+        self.reputation = self.reputation.saturating_add(1);
+        Ok(vec![Outcome::Message("Trade accepted.".into())])
+    }
     pub fn score(&self) -> u32 {
         let mul = self
             .content
@@ -689,7 +785,21 @@ impl GameState {
             && self.current_landmark().is_some_and(|node| node.store)
     }
     pub fn price_cents(&self, item_id: &str) -> Option<i64> {
-        self.content.items.iter().find(|item| item.id == item_id).map(|item| item.price_cents)
+        self.content.items.iter().find(|item| item.id == item_id).map(|item| {
+            self.markets.get(self.current_node_id.as_deref().unwrap_or_default()).map_or(
+                item.price_cents,
+                |market| {
+                    market.price(
+                        item.price_cents,
+                        match self.season() {
+                            Season::Winter => 25,
+                            Season::Summer => 10,
+                            _ => 0,
+                        },
+                    )
+                },
+            )
+        })
     }
     /// Reject corrupted saves before a UI attempts to navigate their content IDs.
     pub fn validate(&self) -> Result<(), CommandError> {
@@ -1072,6 +1182,14 @@ impl GameState {
             if member.health == 0 {
                 member.alive = false;
                 out.push(Outcome::MemberDied { name: member.name.clone() });
+            }
+            for ailment in member.ailments.clone() {
+                let days = member.ailment_days.entry(ailment.clone()).or_default();
+                *days = days.saturating_add(1);
+                if *days >= 10 && member.health >= 55 {
+                    member.ailments.retain(|id| id != &ailment);
+                    member.ailment_days.remove(&ailment);
+                }
             }
         }
         if !self.party.iter().any(|member| member.alive) {
