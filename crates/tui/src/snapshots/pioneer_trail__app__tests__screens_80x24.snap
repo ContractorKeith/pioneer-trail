@@ -67,9 +67,9 @@ expression: "all_screens(80, 24)"
 │   7. Preacher                                                                │
 │   8. Farmer                                                                  │
 │   9. Soldier                                                                 │
-│ $1600 · score ×1 · Haggles for better fort prices.                           │
+│ Starting funds $1600 · score ×1 · Haggles for better fort prices.            │
+│ Starting funds affect your shopping choices, not the trail's rules.          │
 │ Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                 │
-│                                                                              │
 │                                                                              │
 │                                                                              │
 │                                                                              │
@@ -111,8 +111,8 @@ expression: "all_screens(80, 24)"
 ┌PIONEER TRAIL─────────────────────────────────────────────────────────────────┐
 │ PIONEER TRAIL                                                                │
 │ Departure month: 4  [Left/Right]  Enter to outfit                            │
+│ Spring balances fair weather with enough time before autumn.                 │
 │ Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                 │
-│                                                                              │
 │                                                                              │
 │                                                                              │
 │                                                                              │
@@ -147,9 +147,9 @@ expression: "all_screens(80, 24)"
 │   Tools  $25.00  owned 0                                                     │
 │   Trade goods  $20.00  owned 0                                               │
 │   Depart  Qty 1 [←/→]  Cash $1080.00  Weight 1524 lb                         │
-│ Enter buys · S sells selected quantity at half the quoted price              │
+│ Enter buys · S sells at half price · ? outfitting advice                     │
+│ Oxen: $42.80 per yoke · 3 on hand                                            │
 │ Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                 │
-│                                                                              │
 │                                                                              │
 │                                                                              │
 │ TRAIL LOG─────────────────────────────────────────────────────────────────── │
@@ -174,8 +174,7 @@ expression: "all_screens(80, 24)"
 ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
 ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
 ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
-▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
-▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+  1500 lb covers about 100 day(s) at these rations for 5 travelers.             
 03/01/1848 · 0 mi · Independence, Missouri · Clear                              
 Food 1500 lb · $1080.00 · Steady/Filling · 5 alive                              
 ► 1 Continue                2 Supplies                3 Map                     
@@ -184,17 +183,18 @@ Food 1500 lb · $1080.00 · Steady/Filling · 5 alive
 a travel · i treat · u trade · f forage · g fish · v party · Esc title          
 The wagon is ready. Five travelers set out from Independence.                   
                                                                                 
+                                                                                
 
 === Supplies ===
 ┌PIONEER TRAIL─────────────────────────────────────────────────────────────────┐
 │ PIONEER TRAIL                                                                │
+│ At these rations, 1500 lb covers about 100 day(s) for the living party.      │
 │ ammunition: 10                                                               │
 │ clothing: 5                                                                  │
 │ food: 1500                                                                   │
 │ medicine: 2                                                                  │
 │ oxen: 3                                                                      │
 │ Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                 │
-│                                                                              │
 │                                                                              │
 │                                                                              │
 │                                                                              │
@@ -240,11 +240,11 @@ The wagon is ready. Five travelers set out from Independence.
 === Pace ===
 ┌PIONEER TRAIL─────────────────────────────────────────────────────────────────┐
 │ PIONEER TRAIL                                                                │
+│ Steady restores 1 health when the day's chosen ration is fully met.          │
 │ ► 1. Steady                                                                  │
 │   2. Strenuous                                                               │
 │   3. Grueling                                                                │
 │ Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                 │
-│                                                                              │
 │                                                                              │
 │                                                                              │
 │                                                                              │
@@ -266,11 +266,11 @@ The wagon is ready. Five travelers set out from Independence.
 === Rations ===
 ┌PIONEER TRAIL─────────────────────────────────────────────────────────────────┐
 │ PIONEER TRAIL                                                                │
+│ Filling: 3 lb/person/day and morale; meager: 2; bare bones: 1.               │
 │ ► 1. Filling                                                                 │
 │   2. Meager                                                                  │
 │   3. Bare Bones                                                              │
 │ Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                 │
-│                                                                              │
 │                                                                              │
 │                                                                              │
 │                                                                              │
@@ -292,11 +292,11 @@ The wagon is ready. Five travelers set out from Independence.
 === Rest ===
 ┌PIONEER TRAIL─────────────────────────────────────────────────────────────────┐
 │ PIONEER TRAIL                                                                │
+│ Rest uses rations and eases ox fatigue; with food, it can aid recovery.      │
 │ ► 1. Rest 1 day                                                              │
 │   2. Rest 2 days                                                             │
 │   3. Rest 3 days                                                             │
 │ Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                 │
-│                                                                              │
 │                                                                              │
 │                                                                              │
 │                                                                              │
@@ -506,6 +506,7 @@ The wagon is ready. Five travelers set out from Independence.
   ▀▀▀▀▀▀▀   ▀▀▀▀▀    ▀▀▀▀▀▀▀      ▀▀▀▀▀      ▀▀▀▀▀       ▀▀▀▀▀     ▀▀▀▀▀▀▀  ▀▀▀▀
                                                                                 
   Arrived! · Score 3264 · 155 days · 1885 miles                                 
+  You arrived with 5 survivor(s). Supplies left over add to your score.         
   Ada: survived, health 100                                                     
   James: survived, health 100                                                   
   Ruth: survived, health 100                                                    
@@ -515,7 +516,6 @@ The wagon is ready. Five travelers set out from Independence.
   Share this world: pt-0000000000003hs                                          
   [V] Full party · [E] Epitaph · Enter returns to title.                        
   Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                  
-                                                                                
                                                                                 
                                                                                 
                                                                                 

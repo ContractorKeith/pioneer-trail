@@ -1,5 +1,6 @@
 use crate::{
     input::{decode, Input},
+    outfitting::OutfittingAdvice,
     persist::{new_run_id, RunRecord, Settings, Storage},
     screens::Screen,
     seed::WorldSeed,
@@ -71,6 +72,8 @@ pub struct App {
     graves: Vec<crate::legacy::Grave>,
     auto_travel: bool,
     bell_pending: bool,
+    outfitting_advice_visible: bool,
+    departure_warning_armed: bool,
 }
 impl App {
     pub fn new(content: GameContent, seed: u64, settings: Settings) -> Self {
@@ -102,6 +105,8 @@ impl App {
             graves: Vec::new(),
             auto_travel: false,
             bell_pending: false,
+            outfitting_advice_visible: false,
+            departure_warning_armed: false,
         }
     }
     pub fn with_storage(mut self, storage: Storage) -> Self {
@@ -110,6 +115,31 @@ impl App {
     }
     pub fn should_quit(&self) -> bool {
         self.quit
+    }
+    /// A concise, accurate survival prompt for the current trail state.
+    pub(crate) fn trail_advice(&self) -> String {
+        crate::advice::trail_advice(&self.game)
+    }
+    fn auto_travel_pause_reason(&self) -> Option<String> {
+        if self.game.inventory.get("food") < self.game.daily_food_lbs().saturating_mul(3) {
+            return Some(format!("Auto travel paused: {}", self.trail_advice()));
+        }
+        if self.game.party.iter().any(|member| member.alive && !member.ailments.is_empty()) {
+            return Some(
+                "Auto travel paused: someone is ill. Stop to rest and check the party.".into(),
+            );
+        }
+        self.game.party.iter().any(|member| member.alive && member.health < 40).then(|| {
+            "Auto travel paused: someone is in poor health. Stop to rest before continuing.".into()
+        })
+    }
+    fn advance_auto_travel(&mut self) {
+        if let Some(reason) = self.auto_travel_pause_reason() {
+            self.auto_travel = false;
+            self.note(reason);
+            return;
+        }
+        self.apply(Command::Continue);
     }
     pub fn with_defaults(mut self, config: &crate::headless::RunConfig) -> Self {
         self.draft.trail =
@@ -240,6 +270,12 @@ impl App {
                 _ => {}
             }
         }
+        if self.screen == Screen::Store && self.outfitting_advice_visible {
+            if matches!(key.code, KeyCode::Char('?') | KeyCode::Esc) {
+                self.outfitting_advice_visible = false;
+            }
+            return;
+        }
         let previous_cursor = self.cursor;
         match decode(key) {
             Input::Quit => self.quit = true,
@@ -277,6 +313,8 @@ impl App {
                     self.minigame = None;
                     self.log.clear();
                     self.epitaph.clear();
+                    self.outfitting_advice_visible = false;
+                    self.departure_warning_armed = false;
                     self.screen = Screen::SetupTrail;
                     self.cursor = self.draft.trail;
                 }
@@ -371,9 +409,19 @@ impl App {
             Screen::Store => {
                 if self.cursor < self.game.content.items.len() {
                     let id = self.game.content.items[self.cursor].id.clone();
+                    self.departure_warning_armed = false;
                     self.apply(Command::Buy { item_id: id, quantity: self.store_quantity });
                 } else {
                     if matches!(self.game.status, pioneer_sim::RunStatus::Outfitting) {
+                        let advice = OutfittingAdvice::for_game(&self.game);
+                        if !advice.warnings.is_empty() && !self.departure_warning_armed {
+                            self.departure_warning_armed = true;
+                            self.note(format!(
+                                "Caution: {} Select Depart again to leave as packed.",
+                                advice.warnings[0]
+                            ));
+                            return;
+                        }
                         self.apply(Command::Depart);
                     } else {
                         self.apply(Command::Continue);
@@ -615,10 +663,14 @@ impl App {
                 self.apply(Command::SetDifficulty(next));
             }
             (Screen::Store, 's') if self.cursor < self.game.content.items.len() => {
+                self.departure_warning_armed = false;
                 self.apply(Command::Sell {
                     item_id: self.game.content.items[self.cursor].id.clone(),
                     quantity: self.store_quantity,
                 });
+            }
+            (Screen::Store, '?') => {
+                self.outfitting_advice_visible = !self.outfitting_advice_visible
             }
             (Screen::Journey, 'b') if self.game.can_shop() => self.screen = Screen::Store,
             (Screen::Score, 'e') => self.screen = Screen::Epitaph,
@@ -657,6 +709,10 @@ impl App {
         }
     }
     fn back(&mut self) {
+        if self.screen == Screen::Store && self.outfitting_advice_visible {
+            self.outfitting_advice_visible = false;
+            return;
+        }
         if self.screen == Screen::Party
             && matches!(
                 self.game.status,
@@ -1000,7 +1056,11 @@ impl App {
         let outer = Block::default().borders(Borders::ALL).title(self.title());
         frame.render_widget(outer, area);
         let inner = area.inner(Margin { horizontal: 2, vertical: 1 });
-        let chunks = Layout::vertical([Constraint::Min(5), Constraint::Length(5)]).split(inner);
+        let wide_store_art =
+            self.screen == Screen::Store && !self.settings.no_art && area.width >= 110;
+        let content =
+            if wide_store_art { Rect::new(inner.x, inner.y, 78, inner.height) } else { inner };
+        let chunks = Layout::vertical([Constraint::Min(5), Constraint::Length(5)]).split(content);
         let lines = self
             .body()
             .into_iter()
@@ -1010,7 +1070,25 @@ impl App {
             Paragraph::new(lines).wrap(ratatui::widgets::Wrap { trim: false }),
             chunks[0],
         );
-        self.render_trail_log(frame, chunks[1]);
+        self.render_trail_log(
+            frame,
+            if wide_store_art {
+                Rect::new(content.x, chunks[1].y, 78, chunks[1].height)
+            } else {
+                chunks[1]
+            },
+        );
+        if wide_store_art {
+            self.render_store_vignette(
+                frame,
+                Rect::new(
+                    content.right() + 2,
+                    inner.y + 1,
+                    inner.right() - content.right() - 2,
+                    14,
+                ),
+            );
+        }
     }
     fn title(&self) -> &'static str {
         match self.screen {
@@ -1036,7 +1114,8 @@ impl App {
             Block::default().style(Style::default().bg(Color::Black).fg(Color::White)),
             area,
         );
-        let canvas = Rect::new(area.x + (area.width - 80) / 2, area.y, 80, 16);
+        let canvas_height = if self.screen == Screen::Journey { 14 } else { 16 };
+        let canvas = Rect::new(area.x + (area.width - 80) / 2, area.y, 80, canvas_height);
         let mode = self.color_mode();
         if self.screen == Screen::Title {
             art::render(
@@ -1109,7 +1188,7 @@ impl App {
             art::render(
                 art::embedded(&file).expect("wagon animation"),
                 frame.buffer_mut(),
-                Rect::new(canvas.x + x, canvas.y + y, 80 - x, 16 - y),
+                Rect::new(canvas.x + x, canvas.y + y, 80 - x, 14 - y),
                 mode,
             );
         }
@@ -1119,7 +1198,11 @@ impl App {
                 "{month:02}/{day:02}/{year} · {} mi · {name} · {:?}",
                 self.game.miles, self.game.weather
             )),
-            Rect::new(canvas.x, canvas.y + 16, 80, 1),
+            Rect::new(canvas.x, canvas.y + 15, 80, 1),
+        );
+        frame.render_widget(
+            Paragraph::new(self.trail_advice()),
+            Rect::new(canvas.x + 2, canvas.y + 14, 76, 1),
         );
         frame.render_widget(
             Paragraph::new(format!(
@@ -1130,7 +1213,7 @@ impl App {
                 self.game.rations,
                 self.game.party.iter().filter(|m| m.alive).count()
             )),
-            Rect::new(canvas.x, canvas.y + 17, 80, 1),
+            Rect::new(canvas.x, canvas.y + 16, 80, 1),
         );
         for (i, label) in
             ["Continue", "Supplies", "Map", "Pace", "Rations", "Rest", "Hunt", "Talk", "Buy"]
@@ -1139,19 +1222,19 @@ impl App {
         {
             frame.render_widget(
                 Paragraph::new(format!("{} {} {label}", marker(i == self.cursor), i + 1)),
-                Rect::new(canvas.x + (i % 3) as u16 * 26, canvas.y + 18 + (i / 3) as u16, 26, 1),
+                Rect::new(canvas.x + (i % 3) as u16 * 26, canvas.y + 17 + (i / 3) as u16, 26, 1),
             );
         }
         frame.render_widget(
             Paragraph::new(
                 "a travel · i treat · u trade · f forage · g fish · v party · Esc title",
             ),
-            Rect::new(canvas.x, canvas.y + 21, 80, 1),
+            Rect::new(canvas.x, canvas.y + 20, 80, 1),
         );
         if let Some(last) = self.log.last() {
             frame.render_widget(
                 Paragraph::new(last.clone()).wrap(ratatui::widgets::Wrap { trim: true }),
-                Rect::new(canvas.x, canvas.y + 22, 80, 2),
+                Rect::new(canvas.x, canvas.y + 21, 80, 3),
             );
         }
         if area.height >= 30 {
@@ -1175,6 +1258,26 @@ impl App {
                 Rect::new(canvas.x, canvas.y + 25, 80, area.height - 25),
             );
         }
+    }
+    fn render_store_vignette(&self, frame: &mut Frame, area: Rect) {
+        use crate::art;
+        frame.render_widget(
+            Paragraph::new("MATT'S COUNTER").style(Style::default().fg(Color::LightYellow)),
+            Rect::new(area.x, area.y, area.width, 1),
+        );
+        art::render_at(
+            art::embedded("wagon_0.px").expect("wagon art"),
+            frame.buffer_mut(),
+            area,
+            i32::from(area.x).saturating_sub(4),
+            i32::from(area.y + 3),
+            self.color_mode(),
+        );
+        frame.render_widget(
+            Paragraph::new("Pack steady.\nKeep room for food.")
+                .style(Style::default().fg(Color::White)),
+            Rect::new(area.x, area.y + 12, area.width, 2),
+        );
     }
     fn render_scene_vignette(&self, frame: &mut Frame, canvas: Rect, mode: crate::art::ColorMode) {
         use crate::art;
@@ -1318,11 +1421,14 @@ impl App {
                 ));
                 if let Some(job) = self.game.content.occupations.get(self.cursor) {
                     lines.push(Line::from(format!(
-                        "${:.0} · score ×{} · {}",
+                        "Starting funds ${:.0} · score ×{} · {}",
                         job.starting_cash_cents as f64 / 100.,
                         job.score_multiplier,
                         job.perk
                     )));
+                    lines.push(Line::from(
+                        "Starting funds affect your shopping choices, not the trail's rules.",
+                    ));
                 }
             }
             Screen::SetupParty => {
@@ -1332,11 +1438,49 @@ impl App {
                 }
                 lines.push(Line::from("► Done"));
             }
-            Screen::SetupDeparture => lines.push(Line::from(format!(
-                "Departure month: {}  [Left/Right]  Enter to outfit",
-                self.draft.month
-            ))),
+            Screen::SetupDeparture => {
+                lines.push(Line::from(format!(
+                    "Departure month: {}  [Left/Right]  Enter to outfit",
+                    self.draft.month
+                )));
+                lines.push(Line::from(match self.draft.month {
+                    3 => "March gives you time, but cold weather can slow the first weeks.",
+                    4 | 5 => "Spring balances fair weather with enough time before autumn.",
+                    6 => "June is late enough to make steady progress matter.",
+                    _ => "July is a late start. Carry a deep food reserve and keep moving.",
+                }));
+            }
             Screen::Store => {
+                let advice = OutfittingAdvice::for_game(&self.game);
+                if self.outfitting_advice_visible {
+                    lines.push(Line::from("OUTFITTING ADVICE  [?] return to the store"));
+                    lines.push(Line::from(format!(
+                        "{} travelers eat {} lb/day on {:?} rations.",
+                        self.game.party.iter().filter(|member| member.alive).count(),
+                        advice.food_per_day,
+                        self.game.rations
+                    )));
+                    lines.push(Line::from(format!(
+                        "Food on hand: {} lb — about {} days before spoilage.",
+                        self.game.inventory.get("food"),
+                        advice.food_days
+                    )));
+                    lines.push(Line::from(advice.target_line(&self.game)));
+                    lines.push(Line::from(format!(
+                        "Target food: {} lb ({} days). Buy missing goods for ${:.2}; ${:.2} remains.",
+                        advice.target_food_lbs,
+                        advice.target_food_days,
+                        advice.completion_cost_cents as f64 / 100.0,
+                        advice.cash_after_cents as f64 / 100.0,
+                    )));
+                    lines.push(Line::from(
+                        "Prioritize oxen, food, clothes, and one spare wheel. Extras are your call.",
+                    ));
+                    for warning in advice.warnings.iter().take(2) {
+                        lines.push(Line::from(format!("CAUTION: {warning}")));
+                    }
+                    return lines;
+                }
                 for (index, item) in self.game.content.items.iter().enumerate() {
                     lines.push(Line::from(format!(
                         "{} {}  ${:.2}  owned {}",
@@ -1358,9 +1502,20 @@ impl App {
                     self.game.cash_cents as f64 / 100.0,
                     self.game.weight()
                 )));
-                lines.push(Line::from(
-                    "Enter buys · S sells selected quantity at half the quoted price",
-                ));
+                lines.push(Line::from("Enter buys · S sells at half price · ? outfitting advice"));
+                if let Some(item) = self.game.content.items.get(self.cursor) {
+                    if let Some(detail) = advice.selected_item_line(&self.game, &item.id) {
+                        lines.push(Line::from(detail));
+                    }
+                }
+                if self.departure_warning_armed {
+                    if let Some(warning) = advice.warnings.first() {
+                        lines.push(Line::from(format!("CAUTION: {warning}")));
+                    }
+                    lines.push(Line::from(
+                        "Enter Depart again leaves as packed; select an item to change supplies.",
+                    ));
+                }
             }
             Screen::Journey => {
                 lines.push(Line::from(format!(
@@ -1370,6 +1525,7 @@ impl App {
                     self.game.inventory.get("food"),
                     self.game.cash_cents as f64 / 100.0
                 )));
+                lines.push(Line::from(self.trail_advice()));
                 lines.extend(menu(
                     &[
                         "Continue", "Supplies", "Map", "Pace", "Rations", "Rest", "Hunt", "Talk",
@@ -1382,6 +1538,7 @@ impl App {
                 ));
             }
             Screen::Supplies => {
+                lines.push(Line::from(crate::advice::supplies_advice(&self.game)));
                 for (id, quantity) in &self.game.inventory.quantities {
                     lines.push(Line::from(format!("{id}: {quantity}")));
                 }
@@ -1437,11 +1594,22 @@ impl App {
                     lines.push(Line::from("↑↓ scroll landmarks and graves"));
                 }
             }
-            Screen::Pace => lines.extend(menu(&["Steady", "Strenuous", "Grueling"], self.cursor)),
+            Screen::Pace => {
+                lines.push(Line::from(
+                    crate::advice::screen_advice(&self.game, Screen::Pace).unwrap(),
+                ));
+                lines.extend(menu(&["Steady", "Strenuous", "Grueling"], self.cursor));
+            }
             Screen::Rations => {
+                lines.push(Line::from(
+                    crate::advice::screen_advice(&self.game, Screen::Rations).unwrap(),
+                ));
                 lines.extend(menu(&["Filling", "Meager", "Bare Bones"], self.cursor))
             }
             Screen::Rest => {
+                lines.push(Line::from(
+                    crate::advice::screen_advice(&self.game, Screen::Rest).unwrap(),
+                ));
                 lines.extend(menu(&["Rest 1 day", "Rest 2 days", "Rest 3 days"], self.cursor))
             }
             Screen::Talk => {
@@ -1632,6 +1800,7 @@ impl App {
                     self.game.day,
                     self.game.miles
                 )));
+                lines.push(Line::from(self.trail_advice()));
                 for member in self.game.party.iter().take(5) {
                     lines.push(Line::from(format!(
                         "{}: {}",
@@ -1750,7 +1919,7 @@ pub fn run(mut app: App) -> anyhow::Result<()> {
         let now = std::time::Instant::now();
         let size = terminal.size()?;
         if app.auto_travel && now >= next_day && size.width >= 80 && size.height >= 24 {
-            app.apply(Command::Continue);
+            app.advance_auto_travel();
             next_day =
                 now + std::time::Duration::from_millis(app.settings.speed.milliseconds().max(30));
         }
@@ -1928,6 +2097,18 @@ mod tests {
         insta::assert_snapshot!("screens_120x40", all_screens(120, 40));
     }
     #[test]
+    fn journey_tip_keeps_status_and_latest_log_at_80x24() {
+        let view = render(Screen::Journey, 80, 24);
+        assert!(view.contains("Food 1500 lb · $1080.00 · Steady/Filling · 5 alive"));
+        assert!(view.contains("1500 lb covers about 100 day(s)"));
+        assert!(view.contains("The wagon is ready. Five travelers set out from Independence."));
+    }
+    #[test]
+    fn store_vignette_uses_only_wide_terminals() {
+        assert!(!render(Screen::Store, 80, 24).contains("MATT'S COUNTER"));
+        assert!(render(Screen::Store, 120, 40).contains("MATT'S COUNTER"));
+    }
+    #[test]
     fn outcome_vignettes_keep_the_summary_and_trail_log_visible() {
         let mut app = App::new(pioneer_data::load().unwrap(), 7, Settings::default());
         app.game.apply(Command::Configure {
@@ -2021,6 +2202,40 @@ mod tests {
         assert_eq!(app.screen, Screen::Store);
     }
     #[test]
+    fn outfitting_advice_is_explicit_and_departure_warning_allows_a_second_choice() {
+        let mut app = App::new(pioneer_data::load().unwrap(), 2, Settings::default());
+        app.apply(Command::Configure {
+            trail_id: "oregon".into(),
+            era_id: "1848".into(),
+            occupation_id: "carpenter".into(),
+            party: ["A", "B", "C", "D", "E"].map(str::to_owned).to_vec(),
+            departure_month: 4,
+        });
+        app.apply(Command::Buy { item_id: "oxen".into(), quantity: 1 });
+        app.screen = Screen::Store;
+        app.handle_key(KeyEvent::from(KeyCode::Char('?')));
+        assert!(app.outfitting_advice_visible);
+        let advice =
+            app.body().into_iter().map(|line| line.to_string()).collect::<Vec<_>>().join("\n");
+        assert!(advice.contains("15 lb/day"));
+        assert!(advice.contains("box of 20"), "starter target should use the actual ammo unit");
+        let before = serde_json::to_value(&app.game).unwrap();
+        app.handle_key(KeyEvent::from(KeyCode::Enter));
+        app.handle_key(KeyEvent::from(KeyCode::Char('s')));
+        app.handle_key(KeyEvent::from(KeyCode::Char('1')));
+        assert_eq!(serde_json::to_value(&app.game).unwrap(), before);
+        app.handle_key(KeyEvent::from(KeyCode::Esc));
+        assert!(!app.outfitting_advice_visible);
+        app.handle_key(KeyEvent::from(KeyCode::Char('?')));
+        app.handle_key(KeyEvent::from(KeyCode::Char('?')));
+        app.cursor = app.game.content.items.len();
+        app.select();
+        assert_eq!(app.screen, Screen::Store, "first warning does not depart");
+        assert!(app.departure_warning_armed);
+        app.select();
+        assert_eq!(app.screen, Screen::Journey, "a deliberate second departure remains allowed");
+    }
+    #[test]
     fn loaded_content_journey_keeps_mandatory_phases_after_resume() {
         let content = pioneer_data::load().unwrap();
         let mut app = App::new(content, 41, Settings::default());
@@ -2040,6 +2255,9 @@ mod tests {
         app.select();
         app.cursor = app.game.content.items.len();
         app.select();
+        if app.screen == Screen::Store {
+            app.select();
+        }
         let mut saw_event = false;
         for _ in 0..100 {
             match app.screen {
@@ -2093,6 +2311,50 @@ mod tests {
         }
         app.apply(Command::Depart);
         app
+    }
+    #[test]
+    fn auto_travel_stops_before_food_shortage_and_can_restart_after_resupply() {
+        let mut app = outfitted_app();
+        let three_days = app.game.daily_food_lbs() * 3;
+        app.game.inventory.quantities.insert("food".into(), three_days - 1);
+        app.auto_travel = true;
+        let day = app.game.day;
+
+        app.advance_auto_travel();
+        assert_eq!(app.game.day, day, "auto travel must not take a starvation day");
+        assert!(!app.auto_travel);
+        assert!(app.log.last().unwrap().contains("Food is short"));
+
+        app.auto_travel = true;
+        app.advance_auto_travel();
+        assert_eq!(app.game.day, day, "restarting without food must still be safe");
+        assert!(!app.auto_travel);
+
+        app.game.inventory.quantities.insert("food".into(), three_days);
+        app.auto_travel = true;
+        app.advance_auto_travel();
+        assert_eq!(app.game.day, day + 1, "three full days permits auto travel to resume");
+    }
+    #[test]
+    fn trail_advice_is_short_and_does_not_invent_a_cause_of_death() {
+        let mut app = outfitted_app();
+        app.game.inventory.quantities.insert("food".into(), 0);
+        app.game.status = pioneer_sim::RunStatus::Failed;
+        let advice = app.trail_advice();
+        assert!(advice.chars().count() <= 76);
+        assert!(advice.contains("No single cause recorded"));
+        assert!(advice.contains("Buy food before extra ammo"));
+    }
+    #[test]
+    fn low_food_advice_only_offers_actions_available_at_camp() {
+        let mut app = outfitted_app();
+        app.game.inventory.quantities.insert("food".into(), 0);
+        app.game.cash_cents = 0;
+        assert!(app.trail_advice().contains("Press G to fish"));
+
+        app.game.inventory.quantities.insert("ammunition".into(), 0);
+        app.game.loose_bullets = 0;
+        assert!(app.trail_advice().contains("Press G to fish"));
     }
     #[test]
     fn live_hunt_keys_consume_exact_shots_and_commit_once_on_escape() {
