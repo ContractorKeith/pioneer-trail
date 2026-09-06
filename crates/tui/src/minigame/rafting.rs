@@ -1,12 +1,19 @@
+use crate::art::{self, ColorMode, PxImage};
 use crossterm::event::KeyCode;
 use pioneer_sim::rng::SimRng;
 use rand::Rng;
-use ratatui::{buffer::Buffer, layout::Rect, style::Color};
+use ratatui::{
+    buffer::Buffer,
+    layout::Rect,
+    style::{Color, Style},
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct RaftingResult {
     pub cargo_lost_lbs: u16,
     pub casualties: u8,
+    pub completed: bool,
+    pub aborted: bool,
 }
 #[derive(Clone, Copy, Debug)]
 struct Rock {
@@ -23,6 +30,7 @@ pub struct RaftingGame {
     cargo: u16,
     casualties: u8,
     finished: bool,
+    aborted: bool,
 }
 impl RaftingGame {
     pub fn new(seed: u64) -> Self {
@@ -34,6 +42,7 @@ impl RaftingGame {
             cargo: 0,
             casualties: 0,
             finished: false,
+            aborted: false,
         };
         game.spawn();
         game
@@ -58,8 +67,10 @@ impl RaftingGame {
             }
             if !rock.charged && rock.y >= 20 && (rock.x - self.raft_x).abs() <= 3 {
                 rock.charged = true;
-                self.cargo = (self.cargo + 25).min(200);
-                self.casualties = (self.casualties + 1).min(4)
+                self.cargo = (self.cargo + 15).min(120);
+                if self.cargo.is_multiple_of(45) {
+                    self.casualties = (self.casualties + 1).min(4)
+                }
             }
         }
         if self.ticks >= 900 {
@@ -73,7 +84,10 @@ impl RaftingGame {
         match key {
             KeyCode::Left | KeyCode::Char('h') => self.raft_x = (self.raft_x - 2).max(3),
             KeyCode::Right | KeyCode::Char('l') => self.raft_x = (self.raft_x + 2).min(76),
-            KeyCode::Esc => self.finished = true,
+            KeyCode::Esc => {
+                self.finished = true;
+                self.aborted = true;
+            }
             _ => {}
         }
     }
@@ -81,37 +95,48 @@ impl RaftingGame {
         self.finished
     }
     pub fn result(&self) -> RaftingResult {
-        RaftingResult { cargo_lost_lbs: self.cargo, casualties: self.casualties }
+        RaftingResult {
+            cargo_lost_lbs: self.cargo,
+            casualties: self.casualties,
+            completed: self.finished && !self.aborted && self.ticks >= 900,
+            aborted: self.aborted,
+        }
     }
-    pub fn render(&self, b: &mut Buffer, area: Rect) {
+    pub fn render(&self, b: &mut Buffer, area: Rect, mode: ColorMode) {
         let a = area.intersection(b.area);
         for y in 0..a.height.min(24) {
             for x in 0..a.width.min(80) {
-                b.cell_mut((a.x + x, a.y + y)).unwrap().set_symbol(" ").set_bg(Color::Blue);
+                b.cell_mut((a.x + x, a.y + y)).unwrap().set_symbol(" ").set_bg(Color::Black);
             }
         }
         for rock in &self.rocks {
             if rock.y >= 0 && rock.y < a.height as i16 && rock.x < a.width as i16 {
-                b.cell_mut((a.x + rock.x as u16, a.y + rock.y as u16))
-                    .unwrap()
-                    .set_symbol("▲")
-                    .set_fg(Color::White);
+                render_asset(
+                    "rock_0.px",
+                    b,
+                    Rect::new(a.x + rock.x as u16, a.y + rock.y as u16, 6, 2),
+                    mode,
+                );
             }
         }
         if a.height > 21 && self.raft_x < a.width as i16 {
-            b.cell_mut((a.x + self.raft_x as u16, a.y + 21))
-                .unwrap()
-                .set_symbol("═")
-                .set_fg(Color::LightYellow);
+            render_asset("raft.px", b, Rect::new(a.x + self.raft_x as u16, a.y + 21, 12, 3), mode);
         }
         if a.height > 23 {
-            b.cell_mut((a.x, a.y + 23))
-                .unwrap()
-                .set_symbol(&format!(
-                    " RAFT  CARGO LOST {}  CASUALTIES {} ",
-                    self.cargo, self.casualties
-                ))
-                .set_fg(Color::White);
+            b.set_stringn(
+                a.x,
+                a.y + 23,
+                format!(" RAFT  CARGO LOST {}  CASUALTIES {} ", self.cargo, self.casualties),
+                a.width as usize,
+                Style::default().fg(Color::White),
+            );
+        }
+    }
+}
+fn render_asset(name: &str, b: &mut Buffer, a: Rect, mode: ColorMode) {
+    if let Some(file) = pioneer_data::ART.get_file(name) {
+        if let Ok(image) = PxImage::parse(file.contents_utf8().unwrap()) {
+            art::render(&image, b, a, mode)
         }
     }
 }

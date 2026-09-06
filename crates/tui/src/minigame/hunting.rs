@@ -1,7 +1,12 @@
+use crate::art::{self, ColorMode, PxImage};
 use crossterm::event::KeyCode;
 use pioneer_sim::rng::SimRng;
 use rand::Rng;
-use ratatui::{buffer::Buffer, layout::Rect, style::Color};
+use ratatui::{
+    buffer::Buffer,
+    layout::Rect,
+    style::{Color, Style},
+};
 
 pub const TICKS_PER_SECOND: u16 = 30;
 const WIDTH: i16 = 80;
@@ -38,17 +43,17 @@ impl Animal {
             Self::Squirrel => 3,
         }
     }
-    fn glyph(self) -> &'static str {
+    fn sprite(self) -> &'static str {
         match self {
-            Self::Buffalo => "B",
-            Self::Deer => "D",
-            Self::Bear => "A",
-            Self::Rabbit => "R",
-            Self::Squirrel => "S",
+            Self::Buffalo => "buffalo_0.px",
+            Self::Deer => "deer_0.px",
+            Self::Bear => "bear_0.px",
+            Self::Rabbit => "rabbit_0.px",
+            Self::Squirrel => "squirrel_0.px",
         }
     }
 }
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct Target {
     kind: Animal,
     x: i16,
@@ -71,7 +76,7 @@ pub struct HuntingGame {
     finished: bool,
 }
 impl HuntingGame {
-    pub fn new(seed: u64, biome: Biome, hunter: bool) -> Self {
+    pub fn new(seed: u64, biome: Biome, hunter: bool, ammo_available: u16) -> Self {
         let mut game = Self {
             rng: SimRng::new(seed),
             biome,
@@ -79,7 +84,7 @@ impl HuntingGame {
             crosshair: (40, 11),
             ticks: 0,
             shots: 0,
-            ammo: 20,
+            ammo: ammo_available.min(20),
             food: 0,
             capacity: if hunter { 200 } else { 150 },
             finished: false,
@@ -182,7 +187,7 @@ impl HuntingGame {
     pub fn result(&self) -> HuntingResult {
         HuntingResult { food_lbs: self.food, shots: self.shots }
     }
-    pub fn render(&self, buffer: &mut Buffer, area: Rect) {
+    pub fn render(&self, buffer: &mut Buffer, area: Rect, mode: ColorMode) {
         let area = area.intersection(buffer.area);
         for y in 0..area.height.min(23) {
             for x in 0..area.width.min(80) {
@@ -198,32 +203,48 @@ impl HuntingGame {
                 && target.x < area.width as i16
                 && target.y < area.height as i16
             {
-                buffer
-                    .cell_mut((area.x + target.x as u16, area.y + target.y as u16))
-                    .unwrap()
-                    .set_symbol(target.kind.glyph())
-                    .set_fg(Color::LightRed);
+                render_asset(
+                    target.kind.sprite(),
+                    buffer,
+                    Rect::new(area.x + target.x as u16, area.y + target.y as u16, 16, 5),
+                    mode,
+                );
             }
         }
         if self.crosshair.0 < area.width as i16 && self.crosshair.1 < area.height as i16 {
-            buffer
-                .cell_mut((area.x + self.crosshair.0 as u16, area.y + self.crosshair.1 as u16))
-                .unwrap()
-                .set_symbol("+")
-                .set_fg(Color::White);
+            render_asset(
+                "crosshair_0.px",
+                buffer,
+                Rect::new(
+                    area.x + self.crosshair.0 as u16,
+                    area.y + self.crosshair.1 as u16,
+                    13,
+                    6,
+                ),
+                mode,
+            );
         }
         if area.height > 23 {
-            buffer
-                .cell_mut((area.x, area.y + 23))
-                .unwrap()
-                .set_symbol(&format!(
+            buffer.set_stringn(
+                area.x,
+                area.y + 23,
+                format!(
                     " HUNT  {:02}s  FOOD {}/{}  AMMO {} ",
                     30 - self.ticks / TICKS_PER_SECOND,
                     self.food,
                     self.capacity,
                     self.ammo
-                ))
-                .set_fg(Color::White);
+                ),
+                area.width as usize,
+                Style::default().fg(Color::White),
+            );
+        }
+    }
+}
+fn render_asset(name: &str, buffer: &mut Buffer, area: Rect, mode: ColorMode) {
+    if let Some(file) = pioneer_data::ART.get_file(name) {
+        if let Ok(image) = PxImage::parse(file.contents_utf8().unwrap()) {
+            art::render(&image, buffer, area, mode);
         }
     }
 }
@@ -232,17 +253,22 @@ mod tests {
     use super::*;
     #[test]
     fn deterministic_world() {
-        let mut a = HuntingGame::new(7, Biome::Plains, false);
-        let mut b = HuntingGame::new(7, Biome::Plains, false);
+        let mut a = HuntingGame::new(7, Biome::Plains, false, 20);
+        let mut b = HuntingGame::new(7, Biome::Plains, false, 20);
         for _ in 0..100 {
             a.tick();
             b.tick()
         }
-        assert_eq!(a.result(), b.result())
+        assert_eq!(a.targets, b.targets);
+        let mut left = Buffer::empty(Rect::new(0, 0, 80, 24));
+        let mut right = Buffer::empty(Rect::new(0, 0, 80, 24));
+        a.render(&mut left, Rect::new(0, 0, 80, 24), ColorMode::Ansi16);
+        b.render(&mut right, Rect::new(0, 0, 80, 24), ColorMode::Ansi16);
+        assert_eq!(left, right);
     }
     #[test]
     fn timer_and_escape_keep_earned_result() {
-        let mut g = HuntingGame::new(1, Biome::Desert, false);
+        let mut g = HuntingGame::new(1, Biome::Desert, false, 20);
         for _ in 0..900 {
             g.tick()
         }
@@ -251,10 +277,18 @@ mod tests {
     }
     #[test]
     fn ammo_does_not_underflow() {
-        let mut g = HuntingGame::new(1, Biome::Desert, false);
+        let mut g = HuntingGame::new(1, Biome::Desert, false, 20);
         for _ in 0..1000 {
             g.handle_key(KeyCode::Char(' '))
         }
         assert_eq!(g.result().shots, 20)
+    }
+    #[test]
+    fn a_dead_target_cannot_be_credited_twice() {
+        let mut g = HuntingGame::new(1, Biome::Desert, false, 20);
+        g.targets = vec![Target { kind: Animal::Rabbit, x: 40, y: 11, dx: 1, alive: true }];
+        g.handle_key(KeyCode::Char(' '));
+        g.handle_key(KeyCode::Char(' '));
+        assert_eq!(g.result().food_lbs, 8);
     }
 }
