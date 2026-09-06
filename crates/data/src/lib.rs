@@ -57,6 +57,7 @@ pub fn validate(content: &GameContent) -> Result<(), ContentError> {
     let era_ids = content.eras.iter().map(|era| era.id.as_str()).collect::<HashSet<_>>();
     let occupation_ids =
         content.occupations.iter().map(|occupation| occupation.id.as_str()).collect::<HashSet<_>>();
+    let item_ids = content.items.iter().map(|item| item.id.as_str()).collect::<HashSet<_>>();
     let ailment_ids =
         content.ailments.iter().map(|ailment| ailment.id.as_str()).collect::<HashSet<_>>();
     let event_ids = content.events.iter().map(|event| event.id.as_str()).collect::<HashSet<_>>();
@@ -65,6 +66,28 @@ pub fn validate(content: &GameContent) -> Result<(), ContentError> {
         .iter()
         .flat_map(|trail| trail.nodes.iter())
         .map(|node| node.id.as_str())
+        .collect::<HashSet<_>>();
+    let produced_flags = content
+        .events
+        .iter()
+        .flat_map(|event| {
+            event.effects.iter().chain(event.choices.iter().flat_map(|choice| &choice.effects))
+        })
+        .filter_map(|effect| match effect {
+            Effect::SetFlag(flag) => Some(flag.as_str()),
+            _ => None,
+        })
+        .collect::<HashSet<_>>();
+    let scheduled_events = content
+        .events
+        .iter()
+        .flat_map(|event| {
+            event.effects.iter().chain(event.choices.iter().flat_map(|choice| &choice.effects))
+        })
+        .filter_map(|effect| match effect {
+            Effect::Schedule { event_id, .. } => Some(event_id.as_str()),
+            _ => None,
+        })
         .collect::<HashSet<_>>();
 
     for trail in &content.trails {
@@ -79,10 +102,7 @@ pub fn validate(content: &GameContent) -> Result<(), ContentError> {
             &format!("trail {} has unknown goal", trail.id),
         )?;
         for node in &trail.nodes {
-            expect(
-                node.name.len() <= 60 && !node.name.is_empty(),
-                &format!("landmark {} has invalid name", node.id),
-            )?;
+            expect(valid_text(&node.name, 60), &format!("landmark {} has invalid name", node.id))?;
             unique(node.routes.iter().map(|route| route.id.as_str()), "route")?;
             for route in &node.routes {
                 expect(route.distance_miles > 0, &format!("route {} has zero distance", route.id))?;
@@ -142,32 +162,53 @@ pub fn validate(content: &GameContent) -> Result<(), ContentError> {
     }
     for event in &content.events {
         expect(
-            event.text.len() <= 240 && !event.text.is_empty(),
-            &format!("event {} text is invalid", event.id),
+            event.weight != 0 || scheduled_events.contains(event.id.as_str()),
+            &format!("weight-zero event {} is not scheduled", event.id),
         )?;
+        expect(valid_text(&event.text, 240), &format!("event {} text is invalid", event.id))?;
         for condition in &event.conditions {
             validate_condition(
                 condition,
                 &trail_ids,
                 &era_ids,
                 &occupation_ids,
+                &item_ids,
                 &ailment_ids,
                 &landmark_ids,
+                &produced_flags,
             )?;
         }
-        validate_effects(&event.effects, &ailment_ids, &event_ids)?;
+        validate_event_landmarks(&event.conditions, &content.trails)?;
+        validate_effects(&event.effects, &item_ids, &ailment_ids, &event_ids)?;
         for choice in &event.choices {
             expect(
-                !choice.id.is_empty() && !choice.label.is_empty(),
+                valid_text(&choice.id, 80) && valid_text(&choice.label, 80),
                 &format!("event {} has an invalid choice", event.id),
             )?;
-            validate_effects(&choice.effects, &ailment_ids, &event_ids)?;
+            for condition in &choice.conditions {
+                validate_condition(
+                    condition,
+                    &trail_ids,
+                    &era_ids,
+                    &occupation_ids,
+                    &item_ids,
+                    &ailment_ids,
+                    &landmark_ids,
+                    &produced_flags,
+                )?;
+            }
+            validate_event_landmarks(&choice.conditions, &content.trails)?;
+            validate_effects(&choice.effects, &item_ids, &ailment_ids, &event_ids)?;
         }
         unique(event.choices.iter().map(|choice| choice.id.as_str()), "event choice")?;
+        expect(
+            event.choices.is_empty() || event.choices.iter().any(has_unconditional_fallback),
+            &format!("event {} has no unconditional fallback", event.id),
+        )?;
     }
     for quote in &content.quotes {
         expect(
-            quote.text.len() <= 240 && quote.text.contains(':'),
+            valid_text(&quote.text, 240) && quote.text.contains(':'),
             &format!("quote {} must be named and concise", quote.id),
         )?;
         expect(
@@ -180,6 +221,24 @@ pub fn validate(content: &GameContent) -> Result<(), ContentError> {
                 &format!("quote {} names unknown landmark {}", quote.id, id),
             )?;
         }
+        expect(
+            quote.state_tags.iter().all(|tag| {
+                matches!(
+                    tag.as_str(),
+                    "hungry"
+                        | "sick"
+                        | "wealthy"
+                        | "late"
+                        | "cold"
+                        | "weary"
+                        | "homesick"
+                        | "grieving"
+                        | "hopeful"
+                        | "thirsty"
+                )
+            }),
+            &format!("quote {} has an unsupported state tag", quote.id),
+        )?;
     }
     Ok(())
 }
@@ -189,18 +248,29 @@ fn validate_condition(
     trails: &HashSet<&str>,
     eras: &HashSet<&str>,
     occupations: &HashSet<&str>,
+    items: &HashSet<&str>,
     ailments: &HashSet<&str>,
     landmarks: &HashSet<&str>,
+    flags: &HashSet<&str>,
 ) -> Result<(), ContentError> {
     match condition {
-        Condition::All(items) | Condition::Any(items) => {
-            expect(!items.is_empty(), "compound condition is empty")?;
-            for item in items {
-                validate_condition(item, trails, eras, occupations, ailments, landmarks)?;
+        Condition::All(children) | Condition::Any(children) => {
+            expect(!children.is_empty(), "compound condition is empty")?;
+            for child in children {
+                validate_condition(
+                    child,
+                    trails,
+                    eras,
+                    occupations,
+                    items,
+                    ailments,
+                    landmarks,
+                    flags,
+                )?;
             }
         }
         Condition::Not(item) => {
-            validate_condition(item, trails, eras, occupations, ailments, landmarks)?
+            validate_condition(item, trails, eras, occupations, items, ailments, landmarks, flags)?
         }
         Condition::Trail(id) => {
             expect(trails.contains(id.as_str()), &format!("unknown trail condition {id}"))?
@@ -218,6 +288,18 @@ fn validate_condition(
         Condition::AtLandmark(id) => {
             expect(landmarks.contains(id.as_str()), &format!("unknown landmark condition {id}"))?
         }
+        Condition::InventoryAtLeast { item_id, quantity } => {
+            expect(items.contains(item_id.as_str()), &format!("unknown item condition {item_id}"))?;
+            expect(*quantity > 0, &format!("item condition {item_id} has zero quantity"))?
+        }
+        Condition::CashAtLeast(cash) => expect(*cash >= 0, "cash condition is negative")?,
+        Condition::MoraleBelow(morale) => {
+            expect((0..=100).contains(morale), "morale condition is out of range")?
+        }
+        Condition::Flag(flag) => expect(
+            flags.contains(flag.as_str()),
+            &format!("flag condition {flag} is never produced"),
+        )?,
         _ => {}
     }
     Ok(())
@@ -225,22 +307,125 @@ fn validate_condition(
 
 fn validate_effects(
     effects: &[Effect],
+    items: &HashSet<&str>,
     ailments: &HashSet<&str>,
     events: &HashSet<&str>,
 ) -> Result<(), ContentError> {
     for effect in effects {
         match effect {
+            Effect::Message(message) => {
+                expect(valid_text(message, 240), "message effect has invalid text")?
+            }
             Effect::InflictAilment(id) | Effect::HealAilment(id) => {
                 expect(ailments.contains(id.as_str()), &format!("unknown ailment effect {id}"))?
             }
-            Effect::Schedule { event_id, .. } => expect(
-                events.contains(event_id.as_str()),
-                &format!("scheduled event {event_id} does not exist"),
+            Effect::AdjustItem { item_id, quantity } => {
+                expect(
+                    items.contains(item_id.as_str()),
+                    &format!("unknown item effect {item_id}"),
+                )?;
+                expect(*quantity != 0, &format!("item effect {item_id} has zero quantity"))?
+            }
+            Effect::AdjustCash(cash) => expect(*cash != 0, "cash effect is zero")?,
+            Effect::AdjustMorale(morale) => expect(
+                *morale != 0 && (-100..=100).contains(morale),
+                "morale effect is out of range",
             )?,
+            Effect::Schedule { event_id, days } => {
+                expect(
+                    events.contains(event_id.as_str()),
+                    &format!("scheduled event {event_id} does not exist"),
+                )?;
+                expect(
+                    (1..=365).contains(days),
+                    &format!("scheduled event {event_id} has invalid days"),
+                )?
+            }
+            Effect::SetFlag(flag) | Effect::ClearFlag(flag) => {
+                expect(valid_text(flag, 80), "flag effect has an invalid id")?
+            }
             _ => {}
         }
     }
     Ok(())
+}
+
+fn validate_event_landmarks(
+    conditions: &[Condition],
+    trails: &[TrailDefinition],
+) -> Result<(), ContentError> {
+    let mut landmarks = Vec::new();
+    for condition in conditions {
+        collect_landmarks(condition, &mut landmarks);
+    }
+    for landmark in &landmarks {
+        expect(
+            trails.iter().any(|trail| {
+                trail.nodes.iter().any(|node| node.id == *landmark)
+                    && trail.goal_node_id != *landmark
+            }),
+            &format!("event landmark {landmark} is terminal-only"),
+        )?;
+    }
+
+    let mut required_trails = Vec::new();
+    let mut required_landmarks = Vec::new();
+    for condition in conditions {
+        collect_all_requirements(condition, &mut required_trails, &mut required_landmarks);
+    }
+    for trail_id in required_trails {
+        let trail = trails.iter().find(|trail| trail.id == trail_id).unwrap();
+        for landmark in &required_landmarks {
+            expect(
+                trail.nodes.iter().any(|node| node.id == *landmark),
+                &format!("trail condition {trail_id} cannot reach landmark {landmark}"),
+            )?;
+        }
+    }
+    Ok(())
+}
+
+fn collect_landmarks<'a>(condition: &'a Condition, landmarks: &mut Vec<&'a str>) {
+    match condition {
+        Condition::AtLandmark(id) => landmarks.push(id),
+        Condition::All(children) | Condition::Any(children) => {
+            for child in children {
+                collect_landmarks(child, landmarks);
+            }
+        }
+        Condition::Not(child) => collect_landmarks(child, landmarks),
+        _ => {}
+    }
+}
+
+fn collect_all_requirements<'a>(
+    condition: &'a Condition,
+    trails: &mut Vec<&'a str>,
+    landmarks: &mut Vec<&'a str>,
+) {
+    match condition {
+        Condition::Trail(id) => trails.push(id),
+        Condition::AtLandmark(id) => landmarks.push(id),
+        Condition::All(children) => {
+            for child in children {
+                collect_all_requirements(child, trails, landmarks);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn has_unconditional_fallback(choice: &pioneer_sim::EventChoice) -> bool {
+    choice.conditions.is_empty()
+        && choice.effects.iter().all(|effect| {
+            !matches!(effect, Effect::AdjustFood(amount) if *amount < 0)
+                && !matches!(effect, Effect::AdjustCash(amount) if *amount < 0)
+                && !matches!(effect, Effect::AdjustItem { quantity, .. } if *quantity < 0)
+        })
+}
+
+fn valid_text(text: &str, max_len: usize) -> bool {
+    !text.is_empty() && text.len() <= max_len && !text.chars().any(char::is_control)
 }
 
 fn validate_trail_graph(
@@ -291,6 +476,7 @@ fn validate_trail_graph(
 fn unique<'a>(ids: impl Iterator<Item = &'a str>, kind: &str) -> Result<(), ContentError> {
     let mut seen = HashSet::new();
     for id in ids {
+        expect(!id.is_empty() && !id.chars().any(char::is_control), &format!("invalid {kind} id"))?;
         expect(seen.insert(id), &format!("duplicate {kind} id {id}"))?;
     }
     Ok(())
@@ -340,5 +526,97 @@ mod tests {
         let mut content = load().unwrap();
         content.trails[0].nodes[0].routes[0].target_id = content.trails[0].goal_node_id.clone();
         assert!(validate(&content).unwrap_err().to_string().contains("unreachable"));
+    }
+
+    #[test]
+    fn choice_conditions_are_validated_recursively() {
+        let mut content = load().unwrap();
+        content.events[0].choices[1].conditions =
+            vec![Condition::All(vec![Condition::InventoryAtLeast {
+                item_id: "ghost".into(),
+                quantity: 1,
+            }])];
+        assert!(validate(&content).unwrap_err().to_string().contains("unknown item condition"));
+    }
+
+    #[test]
+    fn invalid_item_and_schedule_effects_are_rejected() {
+        let mut content = load().unwrap();
+        content.events[0].effects =
+            vec![Effect::AdjustItem { item_id: "ghost".into(), quantity: 1 }];
+        assert!(validate(&content).unwrap_err().to_string().contains("unknown item effect"));
+
+        let mut content = load().unwrap();
+        content.events[0].effects = vec![Effect::Schedule { event_id: "wheel".into(), days: 0 }];
+        assert!(validate(&content).unwrap_err().to_string().contains("invalid days"));
+    }
+
+    #[test]
+    fn invalid_numeric_conditions_and_effects_are_rejected() {
+        let mut content = load().unwrap();
+        content.events[0].conditions = vec![Condition::MoraleBelow(101)];
+        assert!(validate(&content).unwrap_err().to_string().contains("morale condition"));
+
+        let mut content = load().unwrap();
+        content.events[0].conditions =
+            vec![Condition::InventoryAtLeast { item_id: "food".into(), quantity: 0 }];
+        assert!(validate(&content).unwrap_err().to_string().contains("zero quantity"));
+
+        let mut content = load().unwrap();
+        content.events[0].conditions = vec![Condition::CashAtLeast(-1)];
+        assert!(validate(&content).unwrap_err().to_string().contains("cash condition"));
+
+        let mut content = load().unwrap();
+        content.events[0].effects = vec![Effect::AdjustCash(0)];
+        assert!(validate(&content).unwrap_err().to_string().contains("cash effect"));
+
+        let mut content = load().unwrap();
+        content.events[0].effects =
+            vec![Effect::AdjustItem { item_id: "food".into(), quantity: 0 }];
+        assert!(validate(&content).unwrap_err().to_string().contains("zero quantity"));
+    }
+
+    #[test]
+    fn unproduced_flags_and_terminal_events_are_rejected() {
+        let mut content = load().unwrap();
+        content.events[0].conditions = vec![Condition::Flag("ghost_flag".into())];
+        assert!(validate(&content).unwrap_err().to_string().contains("never produced"));
+
+        let mut content = load().unwrap();
+        content.events[0].conditions = vec![Condition::AtLandmark("willamette".into())];
+        assert!(validate(&content).unwrap_err().to_string().contains("terminal-only"));
+
+        let mut content = load().unwrap();
+        content.events[0].conditions = vec![
+            Condition::Trail("california".into()),
+            Condition::AtLandmark("fort_laramie".into()),
+        ];
+        assert!(validate(&content).unwrap_err().to_string().contains("cannot reach landmark"));
+    }
+
+    #[test]
+    fn fallbacks_weight_zero_events_and_quote_tags_are_checked() {
+        let mut content = load().unwrap();
+        content.events[0].choices[1].conditions = vec![Condition::CashAtLeast(1)];
+        assert!(validate(&content).unwrap_err().to_string().contains("no unconditional fallback"));
+
+        let mut content = load().unwrap();
+        content.events[0].weight = 0;
+        assert!(validate(&content).unwrap_err().to_string().contains("not scheduled"));
+
+        let mut content = load().unwrap();
+        content.quotes[0].state_tags = vec!["starving".into()];
+        assert!(validate(&content).unwrap_err().to_string().contains("unsupported state tag"));
+    }
+
+    #[test]
+    fn control_text_is_rejected() {
+        let mut content = load().unwrap();
+        content.events[0].text = "bad\ntext".into();
+        assert!(validate(&content).unwrap_err().to_string().contains("invalid event text"));
+
+        let mut content = load().unwrap();
+        content.events[0].id.clear();
+        assert!(validate(&content).unwrap_err().to_string().contains("invalid event id"));
     }
 }
