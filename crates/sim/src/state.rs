@@ -126,6 +126,8 @@ pub struct GameState {
     pub active_minigame: Option<MinigameSession>,
     #[serde(default)]
     pub loose_bullets: u8,
+    #[serde(default)]
+    pub last_fresh_food_day: Option<u32>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum Command {
@@ -279,10 +281,24 @@ impl GameState {
             pending_counteroffer: None,
             active_minigame: None,
             loose_bullets: 0,
+            last_fresh_food_day: None,
         }
     }
     pub fn apply(&mut self, c: Command) -> Vec<Outcome> {
-        self.try_apply(c).unwrap_or_else(|e| vec![Outcome::Rejected(e)])
+        let mut outcomes = self.try_apply(c).unwrap_or_else(|e| vec![Outcome::Rejected(e)]);
+        let deaths = outcomes
+            .iter()
+            .filter_map(|outcome| match outcome {
+                Outcome::MemberDied { name } => Some(name.clone()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        if !deaths.is_empty() {
+            outcomes.extend(
+                crate::party::mourn(&mut self.party, &deaths).into_iter().map(Outcome::Message),
+            );
+        }
+        outcomes
     }
     pub fn try_apply(&mut self, c: Command) -> Result<Vec<Outcome>, CommandError> {
         if matches!(self.status, RunStatus::Arrived | RunStatus::Failed) {
@@ -407,6 +423,9 @@ impl GameState {
         if !self.content.eras.iter().any(|x| x.id == e) {
             return Err(CommandError::UnknownId(e));
         }
+        if (o == "soldier" && e != "1866") || (t == "mormon" && e == "1843") {
+            return Err(CommandError::InvalidSetup);
+        }
         let job = self
             .content
             .occupations
@@ -414,27 +433,19 @@ impl GameState {
             .find(|x| x.id == o)
             .ok_or_else(|| CommandError::UnknownId(o.clone()))?;
         self.cash_cents = job.starting_cash_cents;
-        self.party = names
-            .into_iter()
-            .enumerate()
-            .map(|(index, name)| {
-                let mut member = PartyMember::new(name);
-                member.age =
-                    18 + ((self.rng.stream("party").gen_range(0..40) + index as u32) % 55) as u8;
-                member.traits = match o.as_str() {
-                    "doctor" => vec![crate::party::Trait::Herbalist, crate::party::Trait::Hardy],
-                    "hunter" => vec![crate::party::Trait::Sharpshooter, crate::party::Trait::Hardy],
-                    "preacher" => vec![crate::party::Trait::Devout, crate::party::Trait::Cheerful],
-                    _ => vec![crate::party::Trait::Cheerful, crate::party::Trait::Hardy],
-                };
-                member
-            })
-            .collect();
+        self.party = names.into_iter().map(PartyMember::new).collect();
+        crate::party::initialize(&mut self.party, &o, &mut self.rng);
         self.departure_month = month;
         self.current_node_id = Some(trail.start_node_id.clone());
         self.trail_id = Some(t);
         self.era_id = Some(e);
         self.occupation_id = Some(o);
+        if self.occupation_id.as_deref() == Some("merchant") {
+            self.inventory.add("trade_goods", 2);
+        }
+        if self.occupation_id.as_deref() == Some("preacher") {
+            self.reputation = self.reputation.saturating_add(10);
+        }
         self.status = RunStatus::Outfitting;
         Ok(vec![Outcome::Configured])
     }
@@ -449,11 +460,6 @@ impl GameState {
             .find(|x| x.id == id)
             .ok_or_else(|| CommandError::UnknownId(id.into()))?
             .clone();
-        let season_markup = match self.season() {
-            Season::Winter => 25,
-            Season::Summer => 10,
-            _ => 0,
-        };
         let current_weight = self.weight();
         let market_id = self.current_node_id.clone().unwrap_or_default();
         let mut market = self.market_at(&market_id);
@@ -461,8 +467,8 @@ impl GameState {
         if market.stock.get(id).copied().unwrap_or_default() < n {
             return Err(CommandError::InvalidChoice);
         }
-        let cost = market
-            .price_for(id, item.price_cents, season_markup)
+        let cost = self
+            .shop_unit_price(&market, &item)
             .checked_mul(i64::from(n))
             .ok_or(CommandError::InsufficientCash)?;
         if self.inventory.get(id).checked_add(n).ok_or(CommandError::CapacityExceeded)? > item.limit
@@ -493,6 +499,7 @@ impl GameState {
         let season = self.season();
         self.weather_state.advance(&mut self.rng, season);
         self.weather = self.weather_state.kind;
+        self.spoil_food();
         let eat = match self.rations {
             RationLevel::Filling => 3,
             RationLevel::Meager => 2,
@@ -501,18 +508,8 @@ impl GameState {
         let required_food = eat * self.party.iter().filter(|p| p.alive).count() as u32;
         let eaten_food = self.inventory.take("food", required_food);
         let mut out = vec![];
-        let damages: Vec<u8> = self
-            .party
-            .iter()
-            .map(|p| {
-                p.ailments
-                    .iter()
-                    .filter_map(|id| {
-                        self.content.ailments.iter().find(|a| &a.id == id).map(|a| a.daily_damage)
-                    })
-                    .fold(0u8, u8::saturating_add)
-            })
-            .collect();
+        let damages: Vec<u8> =
+            self.party.iter().map(|member| self.ailment_damage(member)).collect();
         for (p, damage) in self.party.iter_mut().zip(damages) {
             if advance(p, damage) {
                 out.push(Outcome::MemberDied { name: p.name.clone() })
@@ -526,12 +523,18 @@ impl GameState {
                 }
             }
         }
+        if eaten_food == required_food && self.pace == Pace::Steady {
+            for member in self.party.iter_mut().filter(|member| member.alive) {
+                member.health = member.health.saturating_add(1).min(100);
+            }
+        }
         for member in &mut self.party {
             if member.alive && member.health == 0 {
                 member.alive = false;
                 out.push(Outcome::MemberDied { name: member.name.clone() });
             }
         }
+        self.party_daily(&mut out, false, eaten_food == required_food);
         if !self.party.iter().any(|member| member.alive) {
             self.status = RunStatus::Failed;
             return Ok(out);
@@ -565,14 +568,36 @@ impl GameState {
                     + fatigue_penalty,
             )
             .min(self.route_miles_remaining);
+        let fatigue_gain = match self.pace {
+            Pace::Steady => 2,
+            Pace::Strenuous => 5,
+            Pace::Grueling => 9,
+        };
         self.ox_fatigue = self
             .ox_fatigue
-            .saturating_add(match self.pace {
-                Pace::Steady => 2,
-                Pace::Strenuous => 5,
-                Pace::Grueling => 9,
+            .saturating_add(if self.occupation_id.as_deref() == Some("farmer") {
+                fatigue_gain / 2
+            } else {
+                fatigue_gain
             })
             .min(100);
+        if self.ox_fatigue >= 50 && self.pace != Pace::Steady {
+            let fatigue_damage = if self.pace == Pace::Grueling { 2 } else { 1 };
+            for member in self.party.iter_mut().filter(|member| member.alive) {
+                member.health = member.health.saturating_sub(fatigue_damage);
+            }
+        }
+        for member in &mut self.party {
+            if member.alive && member.health == 0 {
+                member.alive = false;
+                out.push(Outcome::MemberDied { name: member.name.clone() });
+            }
+        }
+        if !self.party.iter().any(|member| member.alive) {
+            self.status = RunStatus::Failed;
+            return Ok(out);
+        }
+        self.weather_illness();
         self.miles += moved;
         self.route_miles_remaining -= moved;
         out.push(Outcome::DayAdvanced { day: self.day, miles: self.miles, weather: self.weather });
@@ -661,6 +686,7 @@ impl GameState {
             out.push(Outcome::Message("You wait one day for lower water.".into()));
             return Ok(out);
         }
+        let risk = self.crossing_risk(m).ok_or(CommandError::InvalidPhase)?;
         if m == CrossMethod::Guide {
             if self.current_node_id.as_deref() != Some("snake_river")
                 || self.inventory.get("clothing") < 3
@@ -674,20 +700,61 @@ impl GameState {
             if self.cash_cents < cost {
                 return Err(CommandError::InsufficientCash);
             }
-            self.cash_cents -= cost
+            self.cash_cents -= cost;
+            self.flags.insert("ferry_used".into());
         }
-        let risk = match m {
-            CrossMethod::Ferry => 0,
-            CrossMethod::Wait => 0,
-            CrossMethod::Guide => 10,
-            CrossMethod::Ford => river.depth_feet * 20,
-            CrossMethod::Caulk => river.width_feet / 20,
+        let mut out = Vec::new();
+        if self.rng.stream("rivers").gen_range(0..100) < risk {
+            let lost = self.inventory.take("food", 50);
+            out.push(Outcome::Message(format!("The river carries away {lost} lbs of food.")));
+            if m == CrossMethod::Ford
+                && risk <= 5
+                && self.rng.stream("rivers").gen_range(0..100) < 5
+            {
+                if let Some(member) = self.party.iter_mut().find(|member| member.alive) {
+                    member.health = 0;
+                    member.alive = false;
+                    out.push(Outcome::MemberDied { name: member.name.clone() });
+                }
+            }
+        }
+        self.pass_camp_day(&mut out, false);
+        if self.status != RunStatus::Failed {
+            self.begin_only_route()?;
+        }
+        out.push(Outcome::Message("The crossing is behind you.".into()));
+        Ok(out)
+    }
+    pub fn effective_depth(&self) -> Option<u32> {
+        let river = self.node().ok()?.river.as_ref()?;
+        let spring_runoff = u32::from(self.season() == Season::Spring);
+        Some(
+            river
+                .depth_feet
+                .saturating_add_signed(i32::from(self.weather_state.river_depth_bonus))
+                .saturating_add(spring_runoff),
+        )
+    }
+    pub fn crossing_risk(&self, method: CrossMethod) -> Option<u32> {
+        let river = self.node().ok()?.river.as_ref()?;
+        let depth = self.effective_depth()?;
+        let weight_penalty = self.weight().saturating_sub(1_200) / 120;
+        let ox_penalty = match self.inventory.get("oxen") {
+            0..=1 => 20,
+            2 => 10,
+            _ => 0,
         };
-        if self.rng.stream("rivers").gen_range(0..100) < risk.min(90) {
-            self.inventory.take("food", 50);
-        }
-        self.begin_only_route()?;
-        Ok(vec![Outcome::Message("The crossing is behind you.".into())])
+        let risk = match method {
+            CrossMethod::Ferry | CrossMethod::Wait => 0,
+            CrossMethod::Guide => 10,
+            CrossMethod::Ford => {
+                depth.saturating_mul(12).saturating_add(weight_penalty).saturating_add(ox_penalty)
+            }
+            CrossMethod::Caulk => {
+                river.width_feet / 25 + weight_penalty.saturating_mul(2) + ox_penalty
+            }
+        };
+        Some(risk.min(90))
     }
     fn respond(&mut self, event: &str, choice: &str) -> Result<Vec<Outcome>, CommandError> {
         if self.pending_event.as_deref() != Some(event) {
@@ -728,10 +795,7 @@ impl GameState {
     }
     fn treat(&mut self, i: usize, a: &str) -> Result<Vec<Outcome>, CommandError> {
         self.at_camp()?;
-        let doctor_present = self
-            .party
-            .iter()
-            .any(|member| member.alive && member.traits.contains(&crate::party::Trait::Herbalist));
+        let doctor_present = self.occupation_id.as_deref() == Some("doctor");
         let p = self.party.get_mut(i).ok_or(CommandError::InvalidChoice)?;
         if !p.alive
             || !p.ailments.iter().any(|x| x == a)
@@ -740,6 +804,8 @@ impl GameState {
             return Err(CommandError::InvalidChoice);
         }
         p.ailments.retain(|x| x != a);
+        p.ailment_days.remove(a);
+        p.skills.medicine = p.skills.medicine.saturating_add(1);
         p.health = p.health.saturating_add(15).min(100);
         Ok(vec![Outcome::Treated { member_index: i, ailment_id: a.into() }])
     }
@@ -796,6 +862,7 @@ impl GameState {
         self.active_minigame = None;
         let mut outcomes = Vec::new();
         self.pass_camp_day(&mut outcomes, false);
+        self.last_fresh_food_day = Some(self.day);
         outcomes.push(Outcome::Message(format!("Brought back {added_food} lbs of food")));
         Ok(outcomes)
     }
@@ -854,16 +921,19 @@ impl GameState {
             .party
             .iter()
             .filter(|member| {
-                member.traits.contains(&crate::party::Trait::Herbalist)
-                    || member.traits.contains(&crate::party::Trait::Sharpshooter)
+                member.alive
+                    && (member.traits.contains(&crate::party::Trait::Herbalist)
+                        || member.traits.contains(&crate::party::Trait::Sharpshooter))
             })
             .count() as u32
             * 10;
-        let food = (self.rng.stream("forage").gen_range(5..=25) + bonus)
+        let occupation_bonus = u32::from(self.occupation_id.as_deref() == Some("farmer")) * 10;
+        let food = (self.rng.stream("forage").gen_range(5..=25) + bonus + occupation_bonus)
             .min(self.max_addable("food").unwrap_or(0));
         self.inventory.add("food", food);
         let mut outcomes = Vec::new();
         self.pass_camp_day(&mut outcomes, false);
+        self.last_fresh_food_day = Some(self.day);
         outcomes.push(Outcome::Message(format!("Foraged {food} lbs of food.")));
         Ok(outcomes)
     }
@@ -880,6 +950,7 @@ impl GameState {
         self.inventory.add("food", food);
         let mut outcomes = Vec::new();
         self.pass_camp_day(&mut outcomes, false);
+        self.last_fresh_food_day = Some(self.day);
         outcomes.push(Outcome::Message(format!("Caught {food} lbs of fish.")));
         Ok(outcomes)
     }
@@ -905,7 +976,7 @@ impl GameState {
         if new_stock > max_stock {
             return Err(CommandError::CapacityExceeded);
         }
-        let price = market.price_for(item_id, item.price_cents, self.season_markup()) / 2;
+        let price = self.shop_unit_price(&market, item) / 2;
         let credit =
             price.checked_mul(i64::from(quantity)).ok_or(CommandError::CapacityExceeded)?;
         let cash = self.cash_cents.checked_add(credit).ok_or(CommandError::CapacityExceeded)?;
@@ -1054,9 +1125,12 @@ impl GameState {
                 .filter(|price| *price > 0)
                 .ok_or(CommandError::InvalidChoice)
         };
-        let offered = price(offered_item)?
+        let mut offered = price(offered_item)?
             .checked_mul(u64::from(offered_quantity))
             .ok_or(CommandError::CapacityExceeded)?;
+        if self.occupation_id.as_deref() == Some("merchant") {
+            offered = offered.checked_mul(6).ok_or(CommandError::CapacityExceeded)? / 5;
+        }
         let wanted = price(wanted_item)?
             .checked_mul(u64::from(wanted_quantity))
             .ok_or(CommandError::CapacityExceeded)?;
@@ -1254,8 +1328,32 @@ impl GameState {
         self.content.items.iter().find(|item| item.id == item_id).map(|item| {
             let mut market = self.market_at(self.current_node_id.as_deref().unwrap_or_default());
             market.replenish(self.day);
-            market.price_for(item_id, item.price_cents, self.season_markup())
+            self.shop_unit_price(&market, item)
         })
+    }
+    pub fn sell_price_cents(&self, item_id: &str) -> Option<i64> {
+        self.price_cents(item_id).map(|price| price / 2)
+    }
+    fn shop_unit_price(&self, market: &Market, item: &ItemDefinition) -> i64 {
+        let mut price = market.price_for(&item.id, item.price_cents, self.season_markup());
+        let discount = match self.occupation_id.as_deref() {
+            Some("banker")
+                if matches!(
+                    self.current_landmark().map(|node| node.kind),
+                    Some(LandmarkKind::Fort)
+                ) =>
+            {
+                10
+            }
+            Some("carpenter") if matches!(item.id.as_str(), "wheel" | "axle" | "tongue") => 20,
+            Some("soldier") if item.id == "ammunition" => 20,
+            _ => 0,
+        };
+        if discount > 0 {
+            price = (i128::from(price) * i128::from(100 - discount) / 100)
+                .clamp(1, i128::from(i64::MAX)) as i64;
+        }
+        price
     }
     fn season_markup(&self) -> i64 {
         match self.season() {
@@ -1289,6 +1387,9 @@ impl GameState {
             2400u32.saturating_sub(self.weight()).checked_div(item.weight_lbs).unwrap_or(u32::MAX);
         Some(item_limit.min(weight_limit))
     }
+    pub fn has_fresh_food(&self) -> bool {
+        self.last_fresh_food_day.is_some_and(|day| self.day.saturating_sub(day) <= 3)
+    }
     /// Reject corrupted saves before a UI attempts to navigate their content IDs.
     pub fn validate(&self) -> Result<(), CommandError> {
         if self.party.len() > 12
@@ -1296,6 +1397,7 @@ impl GameState {
             || self.day > 3660
             || self.cash_cents < 0
             || self.loose_bullets >= 20
+            || self.last_fresh_food_day.is_some_and(|day| day > self.day)
             || self.party.iter().any(|member| {
                 member.health > 100
                     || !(0..=100).contains(&member.morale)
@@ -1494,16 +1596,6 @@ impl GameState {
             .and_then(|t| t.nodes.iter().find(|n| Some(&n.id) == self.current_node_id.as_ref()))
             .ok_or(CommandError::InvalidPhase)
     }
-    fn weather_roll(&mut self) -> WeatherKind {
-        match self.rng.stream("weather").gen_range(0..8) {
-            0 => WeatherKind::Rain,
-            1 => WeatherKind::Storm,
-            2 => WeatherKind::Cold,
-            3 => WeatherKind::Warm,
-            4 => WeatherKind::Hot,
-            _ => WeatherKind::Clear,
-        }
-    }
     fn due(&mut self, out: &mut Vec<Outcome>) {
         if let Some(i) = self.scheduled_events.iter().position(|x| x.due_day <= self.day) {
             let e = self.scheduled_events.remove(i);
@@ -1518,7 +1610,12 @@ impl GameState {
             .filter(|e| e.weight > 0 && e.conditions.iter().all(|c| self.matches(c)))
             .map(|e| (e.id.clone(), e.weight))
             .collect();
-        if !ids.is_empty() && self.rng.stream("events").gen_range(0..100) < 15 {
+        let event_odds = match self.difficulty {
+            Difficulty::Easy => 10,
+            Difficulty::Normal => 15,
+            Difficulty::Hard => 22,
+        };
+        if !ids.is_empty() && self.rng.stream("events").gen_range(0..100) < event_odds {
             let total: u64 = ids.iter().map(|(_, weight)| u64::from(*weight)).sum();
             let mut roll = self.rng.stream("events").gen_range(0..total);
             let id = ids
@@ -1576,14 +1673,18 @@ impl GameState {
                 Effect::Message(x) => out.push(Outcome::Message(x.clone())),
                 Effect::AdjustFood(x) => {
                     if *x >= 0 {
-                        self.inventory.add("food", *x as u32)
+                        self.inventory
+                            .add("food", (*x as u32).min(self.max_addable("food").unwrap_or(0)))
                     } else {
                         self.inventory.take("food", x.unsigned_abs());
                     }
                 }
                 Effect::AdjustItem { item_id, quantity } => {
                     if *quantity >= 0 {
-                        self.inventory.add(item_id, *quantity as u32);
+                        self.inventory.add(
+                            item_id,
+                            (*quantity as u32).min(self.max_addable(item_id).unwrap_or(0)),
+                        );
                     } else {
                         self.inventory.take(item_id, quantity.unsigned_abs());
                     }
@@ -1649,6 +1750,13 @@ impl GameState {
             return;
         }
         self.current_node_id = Some(n.id.clone());
+        let (_, month, day) = self.date();
+        if n.id == "independence_rock" && (month < 7 || (month == 7 && day <= 4)) {
+            self.flags.insert("independence_rock_early".into());
+            for member in self.party.iter_mut().filter(|member| member.alive) {
+                member.morale = member.morale.saturating_add(10).min(100);
+            }
+        }
         match n.kind {
             LandmarkKind::Fork | LandmarkKind::Finale if n.routes.len() > 1 => {
                 self.status = RunStatus::AwaitingFork(n.id.clone());
@@ -1702,14 +1810,23 @@ impl GameState {
                     } else {
                         0
                     };
+                let difficulty_multiplier = match self.difficulty {
+                    Difficulty::Easy => 75,
+                    Difficulty::Normal => 100,
+                    Difficulty::Hard => 125,
+                };
+                let mut mortality =
+                    definition.mortality_per_mille.saturating_mul(difficulty_multiplier) / 100;
+                if self.occupation_id.as_deref() == Some("doctor") {
+                    mortality /= 2;
+                }
+                mortality = mortality
+                    .saturating_sub(trait_modifier.max(0) as u16)
+                    .saturating_add((-trait_modifier.min(0)) as u16);
                 if matches!(
                     crate::health::stage(days, definition.severity),
                     crate::health::AilmentStage::Acute
-                ) && self.rng.stream("health").gen_range(0..1000)
-                    < definition
-                        .mortality_per_mille
-                        .saturating_sub(trait_modifier.max(0) as u16)
-                        .saturating_add((-trait_modifier.min(0)) as u16)
+                ) && self.rng.stream("health").gen_range(0..1000) < mortality
                 {
                     self.party[index].health = 0;
                     self.party[index].alive = false;
@@ -1745,7 +1862,13 @@ impl GameState {
             return;
         }
         self.day = self.day.saturating_add(1);
-        self.weather = self.weather_roll();
+        let season = self.season();
+        self.weather_state.advance(&mut self.rng, season);
+        self.weather = self.weather_state.kind;
+        self.spoil_food();
+        if resting {
+            self.ox_fatigue = self.ox_fatigue.saturating_sub(25);
+        }
         let ration = match self.rations {
             RationLevel::Filling => 3,
             RationLevel::Meager => 2,
@@ -1753,23 +1876,8 @@ impl GameState {
         };
         let required = self.party.iter().filter(|member| member.alive).count() as u32 * ration;
         let eaten = self.inventory.take("food", required);
-        let damages: Vec<u8> = self
-            .party
-            .iter()
-            .map(|member| {
-                member
-                    .ailments
-                    .iter()
-                    .filter_map(|id| {
-                        self.content
-                            .ailments
-                            .iter()
-                            .find(|ailment| &ailment.id == id)
-                            .map(|ailment| ailment.daily_damage)
-                    })
-                    .fold(0u8, u8::saturating_add)
-            })
-            .collect();
+        let damages: Vec<u8> =
+            self.party.iter().map(|member| self.ailment_damage(member)).collect();
         for (member, damage) in self.party.iter_mut().zip(damages) {
             if !member.alive {
                 continue;
@@ -1790,8 +1898,76 @@ impl GameState {
             }
         }
         self.progress_ailments(out);
+        self.weather_illness();
+        self.party_daily(out, resting, eaten == required);
         if !self.party.iter().any(|member| member.alive) {
             self.status = RunStatus::Failed;
+        }
+    }
+    fn spoil_food(&mut self) {
+        let rate_per_mille = match self.weather {
+            WeatherKind::Hot => 3,
+            WeatherKind::Rain => 1,
+            _ => 0,
+        };
+        if rate_per_mille > 0 {
+            let food = self.inventory.get("food");
+            self.inventory.take("food", food.saturating_mul(rate_per_mille) / 1_000);
+        }
+    }
+    fn party_daily(&mut self, out: &mut Vec<Outcome>, resting: bool, filling: bool) {
+        let varied_food =
+            self.last_fresh_food_day.is_some_and(|day| self.day.saturating_sub(day) <= 3);
+        out.extend(
+            crate::party::daily(&mut self.party, resting, filling, varied_food, &mut self.rng)
+                .into_iter()
+                .map(Outcome::Message),
+        );
+    }
+    fn ailment_damage(&self, member: &PartyMember) -> u8 {
+        let damage = member
+            .ailments
+            .iter()
+            .filter_map(|id| {
+                self.content.ailments.iter().find(|ailment| &ailment.id == id).map(|ailment| {
+                    let days = member.ailment_days.get(id).copied().unwrap_or(0).saturating_add(1);
+                    match crate::health::stage(days, ailment.severity) {
+                        crate::health::AilmentStage::Acute => ailment.daily_damage,
+                        crate::health::AilmentStage::Symptoms
+                        | crate::health::AilmentStage::Recovering => {
+                            (ailment.daily_damage.saturating_add(1)) / 2
+                        }
+                    }
+                })
+            })
+            .fold(0u8, u8::saturating_add);
+        match self.difficulty {
+            Difficulty::Easy => damage.saturating_sub(1),
+            Difficulty::Normal => damage,
+            Difficulty::Hard => damage.saturating_add(1),
+        }
+    }
+    fn weather_illness(&mut self) {
+        let ailment = match self.weather {
+            WeatherKind::Cold | WeatherKind::Snow => Some("pneumonia"),
+            WeatherKind::Hot => Some("heat_stroke"),
+            _ => None,
+        };
+        let Some(ailment) = ailment else { return };
+        let protected = self.inventory.get("clothing")
+            >= self.party.iter().filter(|member| member.alive).count() as u32;
+        let chance = if protected { 1 } else { 5 };
+        if self.rng.stream("health").gen_range(0..100) < chance {
+            if let Some(member) = self
+                .party
+                .iter_mut()
+                .find(|member| member.alive && !member.ailments.iter().any(|id| id == ailment))
+            {
+                if self.content.ailments.iter().any(|definition| definition.id == ailment) {
+                    member.ailments.push(ailment.into());
+                    member.ailment_days.insert(ailment.into(), 0);
+                }
+            }
         }
     }
     fn season(&self) -> Season {
@@ -2001,6 +2177,71 @@ mod tests {
         game.apply(Command::Buy { item_id: "food".into(), quantity: 100 });
         game.apply(Command::Buy { item_id: "ammunition".into(), quantity: 2 });
         game.apply(Command::Depart);
+        game
+    }
+    fn modifier_game(seed: u64, occupation: &str, era: &str) -> GameState {
+        let mut content = GameContent::starter();
+        content.trails[0].nodes[0].kind = LandmarkKind::Fort;
+        content.eras.push(EraDefinition { id: "1843".into(), name: "1843".into(), year: 1843 });
+        content.eras.push(EraDefinition { id: "1866".into(), name: "1866".into(), year: 1866 });
+        for id in ["banker", "merchant", "doctor", "carpenter", "preacher", "soldier"] {
+            content.occupations.push(OccupationDefinition {
+                id: id.into(),
+                name: id.into(),
+                starting_cash_cents: 100_000,
+                score_multiplier: 1.0,
+                perk: String::new(),
+            });
+        }
+        content.items.extend([
+            ItemDefinition {
+                id: "ammunition".into(),
+                name: "Ammo".into(),
+                unit: "box".into(),
+                price_cents: 200,
+                weight_lbs: 1,
+                limit: 99,
+            },
+            ItemDefinition {
+                id: "wheel".into(),
+                name: "Wheel".into(),
+                unit: "each".into(),
+                price_cents: 1_000,
+                weight_lbs: 30,
+                limit: 3,
+            },
+            ItemDefinition {
+                id: "trade_goods".into(),
+                name: "Goods".into(),
+                unit: "lot".into(),
+                price_cents: 2_000,
+                weight_lbs: 10,
+                limit: 10,
+            },
+            ItemDefinition {
+                id: "medicine".into(),
+                name: "Medicine".into(),
+                unit: "kit".into(),
+                price_cents: 1_500,
+                weight_lbs: 2,
+                limit: 5,
+            },
+        ]);
+        content.ailments.push(AilmentDefinition {
+            id: "fever".into(),
+            name: "Fever".into(),
+            severity: 3,
+            daily_damage: 4,
+            mortality_per_mille: 100,
+        });
+        let mut game = GameState::with_content(seed, content);
+        game.apply(Command::Configure {
+            trail_id: "oregon".into(),
+            era_id: era.into(),
+            occupation_id: occupation.into(),
+            party: vec!["A".into(), "B".into(), "C".into(), "D".into(), "E".into()],
+            departure_month: 4,
+        });
         game
     }
     fn assert_rejected_without_mutation(game: &mut GameState, command: Command) {
@@ -2572,6 +2813,84 @@ mod tests {
         assert_eq!(game.terrain(), Terrain::Desert);
         game.current_node_id = Some("willamette".into());
         assert_eq!(game.terrain(), Terrain::Forest);
+    }
+
+    #[test]
+    fn occupation_modifiers_change_real_prices_setup_and_treatment() {
+        let mut banker = modifier_game(23, "banker", "1848");
+        assert_eq!(banker.price_cents("food"), Some(18));
+        assert_eq!(banker.sell_price_cents("food"), Some(9));
+        assert!(matches!(
+            banker.apply(Command::Buy { item_id: "food".into(), quantity: 1 }).as_slice(),
+            [Outcome::Purchased { cost_cents: 18, .. }]
+        ));
+        let carpenter = modifier_game(23, "carpenter", "1848");
+        assert_eq!(carpenter.price_cents("wheel"), Some(800));
+        let soldier = modifier_game(23, "soldier", "1866");
+        assert_eq!(soldier.price_cents("ammunition"), Some(160));
+        let merchant = modifier_game(23, "merchant", "1848");
+        assert_eq!(merchant.inventory.get("trade_goods"), 2);
+        let preacher = modifier_game(23, "preacher", "1848");
+        assert_eq!(preacher.reputation, 10);
+        let mut doctor = modifier_game(23, "doctor", "1848");
+        doctor.status = RunStatus::Travelling;
+        doctor.party[0].ailments.push("fever".into());
+        doctor.party[0].ailment_days.insert("fever".into(), 2);
+        let medicine_skill = doctor.party[0].skills.medicine;
+        doctor.apply(Command::Treat { member_index: 0, ailment_id: "fever".into() });
+        assert_eq!(doctor.inventory.get("medicine"), 0);
+        assert_eq!(doctor.party[0].skills.medicine, medicine_skill + 1);
+        assert!(!doctor.party[0].ailment_days.contains_key("fever"));
+    }
+
+    #[test]
+    fn restricted_occupations_and_eras_reject_without_mutation() {
+        let mut soldier = modifier_game(24, "farmer", "1848");
+        assert_rejected_without_mutation(
+            &mut soldier,
+            Command::Configure {
+                trail_id: "oregon".into(),
+                era_id: "1848".into(),
+                occupation_id: "soldier".into(),
+                party: vec!["A".into(), "B".into(), "C".into(), "D".into(), "E".into()],
+                departure_month: 4,
+            },
+        );
+        let mut mormon = modifier_game(24, "farmer", "1848");
+        mormon.status = RunStatus::Setup;
+        mormon.content.trails[0].id = "mormon".into();
+        assert_rejected_without_mutation(
+            &mut mormon,
+            Command::Configure {
+                trail_id: "mormon".into(),
+                era_id: "1843".into(),
+                occupation_id: "farmer".into(),
+                party: vec!["A".into(), "B".into(), "C".into(), "D".into(), "E".into()],
+                departure_month: 4,
+            },
+        );
+    }
+
+    #[test]
+    fn camp_weather_matches_travel_and_river_helpers_include_conditions() {
+        let mut camp = run(25);
+        let mut travel = camp.clone();
+        camp.apply(Command::Rest { days: 1 });
+        travel.apply(Command::TravelDay);
+        assert_eq!(camp.weather_state, travel.weather_state);
+        let mut river = GameState::with_content(26, branch_content());
+        river.apply(Command::Configure {
+            trail_id: "oregon".into(),
+            era_id: "1848".into(),
+            occupation_id: "farmer".into(),
+            party: vec!["A".into(), "B".into(), "C".into(), "D".into(), "E".into()],
+            departure_month: 4,
+        });
+        river.current_node_id = Some("river".into());
+        river.status = RunStatus::AwaitingRiver("river".into());
+        river.weather_state.river_depth_bonus = 2;
+        assert_eq!(river.effective_depth(), Some(4));
+        assert!(river.crossing_risk(CrossMethod::Ford).unwrap() > 0);
     }
 
     proptest::proptest! {
