@@ -296,7 +296,8 @@ fn keyboard_journey_reaches_score_hall_and_fresh_setup() {
                     right(&mut app, 1);
                     enter(&mut app);
                     assert_eq!(app.game.inventory.get("food"), food_before + 100);
-                    assert_eq!(app.screen, Screen::Journey, "fort purchase returns to the trail menu");
+                    assert_eq!(app.screen, Screen::Store, "stay in the fort store for more supplies");
+                    key(&mut app, KeyCode::Esc);
                     resupplies += 1;
                 }
                 enter(&mut app);
@@ -311,6 +312,7 @@ fn keyboard_journey_reaches_score_hall_and_fresh_setup() {
                     key(&mut app, KeyCode::Char('i'));
                     down(&mut app, index);
                     enter(&mut app);
+                    if app.screen == Screen::Treat { key(&mut app, KeyCode::Esc); }
                 } else {
                     enter(&mut app);
                 }

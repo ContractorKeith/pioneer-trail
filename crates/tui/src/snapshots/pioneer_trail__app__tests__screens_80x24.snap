@@ -34,11 +34,11 @@ expression: "all_screens(80, 24)"
 │ PIONEER TRAIL                                                                │
 │ Choose Trail (Up/Down) · Left/Right era · Enter                              │
 │ Era: First Great Emigration                                                  │
+│ Difficulty: Normal [D]                                                       │
 │ ► 1. Oregon Trail                                                            │
 │   2. California Trail                                                        │
 │   3. Mormon Pioneer Trail                                                    │
 │ Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                 │
-│                                                                              │
 │                                                                              │
 │                                                                              │
 │                                                                              │
@@ -147,8 +147,8 @@ expression: "all_screens(80, 24)"
 │   Tools  $25.00  owned 0                                                     │
 │   Trade goods  $20.00  owned 0                                               │
 │   Depart  Qty 1 [←/→]  Cash $1080.00  Weight 1524 lb                         │
+│ Enter buys · S sells selected quantity at half the quoted price              │
 │ Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                 │
-│                                                                              │
 │                                                                              │
 │                                                                              │
 │                                                                              │
@@ -181,7 +181,7 @@ Food 1500 lb · $1080.00 · Steady/Filling · 5 alive
 ► 1 Continue                2 Supplies                3 Map                     
   4 Pace                    5 Rations                 6 Rest                    
   7 Hunt                    8 Talk                    9 Buy                     
-↑↓/jk move · Enter act · i treat · Esc title · Ctrl-Q save/quit                 
+i treat · u trade · f forage · g fish · Esc title · Ctrl-Q save/quit            
 The wagon is ready. Five travelers set out from Independence.                   
                                                                                 
 
@@ -318,9 +318,9 @@ The wagon is ready. Five travelers set out from Independence.
 === Talk ===
 ┌PIONEER TRAIL─────────────────────────────────────────────────────────────────┐
 │ PIONEER TRAIL                                                                │
-│ Talk to people: Enter to listen.                                             │
+│ Talk to people: Enter to listen. Esc returns to camp.                        │
+│ The wagon is ready. Five travelers set out from Independence.                │
 │ Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                 │
-│                                                                              │
 │                                                                              │
 │                                                                              │
 │                                                                              │
@@ -355,6 +355,32 @@ The wagon is ready. Five travelers set out from Independence.
 │                                                                              │
 │                                                                              │
 │                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│ TRAIL LOG─────────────────────────────────────────────────────────────────── │
+│ The wagon is ready. Five travelers set out from Independence.                │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+=== Trade ===
+┌PIONEER TRAIL─────────────────────────────────────────────────────────────────┐
+│ PIONEER TRAIL                                                                │
+│ ↑↓ select · ←→ change · Enter act · Esc camp                                 │
+│ ► Neighbor: Holloway family (goodwill 0)                                     │
+│   Offer: Food (own 1500)                                                     │
+│   Offer quantity: 50                                                         │
+│   Request: Clothing (neighbor has 0)                                         │
+│   Request quantity: 1                                                        │
+│   Propose barter                                                             │
+│   Accept pending counteroffer                                                │
+│   Invite neighbor to party                                                   │
+│   Dismiss joined neighbor                                                    │
+│ Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                 │
 │                                                                              │
 │                                                                              │
 │                                                                              │
@@ -576,27 +602,27 @@ The wagon is ready. Five travelers set out from Independence.
 └──────────────────────────────────────────────────────────────────────────────┘
 
 === Minigame ===
-┌PIONEER TRAIL─────────────────────────────────────────────────────────────────┐
-│ PIONEER TRAIL                                                                │
-│ A real-time trail action has been requested.                                 │
-│ Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                 │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│ TRAIL LOG─────────────────────────────────────────────────────────────────── │
-│ The wagon is ready. Five travelers set out from Independence.                │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-└──────────────────────────────────────────────────────────────────────────────┘
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                    ▀▀▀▀                                        
+                                  ▀▀▀▀▀▀▀▀▀▀▀▀▀▀                                
+                                  ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀                               
+                                     ▀   ▀  ▀  ▀                                
+                                                                                
+                                                       ▀                        
+                                                     ▀▀▀                        
+                                        +   ▀▀▀▀▀▀▀▀▀▀▀▀▀                       
+                                           ▀▀▀▀▀▀▀▀▀▀▀▀                         
+                                             ▀   ▀ ▀  ▀                         
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                        ▀       
+                                                                      ▀▀▀       
+                                                             ▀▀▀▀▀▀▀▀▀▀▀▀▀      
+                                                            ▀▀▀▀▀▀▀▀▀▀▀▀        
+▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▀▄▄▄▀▄▀▄▄▀▄▄▄▄▄▄▄▄
+ HUNT 30s FOOD 0/150 AMMO 20 · arrows: aim Space: fire Esc: return

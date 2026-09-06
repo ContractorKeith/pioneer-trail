@@ -22,10 +22,13 @@ struct SetupDraft {
     edited: [bool; 5],
     month: u8,
 }
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MinigameRequest {
-    Hunt,
-    Raft,
+#[derive(Default)]
+struct TradeDraft {
+    npc: usize,
+    offered: usize,
+    wanted: usize,
+    offered_quantity: u32,
+    wanted_quantity: u32,
 }
 impl Default for SetupDraft {
     fn default() -> Self {
@@ -58,12 +61,13 @@ pub struct App {
     storage: Option<Storage>,
     run_id: String,
     hall: Vec<String>,
-    minigame_request: Option<MinigameRequest>,
+    minigame: Option<crate::minigame::host::LiveMinigame>,
     store_quantity: u32,
     seed_text: String,
     recorded: bool,
     animation_tick: u64,
     epitaph: String,
+    trade: TradeDraft,
 }
 impl App {
     pub fn new(content: GameContent, seed: u64, settings: Settings) -> Self {
@@ -79,12 +83,19 @@ impl App {
             storage: None,
             run_id: new_run_id(),
             hall: Vec::new(),
-            minigame_request: None,
+            minigame: None,
             store_quantity: 1,
             seed_text: String::new(),
             recorded: false,
             animation_tick: 0,
             epitaph: String::new(),
+            trade: TradeDraft {
+                offered: 1,
+                wanted: 2,
+                offered_quantity: 50,
+                wanted_quantity: 1,
+                ..TradeDraft::default()
+            },
         }
     }
     pub fn with_storage(mut self, storage: Storage) -> Self {
@@ -128,6 +139,7 @@ impl App {
                 .map_or(1, |t| t.nodes.len()),
             Screen::Pace | Screen::Rations | Screen::Rest => 3,
             Screen::Treat => self.game.party.len(),
+            Screen::Trade => 9,
             Screen::River => 5,
             Screen::Fork => self.game.current_landmark().map_or(0, |n| n.routes.len()),
             Screen::Event => self
@@ -140,9 +152,18 @@ impl App {
             _ => 1,
         }
     }
-    /// Host code takes this request and runs the real-time screen, then submits its result command.
-    pub fn take_minigame_request(&mut self) -> Option<MinigameRequest> {
-        self.minigame_request.take()
+    /// One fixed 30 Hz step. The runtime pauses these steps below the minimum terminal size.
+    pub fn tick_minigame(&mut self) {
+        if let Some(game) = &mut self.minigame {
+            game.tick();
+        }
+        self.finish_minigame();
+    }
+    fn finish_minigame(&mut self) {
+        if let Some(result) = self.minigame.as_ref().and_then(|game| game.result()) {
+            self.minigame = None;
+            self.apply(result);
+        }
     }
     pub fn handle_key(&mut self, key: KeyEvent) {
         if !matches!(key.kind, KeyEventKind::Press | KeyEventKind::Repeat) {
@@ -150,6 +171,11 @@ impl App {
         }
         if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('q') {
             self.quit = true;
+            return;
+        }
+        if let Some(game) = &mut self.minigame {
+            game.key(key.code);
+            self.finish_minigame();
             return;
         }
         if self.screen == Screen::Epitaph {
@@ -234,7 +260,7 @@ impl App {
                     self.run_id = new_run_id();
                     self.recorded = false;
                     self.pending_event = None;
-                    self.minigame_request = None;
+                    self.minigame = None;
                     self.log.clear();
                     self.epitaph.clear();
                     self.screen = Screen::SetupTrail;
@@ -308,10 +334,7 @@ impl App {
                 3 => self.screen = Screen::Pace,
                 4 => self.screen = Screen::Rations,
                 5 => self.screen = Screen::Rest,
-                6 => {
-                    self.minigame_request = Some(MinigameRequest::Hunt);
-                    self.screen = Screen::Minigame;
-                }
+                6 => self.apply(Command::BeginHunt),
                 7 => self.screen = Screen::Talk,
                 _ => {
                     if self.game.can_shop() {
@@ -348,6 +371,39 @@ impl App {
                     self.apply(Command::Treat { member_index: self.cursor, ailment_id });
                 } else {
                     self.note("This traveler has no ailment to treat.");
+                }
+            }
+            Screen::Trade => {
+                let Some(npc) = self.game.npcs.get(self.trade.npc) else {
+                    return;
+                };
+                let npc_id = npc.id.clone();
+                let offered = &self.game.content.items[self.trade.offered];
+                let wanted = &self.game.content.items[self.trade.wanted];
+                match self.cursor {
+                    5 => self.apply(Command::Barter {
+                        npc_id,
+                        offered_item: offered.id.clone(),
+                        offered_quantity: self.trade.offered_quantity,
+                        wanted_item: wanted.id.clone(),
+                        wanted_quantity: self.trade.wanted_quantity,
+                    }),
+                    6 => {
+                        if let Some(offer) = self.game.pending_counteroffer.clone() {
+                            self.apply(Command::AcceptCounteroffer {
+                                npc_id: offer.npc_id,
+                                offered_item: offer.offered_item,
+                                offered_quantity: offer.offered_quantity,
+                                wanted_item: offer.wanted_item,
+                                wanted_quantity: offer.wanted_quantity,
+                            });
+                        } else {
+                            self.note("There is no open counteroffer.");
+                        }
+                    }
+                    7 => self.apply(Command::InviteNpc { npc_id }),
+                    8 => self.apply(Command::DismissNpc { npc_id }),
+                    _ => self.adjust(1),
                 }
             }
             Screen::Fork => {
@@ -446,6 +502,26 @@ impl App {
                     self.store_quantity.saturating_sub(step).max(1)
                 };
             }
+            Screen::Trade => match self.cursor {
+                0 => self.trade.npc = cycle(self.trade.npc, self.game.npcs.len(), delta),
+                1 => {
+                    self.trade.offered =
+                        cycle(self.trade.offered, self.game.content.items.len(), delta)
+                }
+                3 => {
+                    self.trade.wanted =
+                        cycle(self.trade.wanted, self.game.content.items.len(), delta)
+                }
+                2 | 4 => {
+                    let quantity = if self.cursor == 2 {
+                        &mut self.trade.offered_quantity
+                    } else {
+                        &mut self.trade.wanted_quantity
+                    };
+                    *quantity = quantity.saturating_add_signed(i32::from(delta)).clamp(1, 2000);
+                }
+                _ => {}
+            },
             _ => {}
         }
     }
@@ -458,6 +534,27 @@ impl App {
             (Screen::Journey, 'x') => self.screen = Screen::Rest,
             (Screen::Journey, 't') => self.screen = Screen::Talk,
             (Screen::Journey, 'i') => self.screen = Screen::Treat,
+            (Screen::Journey, 'u') => {
+                self.screen = Screen::Trade;
+                self.cursor = 0;
+            }
+            (Screen::Journey, 'f') => self.apply(Command::Forage),
+            (Screen::Journey, 'g') => self.apply(Command::Fish),
+            (Screen::SetupTrail, 'd') => {
+                use pioneer_sim::state::Difficulty;
+                let next = match self.game.difficulty {
+                    Difficulty::Easy => Difficulty::Normal,
+                    Difficulty::Normal => Difficulty::Hard,
+                    Difficulty::Hard => Difficulty::Easy,
+                };
+                self.apply(Command::SetDifficulty(next));
+            }
+            (Screen::Store, 's') if self.cursor < self.game.content.items.len() => {
+                self.apply(Command::Sell {
+                    item_id: self.game.content.items[self.cursor].id.clone(),
+                    quantity: self.store_quantity,
+                });
+            }
             (Screen::Journey, 'b') if self.game.can_shop() => self.screen = Screen::Store,
             (Screen::Score, 'e') => self.screen = Screen::Epitaph,
             (Screen::Settings, 's') => {
@@ -495,6 +592,10 @@ impl App {
             self.note("A decision is required before continuing.");
             return;
         }
+        if self.screen == Screen::Store && self.game.status == pioneer_sim::RunStatus::Outfitting {
+            self.note("Buy oxen and supplies, then choose Depart.");
+            return;
+        }
         self.cursor = 0;
         self.screen = match self.screen {
             Screen::Title => {
@@ -513,6 +614,7 @@ impl App {
             | Screen::Rest
             | Screen::Talk
             | Screen::Treat
+            | Screen::Trade
             | Screen::Minigame => Screen::Journey,
             Screen::Score => Screen::Title,
             Screen::Epitaph => Screen::Score,
@@ -522,16 +624,50 @@ impl App {
     }
     fn apply(&mut self, command: Command) {
         let previous_screen = self.screen;
-        for outcome in self.game.apply(command) {
+        let retain_screen = matches!(
+            &command,
+            Command::Buy { .. }
+                | Command::Sell { .. }
+                | Command::Barter { .. }
+                | Command::AcceptCounteroffer { .. }
+                | Command::InviteNpc { .. }
+                | Command::DismissNpc { .. }
+                | Command::Talk
+                | Command::Treat { .. }
+        );
+        let outcomes = self.game.apply(command);
+        let rejected = !outcomes.is_empty()
+            && outcomes.iter().all(|outcome| matches!(outcome, Outcome::Rejected(_)));
+        for outcome in outcomes {
             self.outcome(outcome);
         }
         self.autosave();
         self.sync_screen();
+        if rejected
+            || (retain_screen
+                && self.game.pending_event.is_none()
+                && matches!(
+                    self.game.status,
+                    pioneer_sim::RunStatus::Travelling
+                        | pioneer_sim::RunStatus::AtLandmark(_)
+                        | pioneer_sim::RunStatus::Outfitting
+                ))
+        {
+            self.screen = previous_screen;
+        }
         if self.screen != previous_screen {
             self.cursor = 0;
         }
     }
     fn sync_screen(&mut self) {
+        if self.game.active_minigame.is_some() {
+            if self.minigame.is_none() {
+                self.minigame = crate::minigame::host::LiveMinigame::from_session(&self.game);
+            }
+            self.screen = Screen::Minigame;
+            return;
+        }
+        self.minigame = None;
         if self.game.pending_event.is_some() {
             self.pending_event = self.game.pending_event.clone();
             self.screen = Screen::Event;
@@ -690,6 +826,12 @@ impl App {
             self.render_scene(frame);
             return;
         }
+        if let Some(game) = &self.minigame {
+            let canvas =
+                Rect::new(area.x + (area.width - 80) / 2, area.y + (area.height - 24) / 2, 80, 24);
+            game.render(frame.buffer_mut(), canvas, self.color_mode());
+            return;
+        }
         let outer = Block::default().borders(Borders::ALL).title(self.title());
         frame.render_widget(outer, area);
         let inner = area.inner(Margin { horizontal: 2, vertical: 1 });
@@ -828,7 +970,7 @@ impl App {
             );
         }
         frame.render_widget(
-            Paragraph::new("↑↓/jk move · Enter act · i treat · Esc title · Ctrl-Q save/quit"),
+            Paragraph::new("i treat · u trade · f forage · g fish · Esc title · Ctrl-Q save/quit"),
             Rect::new(canvas.x, canvas.y + 21, 80, 1),
         );
         if let Some(last) = self.log.last() {
@@ -871,6 +1013,7 @@ impl App {
                 if let Some(era) = self.game.content.eras.get(self.draft.era) {
                     lines.push(Line::from(format!("Era: {}", era.name)));
                 }
+                lines.push(Line::from(format!("Difficulty: {:?} [D]", self.game.difficulty)));
                 lines.extend(menu(
                     &self
                         .game
@@ -935,6 +1078,9 @@ impl App {
                     self.game.cash_cents as f64 / 100.0,
                     self.game.weight()
                 )));
+                lines.push(Line::from(
+                    "Enter buys · S sells selected quantity at half the quoted price",
+                ));
             }
             Screen::Journey => {
                 lines.push(Line::from(format!(
@@ -951,6 +1097,7 @@ impl App {
                     ],
                     self.cursor,
                 ));
+                lines.push(Line::from("I treat · U trade · F forage · G fish"));
             }
             Screen::Supplies => {
                 for (id, quantity) in &self.game.inventory.quantities {
@@ -991,7 +1138,53 @@ impl App {
             Screen::Rest => {
                 lines.extend(menu(&["Rest 1 day", "Rest 2 days", "Rest 3 days"], self.cursor))
             }
-            Screen::Talk => lines.push(Line::from("Talk to people: Enter to listen.")),
+            Screen::Talk => {
+                lines.push(Line::from("Talk to people: Enter to listen. Esc returns to camp."));
+                if let Some(last) = self.log.last() {
+                    lines.push(Line::from(last.clone()));
+                }
+            }
+            Screen::Trade => {
+                lines.push(Line::from("↑↓ select · ←→ change · Enter act · Esc camp"));
+                let npc = self.game.npcs.get(self.trade.npc);
+                let offered = &self.game.content.items[self.trade.offered];
+                let wanted = &self.game.content.items[self.trade.wanted];
+                let rows = [
+                    format!(
+                        "Neighbor: {} (goodwill {})",
+                        npc.map_or("No neighbors", |n| n.name.as_str()),
+                        npc.map_or(0, |n| n.reputation)
+                    ),
+                    format!(
+                        "Offer: {} (own {})",
+                        offered.name,
+                        self.game.inventory.get(&offered.id)
+                    ),
+                    format!("Offer quantity: {}", self.trade.offered_quantity),
+                    format!(
+                        "Request: {} (neighbor has {})",
+                        wanted.name,
+                        npc.and_then(|n| n.inventory.get(&wanted.id)).copied().unwrap_or(0)
+                    ),
+                    format!("Request quantity: {}", self.trade.wanted_quantity),
+                    "Propose barter".into(),
+                    "Accept pending counteroffer".into(),
+                    "Invite neighbor to party".into(),
+                    "Dismiss joined neighbor".into(),
+                ];
+                for (index, row) in rows.iter().enumerate() {
+                    lines.push(Line::from(format!("{} {row}", marker(index == self.cursor))));
+                }
+                if let Some(offer) = &self.game.pending_counteroffer {
+                    lines.push(Line::from(format!(
+                        "Counteroffer: {} {} for {} {}",
+                        offer.offered_quantity,
+                        offer.offered_item,
+                        offer.wanted_quantity,
+                        offer.wanted_item
+                    )));
+                }
+            }
             Screen::Fork => {
                 lines.push(Line::from("Choose a route:"));
                 if let Some(node) = self.game.current_landmark() {
@@ -1117,9 +1310,7 @@ impl App {
                 }
                 lines.push(Line::from("Enter treats the selected traveler's first ailment."));
             }
-            Screen::Minigame => {
-                lines.push(Line::from("A real-time trail action has been requested."))
-            }
+            Screen::Minigame => lines.push(Line::from("No active hunt or river passage.")),
         }
         lines.push(Line::from("Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit"));
         lines
@@ -1135,12 +1326,41 @@ pub fn run(mut app: App) -> anyhow::Result<()> {
     let backend = ratatui::backend::CrosstermBackend::new(std::io::stdout());
     let mut terminal = ratatui::Terminal::new(backend)?;
     let started = std::time::Instant::now();
+    let step = std::time::Duration::from_nanos(1_000_000_000 / 30);
+    let mut next_tick = std::time::Instant::now() + step;
     while !app.should_quit() {
         terminal.draw(|frame| app.render(frame))?;
-        if event::poll(std::time::Duration::from_millis(100))? {
+        let timeout = if app.minigame.is_some() {
+            next_tick.saturating_duration_since(std::time::Instant::now())
+        } else {
+            std::time::Duration::from_millis(100)
+        };
+        if event::poll(timeout)? {
             if let Event::Key(key) = event::read()? {
-                app.handle_key(key);
+                let size = terminal.size()?;
+                if (size.width >= 80 && size.height >= 24)
+                    || key.modifiers.contains(KeyModifiers::CONTROL)
+                {
+                    app.handle_key(key);
+                }
             }
+        }
+        let now = std::time::Instant::now();
+        let size = terminal.size()?;
+        if app.minigame.is_some() && size.width >= 80 && size.height >= 24 {
+            // Bound catch-up after a stalled terminal; never fast-forward a whole hunt.
+            for _ in 0..3 {
+                if now < next_tick {
+                    break;
+                }
+                app.tick_minigame();
+                next_tick += step;
+            }
+            if next_tick <= now {
+                next_tick = now + step;
+            }
+        } else {
+            next_tick = now + step;
         }
         app.animation_tick = (started.elapsed().as_millis() / 250) as u64;
     }
@@ -1239,6 +1459,10 @@ mod tests {
                     app.game.party[1].ailments = vec!["fever".into()];
                     app.game.party[1].health = 68;
                 }
+                Screen::Minigame => {
+                    app.game.apply(Command::Depart);
+                    app.apply(Command::BeginHunt);
+                }
                 _ => {}
             }
         }
@@ -1272,6 +1496,7 @@ mod tests {
             Screen::Rest,
             Screen::Talk,
             Screen::Treat,
+            Screen::Trade,
             Screen::Fork,
             Screen::River,
             Screen::Event,
@@ -1386,6 +1611,18 @@ mod tests {
             match app.screen {
                 Screen::Event => {
                     saw_event = true;
+                    let event = app
+                        .game
+                        .content
+                        .events
+                        .iter()
+                        .find(|e| Some(&e.id) == app.game.pending_event.as_ref())
+                        .unwrap();
+                    app.cursor = event
+                        .choices
+                        .iter()
+                        .position(|choice| app.game.choice_available(choice))
+                        .unwrap();
                     app.select()
                 }
                 Screen::River => break,
@@ -1406,5 +1643,61 @@ mod tests {
         resumed.back();
         assert_eq!(resumed.screen, Screen::River);
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    fn outfitted_app() -> App {
+        let mut app = App::new(pioneer_data::load().unwrap(), 23, Settings::default());
+        app.apply(Command::Configure {
+            trail_id: "oregon".into(),
+            era_id: "1848".into(),
+            occupation_id: "banker".into(),
+            party: ["Ada", "Ben", "Clara", "Dan", "Eve"].map(str::to_owned).to_vec(),
+            departure_month: 3,
+        });
+        for (id, qty) in [("oxen", 3), ("food", 500), ("ammunition", 5)] {
+            app.apply(Command::Buy { item_id: id.into(), quantity: qty });
+        }
+        app.apply(Command::Depart);
+        app
+    }
+    #[test]
+    fn live_hunt_keys_consume_exact_shots_and_commit_once_on_escape() {
+        let mut app = outfitted_app();
+        let day = app.game.day;
+        app.handle_key(KeyEvent::from(KeyCode::Char('7')));
+        assert_eq!(app.screen, Screen::Minigame);
+        app.handle_key(KeyEvent::from(KeyCode::Char(' ')));
+        assert_eq!(app.game.inventory.get("ammunition"), 5, "world not committed yet");
+        app.handle_key(KeyEvent::from(KeyCode::Esc));
+        assert_eq!(app.game.inventory.get("ammunition"), 4);
+        assert_eq!(app.game.loose_bullets, 19);
+        assert_eq!(app.game.day, day + 1);
+        assert!(app.game.active_minigame.is_none());
+        for _ in 0..1000 {
+            app.tick_minigame();
+        }
+        assert_eq!(app.game.day, day + 1, "result must not be applied twice");
+    }
+    #[test]
+    fn live_raft_escape_returns_to_fork_and_timer_completion_arrives() {
+        let mut app = outfitted_app();
+        app.game.current_node_id = Some("the_dalles".into());
+        app.game.target_node_id = None;
+        app.game.route_miles_remaining = 0;
+        app.game.miles = 1813;
+        app.game.status = pioneer_sim::RunStatus::AwaitingFork("the_dalles".into());
+        app.sync_screen();
+        app.handle_key(KeyEvent::from(KeyCode::Char('2')));
+        assert_eq!(app.screen, Screen::Minigame);
+        app.handle_key(KeyEvent::from(KeyCode::Esc));
+        assert_eq!(app.screen, Screen::Fork);
+        assert_eq!(app.game.miles, 1813);
+        app.handle_key(KeyEvent::from(KeyCode::Char('2')));
+        for _ in 0..900 {
+            app.tick_minigame();
+        }
+        assert_eq!(app.screen, Screen::Score);
+        assert_eq!(app.game.status, pioneer_sim::RunStatus::Arrived);
+        assert_eq!(app.game.miles, 1885);
     }
 }

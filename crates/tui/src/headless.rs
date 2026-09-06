@@ -69,7 +69,20 @@ pub fn journey(
                 score: game.score(),
             });
         }
-        let command = if let Some(id) = &game.pending_event {
+        let command = if let Some(session) = &game.active_minigame {
+            // The reference pilot holds the center lane for the entire real course.
+            // Use the same collision world as interactive play, not a fabricated success.
+            let mut raft = crate::minigame::rafting::RaftingGame::new(session.seed);
+            while !raft.is_finished() {
+                raft.tick();
+            }
+            let result = raft.result();
+            Command::RaftResult {
+                cargo_lost_lbs: result.cargo_lost_lbs.into(),
+                casualties: result.casualties,
+                completed: result.completed,
+            }
+        } else if let Some(id) = &game.pending_event {
             let event = game
                 .content
                 .events
@@ -100,7 +113,10 @@ pub fn journey(
                 RunStatus::AwaitingFork(id) => {
                     let route = node(&game, id)?
                         .routes
-                        .first()
+                        .iter()
+                        .find(|route| {
+                            route.id != "barlow" || (config.era != "1843" && game.cash_cents >= 500)
+                        })
                         .ok_or_else(|| anyhow::anyhow!("Fork {id} has no routes"))?;
                     Command::ChooseRoute { route_id: route.id.clone() }
                 }

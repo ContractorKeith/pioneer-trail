@@ -14,6 +14,7 @@ pub enum Screen {
     Rest,
     Talk,
     Treat,
+    Trade,
     Fork,
     River,
     Event,
