@@ -116,6 +116,31 @@ impl App {
     pub fn should_quit(&self) -> bool {
         self.quit
     }
+    /// A concise, accurate survival prompt for the current trail state.
+    pub(crate) fn trail_advice(&self) -> String {
+        crate::advice::trail_advice(&self.game)
+    }
+    fn auto_travel_pause_reason(&self) -> Option<String> {
+        if self.game.inventory.get("food") < self.game.daily_food_lbs().saturating_mul(3) {
+            return Some(format!("Auto travel paused: {}", self.trail_advice()));
+        }
+        if self.game.party.iter().any(|member| member.alive && !member.ailments.is_empty()) {
+            return Some(
+                "Auto travel paused: someone is ill. Stop to rest and check the party.".into(),
+            );
+        }
+        self.game.party.iter().any(|member| member.alive && member.health < 40).then(|| {
+            "Auto travel paused: someone is in poor health. Stop to rest before continuing.".into()
+        })
+    }
+    fn advance_auto_travel(&mut self) {
+        if let Some(reason) = self.auto_travel_pause_reason() {
+            self.auto_travel = false;
+            self.note(reason);
+            return;
+        }
+        self.apply(Command::Continue);
+    }
     pub fn with_defaults(mut self, config: &crate::headless::RunConfig) -> Self {
         self.draft.trail =
             self.game.content.trails.iter().position(|t| t.id == config.trail).unwrap_or(0);
@@ -1335,6 +1360,7 @@ impl App {
                     self.game.inventory.get("food"),
                     self.game.cash_cents as f64 / 100.0
                 )));
+                lines.push(Line::from(self.trail_advice()));
                 lines.extend(menu(
                     &[
                         "Continue", "Supplies", "Map", "Pace", "Rations", "Rest", "Hunt", "Talk",
@@ -1347,6 +1373,7 @@ impl App {
                 ));
             }
             Screen::Supplies => {
+                lines.push(Line::from(crate::advice::supplies_advice(&self.game)));
                 for (id, quantity) in &self.game.inventory.quantities {
                     lines.push(Line::from(format!("{id}: {quantity}")));
                 }
@@ -1402,11 +1429,22 @@ impl App {
                     lines.push(Line::from("↑↓ scroll landmarks and graves"));
                 }
             }
-            Screen::Pace => lines.extend(menu(&["Steady", "Strenuous", "Grueling"], self.cursor)),
+            Screen::Pace => {
+                lines.push(Line::from(
+                    crate::advice::screen_advice(&self.game, Screen::Pace).unwrap(),
+                ));
+                lines.extend(menu(&["Steady", "Strenuous", "Grueling"], self.cursor));
+            }
             Screen::Rations => {
+                lines.push(Line::from(
+                    crate::advice::screen_advice(&self.game, Screen::Rations).unwrap(),
+                ));
                 lines.extend(menu(&["Filling", "Meager", "Bare Bones"], self.cursor))
             }
             Screen::Rest => {
+                lines.push(Line::from(
+                    crate::advice::screen_advice(&self.game, Screen::Rest).unwrap(),
+                ));
                 lines.extend(menu(&["Rest 1 day", "Rest 2 days", "Rest 3 days"], self.cursor))
             }
             Screen::Talk => {
@@ -1597,6 +1635,7 @@ impl App {
                     self.game.day,
                     self.game.miles
                 )));
+                lines.push(Line::from(self.trail_advice()));
                 for member in self.game.party.iter().take(5) {
                     lines.push(Line::from(format!(
                         "{}: {}",
@@ -1715,7 +1754,7 @@ pub fn run(mut app: App) -> anyhow::Result<()> {
         let now = std::time::Instant::now();
         let size = terminal.size()?;
         if app.auto_travel && now >= next_day && size.width >= 80 && size.height >= 24 {
-            app.apply(Command::Continue);
+            app.advance_auto_travel();
             next_day =
                 now + std::time::Duration::from_millis(app.settings.speed.milliseconds().max(30));
         }
@@ -2069,6 +2108,50 @@ mod tests {
         }
         app.apply(Command::Depart);
         app
+    }
+    #[test]
+    fn auto_travel_stops_before_food_shortage_and_can_restart_after_resupply() {
+        let mut app = outfitted_app();
+        let three_days = app.game.daily_food_lbs() * 3;
+        app.game.inventory.quantities.insert("food".into(), three_days - 1);
+        app.auto_travel = true;
+        let day = app.game.day;
+
+        app.advance_auto_travel();
+        assert_eq!(app.game.day, day, "auto travel must not take a starvation day");
+        assert!(!app.auto_travel);
+        assert!(app.log.last().unwrap().contains("Food is short"));
+
+        app.auto_travel = true;
+        app.advance_auto_travel();
+        assert_eq!(app.game.day, day, "restarting without food must still be safe");
+        assert!(!app.auto_travel);
+
+        app.game.inventory.quantities.insert("food".into(), three_days);
+        app.auto_travel = true;
+        app.advance_auto_travel();
+        assert_eq!(app.game.day, day + 1, "three full days permits auto travel to resume");
+    }
+    #[test]
+    fn trail_advice_is_short_and_does_not_invent_a_cause_of_death() {
+        let mut app = outfitted_app();
+        app.game.inventory.quantities.insert("food".into(), 0);
+        app.game.status = pioneer_sim::RunStatus::Failed;
+        let advice = app.trail_advice();
+        assert!(advice.chars().count() <= 76);
+        assert!(advice.contains("No single cause recorded"));
+        assert!(advice.contains("Buy food before extra ammo"));
+    }
+    #[test]
+    fn low_food_advice_only_offers_actions_available_at_camp() {
+        let mut app = outfitted_app();
+        app.game.inventory.quantities.insert("food".into(), 0);
+        app.game.cash_cents = 0;
+        assert!(app.trail_advice().contains("Press G to fish"));
+
+        app.game.inventory.quantities.insert("ammunition".into(), 0);
+        app.game.loose_bullets = 0;
+        assert!(app.trail_advice().contains("Press G to fish"));
     }
     #[test]
     fn live_hunt_keys_consume_exact_shots_and_commit_once_on_escape() {
