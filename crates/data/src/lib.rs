@@ -6,6 +6,8 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use thiserror::Error;
 
 pub static ART: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/art");
+static EVENT_BATCHES: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/events");
+static QUOTE_BATCHES: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/quotes");
 const CONTENT: &str = include_str!("../content.ron");
 
 #[derive(Debug, Error)]
@@ -18,7 +20,19 @@ pub enum ContentError {
 
 /// Parse the RON included in the release binary and reject broken references.
 pub fn load() -> Result<GameContent, ContentError> {
-    let content = ron::from_str(CONTENT)?;
+    let mut content: GameContent = ron::from_str(CONTENT)?;
+    for file in
+        EVENT_BATCHES.files().filter(|file| file.path().extension().is_some_and(|ext| ext == "ron"))
+    {
+        let mut events: Vec<pioneer_sim::EventDefinition> = ron::de::from_bytes(file.contents())?;
+        content.events.append(&mut events);
+    }
+    for file in
+        QUOTE_BATCHES.files().filter(|file| file.path().extension().is_some_and(|ext| ext == "ron"))
+    {
+        let mut quotes: Vec<pioneer_sim::QuoteDefinition> = ron::de::from_bytes(file.contents())?;
+        content.quotes.append(&mut quotes);
+    }
     validate(&content)?;
     Ok(content)
 }
@@ -303,8 +317,8 @@ mod tests {
         assert!(content.occupations.len() >= 9);
         assert!(content.items.len() >= 10);
         assert!(content.ailments.len() >= 20);
-        assert_eq!(content.events.len(), 26);
-        assert_eq!(content.quotes.len(), 25);
+        assert!(content.events.len() >= 26);
+        assert!(content.quotes.len() >= 25);
     }
 
     #[test]
