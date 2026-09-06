@@ -62,6 +62,7 @@ pub struct App {
     store_quantity: u32,
     seed_text: String,
     recorded: bool,
+    animation_tick: u64,
 }
 impl App {
     pub fn new(content: GameContent, seed: u64, settings: Settings) -> Self {
@@ -81,6 +82,7 @@ impl App {
             store_quantity: 1,
             seed_text: String::new(),
             recorded: false,
+            animation_tick: 0,
         }
     }
     pub fn with_storage(mut self, storage: Storage) -> Self {
@@ -632,6 +634,10 @@ impl App {
             );
             return;
         }
+        if !self.settings.no_art && matches!(self.screen, Screen::Title | Screen::Journey) {
+            self.render_scene(frame);
+            return;
+        }
         let outer = Block::default().borders(Borders::ALL).title(self.title());
         frame.render_widget(outer, area);
         let inner = area.inner(Margin { horizontal: 2, vertical: 1 });
@@ -656,6 +662,151 @@ impl App {
             _ => "PIONEER TRAIL",
         }
     }
+    fn color_mode(&self) -> crate::art::ColorMode {
+        match self.settings.color {
+            crate::persist::ColorMode::Truecolor => crate::art::ColorMode::TrueColor,
+            crate::persist::ColorMode::Indexed => crate::art::ColorMode::Ansi256,
+            crate::persist::ColorMode::Basic => crate::art::ColorMode::Ansi16,
+            crate::persist::ColorMode::Mono => crate::art::ColorMode::Mono,
+        }
+    }
+    fn render_scene(&self, frame: &mut Frame) {
+        use crate::art;
+        let area = frame.area();
+        frame.render_widget(
+            Block::default().style(Style::default().bg(Color::Black).fg(Color::White)),
+            area,
+        );
+        let canvas = Rect::new(area.x + (area.width - 80) / 2, area.y, 80, 16);
+        let mode = self.color_mode();
+        if self.screen == Screen::Title {
+            art::render(
+                art::embedded("title.px").expect("title art"),
+                frame.buffer_mut(),
+                canvas,
+                mode,
+            );
+            let labels = ["New Journey", "Continue", "Hall of Fame", "Seed", "Settings", "Quit"];
+            for (i, label) in labels.iter().enumerate() {
+                frame.render_widget(
+                    Paragraph::new(format!("{} {}. {label}", marker(i == self.cursor), i + 1)),
+                    Rect::new(
+                        canvas.x + 10 + (i % 2) as u16 * 35,
+                        canvas.y + 17 + (i / 2) as u16,
+                        34,
+                        1,
+                    ),
+                );
+            }
+            frame.render_widget(
+                Paragraph::new("↑↓ choose · Enter begin · 1–6 select · Ctrl-Q quit"),
+                Rect::new(canvas.x + 8, canvas.y + 21, 72, 1),
+            );
+            if let Some(last) = self.log.last() {
+                frame.render_widget(
+                    Paragraph::new(last.clone()).wrap(ratatui::widgets::Wrap { trim: true }),
+                    Rect::new(canvas.x + 2, canvas.y + 22, 76, 2),
+                );
+            }
+            return;
+        }
+        let node = self.game.current_landmark();
+        let name = node.map_or("Open trail", |n| n.name.as_str());
+        let landmark = node.map(|n| format!("{}.px", n.id));
+        let background = if matches!(self.game.status, pioneer_sim::RunStatus::AtLandmark(_)) {
+            landmark.as_deref().and_then(art::embedded)
+        } else {
+            None
+        };
+        let background = background.unwrap_or_else(|| {
+            let id = self.game.target_node_id.as_deref().unwrap_or("");
+            let file = if id.contains("pass") || id.contains("sierra") || id.contains("mountain") {
+                "terrain_mountains.px"
+            } else if id.contains("river") || id == "humboldt" {
+                "terrain_river_valley.px"
+            } else if id.contains("desert") {
+                "terrain_desert.px"
+            } else if self.game.miles > 1500 {
+                "terrain_forest.px"
+            } else {
+                "terrain_plains.px"
+            };
+            art::embedded(file).expect("terrain art")
+        });
+        art::render(background, frame.buffer_mut(), canvas, mode);
+        let moving = matches!(self.game.status, pioneer_sim::RunStatus::Travelling);
+        let phase = if moving { self.animation_tick % 4 } else { 0 };
+        for (file, x, y) in
+            [(format!("ox_{}.px", phase % 2), 10, 10), (format!("wagon_{phase}.px"), 32, 5)]
+        {
+            art::render(
+                art::embedded(&file).expect("wagon animation"),
+                frame.buffer_mut(),
+                Rect::new(canvas.x + x, canvas.y + y, 80 - x, 16 - y),
+                mode,
+            );
+        }
+        let (year, month, day) = self.game.date();
+        frame.render_widget(
+            Paragraph::new(format!(
+                "{month:02}/{day:02}/{year} · {} mi · {name} · {:?}",
+                self.game.miles, self.game.weather
+            )),
+            Rect::new(canvas.x, canvas.y + 16, 80, 1),
+        );
+        frame.render_widget(
+            Paragraph::new(format!(
+                "Food {} lb · ${:.2} · {:?}/{:?} · {} alive",
+                self.game.inventory.get("food"),
+                self.game.cash_cents as f64 / 100.,
+                self.game.pace,
+                self.game.rations,
+                self.game.party.iter().filter(|m| m.alive).count()
+            )),
+            Rect::new(canvas.x, canvas.y + 17, 80, 1),
+        );
+        for (i, label) in
+            ["Continue", "Supplies", "Map", "Pace", "Rations", "Rest", "Hunt", "Talk", "Buy"]
+                .iter()
+                .enumerate()
+        {
+            frame.render_widget(
+                Paragraph::new(format!("{} {} {label}", marker(i == self.cursor), i + 1)),
+                Rect::new(canvas.x + (i % 3) as u16 * 26, canvas.y + 18 + (i / 3) as u16, 26, 1),
+            );
+        }
+        frame.render_widget(
+            Paragraph::new("↑↓/jk move · Enter act · i treat · Esc title · Ctrl-Q save/quit"),
+            Rect::new(canvas.x, canvas.y + 21, 80, 1),
+        );
+        if let Some(last) = self.log.last() {
+            frame.render_widget(
+                Paragraph::new(last.clone()).wrap(ratatui::widgets::Wrap { trim: true }),
+                Rect::new(canvas.x, canvas.y + 22, 80, 2),
+            );
+        }
+        if area.height >= 30 {
+            let party = self
+                .game
+                .party
+                .iter()
+                .map(|m| {
+                    Line::from(format!(
+                        "{} · Health {} · Morale {} · {}",
+                        m.name,
+                        m.health,
+                        m.morale,
+                        if m.alive { m.ailments.join(", ") } else { "deceased".into() }
+                    ))
+                })
+                .collect::<Vec<_>>();
+            frame.render_widget(
+                Paragraph::new(party)
+                    .block(Block::default().borders(Borders::TOP).title("YOUR PARTY")),
+                Rect::new(canvas.x, canvas.y + 25, 80, area.height - 25),
+            );
+        }
+    }
     fn body(&self) -> Vec<Line<'static>> {
         let mut lines = vec![Line::from(self.heading())];
         match self.screen {
@@ -665,6 +816,9 @@ impl App {
             )),
             Screen::SetupTrail => {
                 lines.push(Line::from("Choose Trail (Up/Down) · Left/Right era · Enter"));
+                if let Some(era) = self.game.content.eras.get(self.draft.era) {
+                    lines.push(Line::from(format!("Era: {}", era.name)));
+                }
                 lines.extend(menu(
                     &self
                         .game
@@ -676,16 +830,26 @@ impl App {
                     self.cursor,
                 ));
             }
-            Screen::SetupOccupation => lines.extend(menu(
-                &self
-                    .game
-                    .content
-                    .occupations
-                    .iter()
-                    .map(|job| job.name.as_str())
-                    .collect::<Vec<_>>(),
-                self.cursor,
-            )),
+            Screen::SetupOccupation => {
+                lines.extend(menu(
+                    &self
+                        .game
+                        .content
+                        .occupations
+                        .iter()
+                        .map(|job| job.name.as_str())
+                        .collect::<Vec<_>>(),
+                    self.cursor,
+                ));
+                if let Some(job) = self.game.content.occupations.get(self.cursor) {
+                    lines.push(Line::from(format!(
+                        "${:.0} · score ×{} · {}",
+                        job.starting_cash_cents as f64 / 100.,
+                        job.score_multiplier,
+                        job.perk
+                    )));
+                }
+            }
             Screen::SetupParty => {
                 lines.push(Line::from("Enter advances. Type a name; Esc goes back."));
                 for (index, name) in self.draft.names.iter().enumerate() {
@@ -804,7 +968,42 @@ impl App {
                     }
                 }
             }
-            Screen::Score => lines.push(Line::from(format!("Score: {}", self.game.score()))),
+            Screen::Score => {
+                lines.push(Line::from(format!(
+                    "{} · Score {} · {} days · {} miles",
+                    if matches!(self.game.status, pioneer_sim::RunStatus::Arrived) {
+                        "Arrived!"
+                    } else {
+                        "The journey has ended."
+                    },
+                    self.game.score(),
+                    self.game.day,
+                    self.game.miles
+                )));
+                for member in &self.game.party {
+                    lines.push(Line::from(format!(
+                        "{}: {}",
+                        member.name,
+                        if member.alive {
+                            format!("survived, health {}", member.health)
+                        } else {
+                            "died on the trail".into()
+                        }
+                    )));
+                }
+                if let (Some(trail), Some(era)) = (&self.game.trail_id, &self.game.era_id) {
+                    if let Ok(code) = (WorldSeed {
+                        seed: self.game.rng.seed(),
+                        trail: trail.clone(),
+                        era: era.clone(),
+                    })
+                    .code()
+                    {
+                        lines.push(Line::from(format!("Share this world: {code}")));
+                    }
+                }
+                lines.push(Line::from("Enter returns to title."));
+            }
             Screen::Hall => {
                 if self.hall.is_empty() {
                     lines.push(Line::from("No completed journeys yet."));
@@ -847,11 +1046,15 @@ pub fn run(mut app: App) -> anyhow::Result<()> {
     let guard = crate::terminal::TerminalGuard::enter()?;
     let backend = ratatui::backend::CrosstermBackend::new(std::io::stdout());
     let mut terminal = ratatui::Terminal::new(backend)?;
+    let started = std::time::Instant::now();
     while !app.should_quit() {
         terminal.draw(|frame| app.render(frame))?;
-        if let Event::Key(key) = event::read()? {
-            app.handle_key(key);
+        if event::poll(std::time::Duration::from_millis(100))? {
+            if let Event::Key(key) = event::read()? {
+                app.handle_key(key);
+            }
         }
+        app.animation_tick = (started.elapsed().as_millis() / 250) as u64;
     }
     drop(terminal);
     drop(guard);
