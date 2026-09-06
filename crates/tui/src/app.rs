@@ -146,6 +146,7 @@ impl App {
             Screen::Pace | Screen::Rations | Screen::Rest => 3,
             Screen::Treat | Screen::Party => self.game.party.len(),
             Screen::Trade => 9,
+            Screen::Hall => self.hall.len(),
             Screen::River => 5,
             Screen::Fork => self.game.current_landmark().map_or(0, |n| n.routes.len()),
             Screen::Event => self
@@ -570,6 +571,7 @@ impl App {
     }
     fn character(&mut self, character: char) {
         match (self.screen, character) {
+            (Screen::Event, 'r') => self.apply(Command::Repair),
             (Screen::Journey, 's') => self.screen = Screen::Supplies,
             (Screen::Journey, 'm') => self.screen = Screen::Map,
             (Screen::Journey, 'p') => self.screen = Screen::Pace,
@@ -856,11 +858,18 @@ impl App {
         if let Some(storage) = &self.storage {
             match storage.load_history() {
                 Ok(history) => {
-                    self.hall = history
-                        .leaders()
-                        .iter()
-                        .map(|entry| format!("{}  {} points", entry.leader, entry.score))
-                        .collect()
+                    self.hall =
+                        history
+                            .leaders()
+                            .iter()
+                            .map(|entry| {
+                                format!(
+                            "{} · {} pts · {} · {} · {} survivors\n  {} · seed {} · {} days",
+                            entry.leader, entry.score, entry.occupation, entry.era,
+                            entry.survivors, entry.trail, entry.seed, entry.days
+                        )
+                            })
+                            .collect()
                 }
                 Err(error) => self.note(format!("Could not read hall: {error}")),
             }
@@ -868,6 +877,7 @@ impl App {
             self.note("No local storage is attached.");
         }
         self.screen = Screen::Hall;
+        self.cursor = 0;
     }
     fn load_graves(&mut self) {
         let history = match self.storage.as_ref().map(Storage::load_history).transpose() {
@@ -1308,9 +1318,14 @@ impl App {
                 let wanted = &self.game.content.items[self.trade.wanted];
                 let rows = [
                     format!(
-                        "Neighbor: {} (goodwill {})",
+                        "Neighbor: {} (goodwill {}) · {}",
                         npc.map_or("No neighbors", |n| n.name.as_str()),
-                        npc.map_or(0, |n| n.reputation)
+                        npc.map_or(0, |n| n.reputation),
+                        npc.map_or("absent", |n| if self.game.npc_present(&n.id) {
+                            "nearby"
+                        } else {
+                            "away / joined"
+                        })
                     ),
                     format!(
                         "Offer: {} (own {})",
@@ -1431,6 +1446,11 @@ impl App {
             }
             Screen::Event => {
                 lines.push(Line::from("A decision is required:"));
+                if self.game.can_repair() {
+                    lines.push(Line::from(
+                        "[R] Repair with a spare or tools (one day; attempt may fail)",
+                    ));
+                }
                 if let Some(id) = &self.pending_event {
                     if let Some(event) =
                         self.game.content.events.iter().find(|event| &event.id == id)
@@ -1505,9 +1525,17 @@ impl App {
                 if self.hall.is_empty() {
                     lines.push(Line::from("No completed journeys yet."));
                 } else {
-                    for entry in &self.hall {
-                        lines.push(Line::from(entry.clone()));
+                    for (index, entry) in
+                        self.hall.iter().enumerate().skip(self.cursor.saturating_sub(2)).take(5)
+                    {
+                        for (row, text) in entry.lines().enumerate() {
+                            lines.push(Line::from(format!(
+                                "{} {text}",
+                                marker(index == self.cursor && row == 0)
+                            )));
+                        }
                     }
+                    lines.push(Line::from("↑↓ browse the top 20 · Esc title"));
                 }
             }
             Screen::Settings => lines.push(Line::from(format!(

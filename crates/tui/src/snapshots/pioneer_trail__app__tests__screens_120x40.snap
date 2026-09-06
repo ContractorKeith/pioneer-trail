@@ -595,7 +595,7 @@ expression: "all_screens(120, 40)"
 ┌PIONEER TRAIL─────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │ PIONEER TRAIL                                                                                                        │
 │ ↑↓ select · ←→ change · Enter act · Esc camp                                                                         │
-│ ► Neighbor: Holloway family (goodwill 0)                                                                             │
+│ ► Neighbor: Ruth Holloway (goodwill 0) · nearby                                                                      │
 │   Offer: Food (own 1500)                                                                                             │
 │   Offer quantity: 50                                                                                                 │
 │   Request: Clothing (neighbor has 0)                                                                                 │
@@ -888,10 +888,10 @@ expression: "all_screens(120, 40)"
 === Hall ===
 ┌PIONEER TRAIL─────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │ PIONEER TRAIL                                                                                                        │
-│ Ada  3200 points                                                                                                     │
-│ Clara  2800 points                                                                                                   │
+│ ► Ada  3200 points                                                                                                   │
+│   Clara  2800 points                                                                                                 │
+│ ↑↓ browse the top 20 · Esc title                                                                                     │
 │ Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                                                         │
-│                                                                                                                      │
 │                                                                                                                      │
 │                                                                                                                      │
 │                                                                                                                      │
