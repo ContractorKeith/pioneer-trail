@@ -11,6 +11,14 @@ description = "Dev tools for Pioneer Trail: px-preview, balance-report, event-li
 name = "event-lint"
 path = "src/event_lint.rs"
 
+[[bin]]
+name = "px-preview"
+path = "src/px_preview.rs"
+
 [dependencies]
 pioneer-data = { path = "../data" }
+pioneer-trail = { path = "../tui" }
 anyhow = { workspace = true }
+clap = { workspace = true }
+crossterm = { workspace = true }
+ratatui = { workspace = true }
