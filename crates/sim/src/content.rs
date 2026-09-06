@@ -2,11 +2,17 @@
 //!
 //! The simulation deliberately owns these types so data remains a one-way
 //! dependency: data loads content, while rules never perform file I/O.
+use crate::weather::{ClimateZone, Terrain};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct GameContent {
     pub eras: Vec<EraDefinition>,
+    #[serde(default)]
+    pub era_rules: BTreeMap<String, EraRules>,
+    #[serde(default)]
+    pub regions: BTreeMap<String, Region>,
     pub trails: Vec<TrailDefinition>,
     pub occupations: Vec<OccupationDefinition>,
     pub items: Vec<ItemDefinition>,
@@ -20,6 +26,51 @@ pub struct EraDefinition {
     pub id: String,
     pub name: String,
     pub year: i32,
+}
+
+/// Game-balance modifiers for a selected era, rather than historical price claims.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct EraRules {
+    pub price_percent: u16,
+    pub ferry_fee_percent: u16,
+    pub ferries_available: bool,
+    pub guide_cost_clothing: u32,
+    pub unavailable_stores: Vec<String>,
+    pub event_weight_percent: BTreeMap<String, u16>,
+}
+
+impl Default for EraRules {
+    fn default() -> Self {
+        Self {
+            price_percent: 100,
+            ferry_fee_percent: 100,
+            ferries_available: true,
+            guide_cost_clothing: 3,
+            unavailable_stores: Vec::new(),
+            event_weight_percent: BTreeMap::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Region {
+    pub terrain: Terrain,
+    pub climate: ClimateZone,
+}
+
+impl Region {
+    pub const fn plains() -> Self {
+        Self { terrain: Terrain::Plains, climate: ClimateZone::Temperate }
+    }
+    pub const fn hills() -> Self {
+        Self { terrain: Terrain::Hills, climate: ClimateZone::Temperate }
+    }
+    pub const fn river_valley() -> Self {
+        Self { terrain: Terrain::RiverValley, climate: ClimateZone::Temperate }
+    }
+    pub const fn forest() -> Self {
+        Self { terrain: Terrain::Forest, climate: ClimateZone::Pacific }
+    }
 }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct OccupationDefinition {

@@ -67,6 +67,13 @@ pub fn validate(content: &GameContent) -> Result<(), ContentError> {
         .flat_map(|trail| trail.nodes.iter())
         .map(|node| node.id.as_str())
         .collect::<HashSet<_>>();
+    let store_ids = content
+        .trails
+        .iter()
+        .flat_map(|trail| trail.nodes.iter())
+        .filter(|node| node.store)
+        .map(|node| node.id.as_str())
+        .collect::<HashSet<_>>();
     let produced_flags = content
         .events
         .iter()
@@ -89,6 +96,57 @@ pub fn validate(content: &GameContent) -> Result<(), ContentError> {
             _ => None,
         })
         .collect::<HashSet<_>>();
+
+    for (era_id, rules) in &content.era_rules {
+        expect(era_ids.contains(era_id.as_str()), &format!("era rules name unknown era {era_id}"))?;
+        expect(
+            (50..=200).contains(&rules.price_percent),
+            &format!("era rules {era_id} have invalid price percent"),
+        )?;
+        expect(
+            (50..=200).contains(&rules.ferry_fee_percent),
+            &format!("era rules {era_id} have invalid ferry percent"),
+        )?;
+        expect(
+            (1..=6).contains(&rules.guide_cost_clothing),
+            &format!("era rules {era_id} have invalid guide clothing cost"),
+        )?;
+        for store_id in &rules.unavailable_stores {
+            expect(
+                store_ids.contains(store_id.as_str()),
+                &format!("era rules {era_id} name unknown store {store_id}"),
+            )?;
+        }
+        for (event_id, percent) in &rules.event_weight_percent {
+            expect(
+                event_ids.contains(event_id.as_str()),
+                &format!("era rules {era_id} name unknown event {event_id}"),
+            )?;
+            expect(
+                (25..=300).contains(percent),
+                &format!("era rules {era_id} have invalid event percent"),
+            )?;
+        }
+    }
+    if !content.era_rules.is_empty() {
+        for era_id in &era_ids {
+            expect(content.era_rules.contains_key(*era_id), &format!("era {era_id} has no rules"))?;
+        }
+    }
+    for region_id in content.regions.keys() {
+        expect(
+            landmark_ids.contains(region_id.as_str()),
+            &format!("region names unknown landmark {region_id}"),
+        )?;
+    }
+    if !content.regions.is_empty() {
+        for landmark_id in &landmark_ids {
+            expect(
+                content.regions.contains_key(*landmark_id),
+                &format!("landmark {landmark_id} has no region"),
+            )?;
+        }
+    }
 
     for trail in &content.trails {
         let own_nodes = trail.nodes.iter().map(|node| node.id.as_str()).collect::<HashSet<_>>();
@@ -486,6 +544,38 @@ mod tests {
         assert!(content.ailments.len() >= 20);
         assert!(content.events.len() >= 150);
         assert!(content.quotes.len() >= 200);
+    }
+
+    #[test]
+    fn era_rules_and_regions_reject_unknown_ids_and_invalid_ranges() {
+        let content = load().unwrap();
+
+        let mut unknown_era = content.clone();
+        let rules = unknown_era.era_rules["1848"].clone();
+        unknown_era.era_rules.insert("1900".into(), rules);
+        assert!(validate(&unknown_era).unwrap_err().to_string().contains("unknown era"));
+
+        let mut missing_region = content.clone();
+        missing_region.regions.remove("independence");
+        assert!(validate(&missing_region).unwrap_err().to_string().contains("has no region"));
+
+        let mut unknown_region = content.clone();
+        let region = unknown_region.regions["independence"];
+        unknown_region.regions.insert("nowhere".into(), region);
+        assert!(validate(&unknown_region).unwrap_err().to_string().contains("unknown landmark"));
+
+        let mut invalid_price = content.clone();
+        invalid_price.era_rules.get_mut("1848").unwrap().price_percent = 49;
+        assert!(validate(&invalid_price).unwrap_err().to_string().contains("invalid price"));
+
+        let mut unknown_event = content;
+        unknown_event
+            .era_rules
+            .get_mut("1852")
+            .unwrap()
+            .event_weight_percent
+            .insert("unknown_event".into(), 100);
+        assert!(validate(&unknown_event).unwrap_err().to_string().contains("unknown event"));
     }
 
     #[test]
