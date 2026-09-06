@@ -158,6 +158,7 @@ pub enum Command {
         wanted_item: String,
         wanted_quantity: u32,
     },
+    Repair,
     Configure {
         trail_id: String,
         era_id: String,
@@ -270,18 +271,67 @@ impl GameState {
             ox_fatigue: 0,
             reputation: 0,
             markets: BTreeMap::new(),
-            npcs: vec![NpcTrain {
-                id: "emigrant_train".into(),
-                name: "Holloway family".into(),
-                reputation: 0,
-                inventory: BTreeMap::from([("food".into(), 100)]),
-                recurring: true,
-                last_reputation_day: None,
-            }],
+            npcs: vec![
+                NpcTrain {
+                    id: "emigrant_train".into(),
+                    name: "Ruth Holloway".into(),
+                    reputation: 0,
+                    inventory: BTreeMap::from([("food".into(), 100)]),
+                    recurring: true,
+                    last_reputation_day: None,
+                    first_mile: 0,
+                    last_mile: 700,
+                    period_days: 1,
+                    day_window: 1,
+                },
+                NpcTrain {
+                    id: "mercer_wagon".into(),
+                    name: "Elias Mercer".into(),
+                    reputation: 0,
+                    inventory: BTreeMap::from([("clothing".into(), 2), ("food".into(), 60)]),
+                    recurring: true,
+                    last_reputation_day: None,
+                    first_mile: 500,
+                    last_mile: 1350,
+                    period_days: 3,
+                    day_window: 2,
+                },
+                NpcTrain {
+                    id: "bird_traders".into(),
+                    name: "Nora Bird".into(),
+                    reputation: 0,
+                    inventory: BTreeMap::from([("medicine".into(), 1), ("food".into(), 40)]),
+                    recurring: true,
+                    last_reputation_day: None,
+                    first_mile: 1200,
+                    last_mile: 1850,
+                    period_days: 4,
+                    day_window: 2,
+                },
+            ],
             pending_counteroffer: None,
             active_minigame: None,
             loose_bullets: 0,
             last_fresh_food_day: None,
+        }
+    }
+    pub fn npc_present(&self, npc_id: &str) -> bool {
+        self.npcs.iter().find(|npc| npc.id == npc_id).is_some_and(|npc| {
+            npc.recurring
+                && (npc.period_days == 0
+                    || (self.miles >= npc.first_mile
+                        && self.miles <= npc.last_mile
+                        && self.day % npc.period_days < npc.day_window.max(1)))
+        })
+    }
+    fn present_npc_ids(&self) -> BTreeSet<String> {
+        self.npcs.iter().filter(|npc| self.npc_present(&npc.id)).map(|npc| npc.id.clone()).collect()
+    }
+    fn announce_npc_arrivals(&self, before: &BTreeSet<String>, out: &mut Vec<Outcome>) {
+        for npc in
+            self.npcs.iter().filter(|npc| self.npc_present(&npc.id) && !before.contains(&npc.id))
+        {
+            out.push(Outcome::Message(format!("{} draws near again.", npc.name)));
         }
     }
     pub fn apply(&mut self, c: Command) -> Vec<Outcome> {
@@ -314,7 +364,7 @@ impl GameState {
                 return Err(CommandError::InvalidPhase);
             }
         }
-        if self.pending_event.is_some() && !matches!(c, Command::Respond { .. }) {
+        if self.pending_event.is_some() && !matches!(c, Command::Respond { .. } | Command::Repair) {
             return Err(CommandError::InvalidPhase);
         }
         match c {
@@ -352,6 +402,7 @@ impl GameState {
                 &wanted_item,
                 wanted_quantity,
             ),
+            Command::Repair => self.repair(),
             Command::Configure { trail_id, era_id, occupation_id, party, departure_month } => {
                 self.configure(trail_id, era_id, occupation_id, party, departure_month)
             }
@@ -491,6 +542,7 @@ impl GameState {
     }
     fn travel(&mut self) -> Result<Vec<Outcome>, CommandError> {
         self.traveling()?;
+        let present_before = self.present_npc_ids();
         self.day += 1;
         if self.inventory.get("oxen") == 0 {
             self.status = RunStatus::Failed;
@@ -601,6 +653,7 @@ impl GameState {
         self.miles += moved;
         self.route_miles_remaining -= moved;
         out.push(Outcome::DayAdvanced { day: self.day, miles: self.miles, weather: self.weather });
+        self.announce_npc_arrivals(&present_before, &mut out);
         self.landmark(&mut out);
         if !matches!(self.status, RunStatus::Arrived | RunStatus::Failed) {
             self.due(&mut out);
@@ -780,6 +833,86 @@ impl GameState {
         self.pending_event = None;
         Ok(out)
     }
+    /// Whether the current mandatory wagon event can be addressed with a spare or a repair attempt.
+    pub fn can_repair(&self) -> bool {
+        if self.at_camp().is_err() || self.pending_wagon_part().is_none() {
+            return false;
+        }
+        let part = self.pending_wagon_part().expect("checked above");
+        self.inventory.get(&part) > 0
+            || self.occupation_id.as_deref() == Some("blacksmith")
+            || self.inventory.get("tools") > 0
+    }
+    fn pending_wagon_part(&self) -> Option<String> {
+        let event_id = self.pending_event.as_deref()?;
+        self.content
+            .events
+            .iter()
+            .find(|event| event.id == event_id)?
+            .choices
+            .iter()
+            .flat_map(|choice| &choice.effects)
+            .find_map(|effect| match effect {
+                Effect::AdjustItem { item_id, quantity }
+                    if *quantity < 0 && matches!(item_id.as_str(), "wheel" | "axle" | "tongue") =>
+                {
+                    Some(item_id.clone())
+                }
+                _ => None,
+            })
+    }
+    fn repair(&mut self) -> Result<Vec<Outcome>, CommandError> {
+        if !self.can_repair() {
+            return Err(CommandError::InvalidChoice);
+        }
+        let part = self.pending_wagon_part().expect("can_repair requires a wagon part");
+        let used_spare = self.inventory.get(&part) > 0;
+        if used_spare && !self.inventory.remove(&part, 1) {
+            return Err(CommandError::InvalidChoice);
+        }
+
+        let chance = if used_spare {
+            100
+        } else if self.occupation_id.as_deref() == Some("blacksmith") {
+            80
+        } else {
+            let best_repair = self
+                .party
+                .iter()
+                .filter(|member| member.alive)
+                .map(|member| member.skills.repair)
+                .max()
+                .unwrap_or(0);
+            (25 + u32::from(best_repair) * 8
+                + u32::from(self.occupation_id.as_deref() == Some("carpenter")) * 20)
+                .min(95)
+        };
+        let succeeded = self.rng.stream("repairs").gen_range(0..100) < chance;
+        let mut out = Vec::new();
+        self.pass_camp_day(&mut out, false);
+        if matches!(self.status, RunStatus::Arrived | RunStatus::Failed) {
+            self.pending_event = None;
+            return Ok(out);
+        }
+        if succeeded {
+            if let Some(member) = self
+                .party
+                .iter_mut()
+                .filter(|member| member.alive)
+                .max_by_key(|member| member.skills.repair)
+            {
+                member.skills.repair = member.skills.repair.saturating_add(1);
+            }
+            self.pending_event = None;
+            let source = if used_spare { "A spare" } else { "The repair" };
+            out.push(Outcome::Message(format!("{source} sets the {part} right.")));
+        } else {
+            out.push(Outcome::Message(format!(
+                "The {part} repair fails. The wagon still cannot move."
+            )));
+        }
+        Ok(out)
+    }
     fn talk(&mut self) -> Result<Vec<Outcome>, CommandError> {
         self.at_camp()?;
         let candidates: Vec<_> = self
@@ -787,15 +920,53 @@ impl GameState {
             .quotes
             .iter()
             .filter(|q| {
-                q.landmark_id.is_none()
-                    || q.landmark_id.as_deref() == self.current_node_id.as_deref()
+                (q.landmark_id.is_none()
+                    || q.landmark_id.as_deref() == self.current_node_id.as_deref())
+                    && (q.seasons.is_empty() || q.seasons.contains(&self.season()))
+                    && q.state_tags.iter().all(|tag| self.quote_tag_matches(tag))
+                    && (q.landmark_id.is_some()
+                        || !q.seasons.is_empty()
+                        || !q.state_tags.is_empty())
             })
             .collect();
-        let q = candidates.choose(self.rng.stream("quotes"));
+        let fallback: Vec<_> = self
+            .content
+            .quotes
+            .iter()
+            .filter(|q| q.landmark_id.is_none() && q.seasons.is_empty() && q.state_tags.is_empty())
+            .collect();
+        let q = candidates
+            .choose(self.rng.stream("quotes"))
+            .or_else(|| fallback.choose(self.rng.stream("quotes")));
         let Some(q) = q else {
             return Ok(vec![Outcome::Message("The camp is quiet tonight.".into())]);
         };
         Ok(vec![Outcome::Quote { quote_id: q.id.clone(), text: q.text.clone() }])
+    }
+    fn quote_tag_matches(&self, tag: &str) -> bool {
+        match tag {
+            "hungry" => {
+                self.inventory.get("food")
+                    < 3 * match self.rations {
+                        RationLevel::Filling => 3,
+                        RationLevel::Meager => 2,
+                        RationLevel::BareBones => 1,
+                    } * self.party.iter().filter(|member| member.alive).count() as u32
+            }
+            "sick" => self.party.iter().any(|member| member.alive && !member.ailments.is_empty()),
+            "wealthy" => self.cash_cents >= 80_000,
+            "late" => self.date().1 >= 9,
+            "cold" => matches!(self.weather, WeatherKind::Cold | WeatherKind::Snow),
+            "weary" => {
+                self.ox_fatigue >= 50
+                    || self.party.iter().any(|member| member.alive && member.health < 60)
+            }
+            "homesick" => self.party.iter().any(|member| member.alive && member.morale < 40),
+            "grieving" => self.party.iter().any(|member| !member.alive),
+            "hopeful" => self.party.iter().any(|member| member.alive && member.morale >= 60),
+            "thirsty" => self.weather == WeatherKind::Hot,
+            _ => false,
+        }
     }
     fn treat(&mut self, i: usize, a: &str) -> Result<Vec<Outcome>, CommandError> {
         self.at_camp()?;
@@ -1045,6 +1216,9 @@ impl GameState {
         wanted_quantity: u32,
     ) -> Result<Vec<Outcome>, CommandError> {
         self.at_camp()?;
+        if !self.npc_present(npc_id) {
+            return Err(CommandError::InvalidChoice);
+        }
         if offered_quantity == 0 || wanted_quantity == 0 || offered_item == wanted_item {
             return Err(CommandError::InvalidChoice);
         }
@@ -1075,6 +1249,9 @@ impl GameState {
     }
     fn invite_npc(&mut self, npc_id: &str) -> Result<Vec<Outcome>, CommandError> {
         self.at_camp()?;
+        if !self.npc_present(npc_id) {
+            return Err(CommandError::InvalidChoice);
+        }
         let npc = self
             .npcs
             .iter()
@@ -1092,6 +1269,12 @@ impl GameState {
         npc.recurring = false;
         let mut member = PartyMember::new(name.clone());
         member.npc_id = Some(npc_id.into());
+        member.traits.push(crate::party::Trait::Sociable);
+        member.skills.animals = 2;
+        for companion in self.party.iter_mut().filter(|companion| companion.alive) {
+            member.relationships.affinity.insert(companion.name.clone(), 5);
+            companion.relationships.affinity.insert(name.clone(), 5);
+        }
         self.party.push(member);
         Ok(vec![Outcome::Message(format!("{name} joins the party."))])
     }
@@ -1125,6 +1308,9 @@ impl GameState {
         wanted_quantity: u32,
     ) -> Result<Vec<Outcome>, CommandError> {
         self.at_camp()?;
+        if !self.npc_present(npc_id) {
+            return Err(CommandError::InvalidChoice);
+        }
         let offer = self.pending_counteroffer.clone().ok_or(CommandError::InvalidChoice)?;
         if offer.quoted_day != self.day
             || offer.npc_id != npc_id
@@ -1904,6 +2090,7 @@ impl GameState {
         if self.status == RunStatus::Failed {
             return;
         }
+        let present_before = self.present_npc_ids();
         self.day = self.day.saturating_add(1);
         let season = self.season();
         self.weather_state.advance(&mut self.rng, season);
@@ -1946,6 +2133,7 @@ impl GameState {
         if !self.party.iter().any(|member| member.alive) {
             self.status = RunStatus::Failed;
         }
+        self.announce_npc_arrivals(&present_before, out);
     }
     fn spoil_food(&mut self) {
         let rate_per_mille = match self.weather {
@@ -2159,6 +2347,55 @@ mod tests {
         let mut game = run(seed);
         let npc = game.npcs.iter_mut().find(|npc| npc.id == "emigrant_train").unwrap();
         npc.inventory.insert("clothing".into(), 4);
+        game
+    }
+    fn repair_game(seed: u64) -> GameState {
+        let mut game = run(seed);
+        game.content.items.extend([
+            ItemDefinition {
+                id: "wheel".into(),
+                name: "Wheel".into(),
+                unit: "each".into(),
+                price_cents: 1_000,
+                weight_lbs: 30,
+                limit: 3,
+            },
+            ItemDefinition {
+                id: "tools".into(),
+                name: "Tools".into(),
+                unit: "set".into(),
+                price_cents: 2_500,
+                weight_lbs: 15,
+                limit: 1,
+            },
+        ]);
+        game.content.events.push(EventDefinition {
+            id: "broken_wheel".into(),
+            text: "A wheel splits on the rocks.".into(),
+            weight: 0,
+            conditions: vec![Condition::Always],
+            effects: vec![],
+            choices: vec![EventChoice {
+                id: "spare".into(),
+                label: "Fit a spare wheel".into(),
+                conditions: vec![Condition::InventoryAtLeast {
+                    item_id: "wheel".into(),
+                    quantity: 1,
+                }],
+                effects: vec![Effect::AdjustItem { item_id: "wheel".into(), quantity: -1 }],
+            }],
+        });
+        game.pending_event = Some("broken_wheel".into());
+        game
+    }
+    fn deep_ford_game(seed: u64) -> GameState {
+        let mut game = run(seed);
+        game.content = branch_content();
+        game.current_node_id = Some("river".into());
+        game.target_node_id = None;
+        game.route_miles_remaining = 0;
+        game.status = RunStatus::AwaitingRiver("river".into());
+        game.content.trails[0].nodes[1].river.as_mut().unwrap().depth_feet = 8;
         game
     }
     fn minigame_content() -> GameContent {
@@ -2657,6 +2894,9 @@ mod tests {
         game.party[0].name = "Holloway family".into();
         game.apply(Command::InviteNpc { npc_id: "emigrant_train".into() });
         assert_eq!(game.party.iter().filter(|member| member.npc_id.is_some()).count(), 1);
+        let joined = game.party.iter().find(|member| member.npc_id.is_some()).unwrap();
+        assert!(!joined.traits.is_empty());
+        assert!(!joined.relationships.affinity.is_empty());
         assert_rejected_without_mutation(
             &mut game,
             Command::InviteNpc { npc_id: "emigrant_train".into() },
@@ -2665,6 +2905,180 @@ mod tests {
         assert_eq!(game.party.len(), 5);
         assert_eq!(game.party[0].name, "Holloway family");
         assert!(game.party.iter().all(|member| member.npc_id.is_none()));
+    }
+
+    #[test]
+    fn dialogue_tags_require_the_full_context_and_fall_back_to_generic() {
+        let mut game = run(130);
+        game.content.quotes = vec![
+            QuoteDefinition {
+                id: "hungry".into(),
+                text: "Hungry.".into(),
+                landmark_id: None,
+                seasons: vec![Season::Spring],
+                state_tags: vec!["hungry".into()],
+            },
+            QuoteDefinition {
+                id: "wrong-place".into(),
+                text: "Wrong place.".into(),
+                landmark_id: Some("willamette".into()),
+                seasons: vec![Season::Spring],
+                state_tags: vec![],
+            },
+            QuoteDefinition {
+                id: "generic".into(),
+                text: "Generic.".into(),
+                landmark_id: None,
+                seasons: vec![],
+                state_tags: vec![],
+            },
+        ];
+        game.inventory.quantities.insert("food".into(), 44);
+        assert!(
+            matches!(game.apply(Command::Talk).as_slice(), [Outcome::Quote { quote_id, .. }] if quote_id == "hungry")
+        );
+
+        game.inventory.quantities.insert("food".into(), 45);
+        assert!(
+            matches!(game.apply(Command::Talk).as_slice(), [Outcome::Quote { quote_id, .. }] if quote_id == "generic")
+        );
+
+        game.party[0].ailments.push("fever".into());
+        game.cash_cents = 80_000;
+        game.weather = WeatherKind::Cold;
+        game.ox_fatigue = 50;
+        game.party[1].morale = 30;
+        game.party[2].alive = false;
+        game.party[3].morale = 60;
+        game.day = 153;
+        assert!(["sick", "wealthy", "late", "cold", "weary", "homesick", "grieving", "hopeful"]
+            .into_iter()
+            .all(|tag| game.quote_tag_matches(tag)));
+        game.weather = WeatherKind::Hot;
+        assert!(game.quote_tag_matches("thirsty"));
+        assert!(!game.quote_tag_matches("unknown"));
+    }
+
+    #[test]
+    fn npc_schedules_recur_across_day_transitions_and_saves() {
+        let mut game = run(131);
+        let npc = game.npcs.iter_mut().find(|npc| npc.id == "emigrant_train").unwrap();
+        npc.period_days = 2;
+        npc.day_window = 1;
+        npc.last_mile = 2_040;
+        game.day = 1;
+        assert!(!game.npc_present("emigrant_train"));
+        let outcomes = game.apply(Command::Rest { days: 1 });
+        assert!(game.npc_present("emigrant_train"));
+        assert!(outcomes.iter().any(|outcome| matches!(outcome, Outcome::Message(message) if message == "Ruth Holloway draws near again.")));
+        let restored: GameState =
+            serde_json::from_str(&serde_json::to_string(&game).unwrap()).unwrap();
+        assert!(restored.npc_present("emigrant_train"));
+        assert_eq!(restored.npcs, game.npcs);
+    }
+
+    #[test]
+    fn away_npc_trades_are_rejected_without_mutation() {
+        let mut game = trade_game(132);
+        let npc = game.npcs.iter_mut().find(|npc| npc.id == "emigrant_train").unwrap();
+        npc.period_days = 2;
+        npc.day_window = 1;
+        game.day = 1;
+        assert!(!game.npc_present("emigrant_train"));
+        assert_rejected_without_mutation(
+            &mut game,
+            Command::Barter {
+                npc_id: "emigrant_train".into(),
+                offered_item: "food".into(),
+                offered_quantity: 50,
+                wanted_item: "clothing".into(),
+                wanted_quantity: 1,
+            },
+        );
+    }
+
+    #[test]
+    fn repair_uses_real_resources_and_keeps_or_clears_the_mandatory_event() {
+        let mut unavailable = repair_game(133);
+        assert!(!unavailable.can_repair());
+        assert_rejected_without_mutation(&mut unavailable, Command::Repair);
+
+        let mut spare = repair_game(134);
+        spare.inventory.add("wheel", 1);
+        let day = spare.day;
+        let food = spare.inventory.get("food");
+        let skill = spare.party.iter().map(|member| member.skills.repair).max().unwrap();
+        assert!(spare.can_repair());
+        let outcomes = spare.apply(Command::Repair);
+        assert!(outcomes.iter().any(
+            |outcome| matches!(outcome, Outcome::Message(message) if message.contains("spare"))
+        ));
+        assert_eq!(spare.day, day + 1);
+        assert_eq!(spare.inventory.get("food"), food - 15);
+        assert_eq!(spare.inventory.get("wheel"), 0);
+        assert!(spare.pending_event.is_none());
+        assert_eq!(spare.party.iter().map(|member| member.skills.repair).max().unwrap(), skill + 1);
+
+        let mut tool_success = None;
+        let mut tool_failure = None;
+        for seed in 0..200 {
+            let mut candidate = repair_game(seed);
+            candidate.inventory.add("tools", 1);
+            candidate.inventory.quantities.insert("food".into(), 0);
+            candidate.party[0].health = 50;
+            let outcomes = candidate.apply(Command::Repair);
+            if candidate.pending_event.is_none() {
+                tool_success.get_or_insert((candidate, outcomes));
+            } else {
+                tool_failure.get_or_insert((candidate, outcomes));
+            }
+            if tool_success.is_some() && tool_failure.is_some() {
+                break;
+            }
+        }
+        let (success, success_outcomes) =
+            tool_success.expect("a tool repair should succeed for a seeded run");
+        assert_eq!(success.inventory.get("wheel"), 0);
+        assert_eq!(success.inventory.get("tools"), 1);
+        assert!(success_outcomes.iter().any(|outcome| matches!(outcome, Outcome::Message(message) if message.contains("sets the wheel right"))));
+        let (failure, failure_outcomes) =
+            tool_failure.expect("a tool repair should fail for a seeded run");
+        assert_eq!(failure.day, 1);
+        assert!(failure.party[0].health < 50);
+        assert_eq!(failure.pending_event.as_deref(), Some("broken_wheel"));
+        assert!(failure_outcomes.iter().any(|outcome| matches!(outcome, Outcome::Message(message) if message.contains("repair fails"))));
+
+        let mut terminal = repair_game(135);
+        terminal.inventory.add("tools", 1);
+        terminal.inventory.quantities.insert("food".into(), 0);
+        for member in &mut terminal.party {
+            member.health = 5;
+        }
+        terminal.apply(Command::Repair);
+        assert_eq!(terminal.status, RunStatus::Failed);
+        assert!(terminal.pending_event.is_none());
+    }
+
+    #[test]
+    fn deep_fords_can_kill_but_ferries_do_not_without_illness() {
+        let ford_deaths = (0..500)
+            .filter(|seed| {
+                deep_ford_game(*seed)
+                    .apply(Command::CrossRiver { method: CrossMethod::Ford })
+                    .iter()
+                    .any(|outcome| matches!(outcome, Outcome::MemberDied { .. }))
+            })
+            .count();
+        assert!(ford_deaths > 0, "deep ford deaths={ford_deaths}");
+        let ferry_deaths = (0..500)
+            .filter(|seed| {
+                deep_ford_game(*seed)
+                    .apply(Command::CrossRiver { method: CrossMethod::Ferry })
+                    .iter()
+                    .any(|outcome| matches!(outcome, Outcome::MemberDied { .. }))
+            })
+            .count();
+        assert_eq!(ferry_deaths, 0);
     }
 
     #[test]
