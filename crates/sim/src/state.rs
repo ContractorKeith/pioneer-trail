@@ -707,11 +707,15 @@ impl GameState {
         if self.rng.stream("rivers").gen_range(0..100) < risk {
             let lost = self.inventory.take("food", 50);
             out.push(Outcome::Message(format!("The river carries away {lost} lbs of food.")));
-            if m == CrossMethod::Ford
-                && risk <= 5
-                && self.rng.stream("rivers").gen_range(0..100) < 5
-            {
-                if let Some(member) = self.party.iter_mut().find(|member| member.alive) {
+            if m == CrossMethod::Ford && self.rng.stream("rivers").gen_range(0..100) < 5 {
+                let living = self
+                    .party
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, member)| member.alive.then_some(index))
+                    .collect::<Vec<_>>();
+                if let Some(&index) = living.choose(self.rng.stream("rivers")) {
+                    let member = &mut self.party[index];
                     member.health = 0;
                     member.alive = false;
                     out.push(Outcome::MemberDied { name: member.name.clone() });
@@ -795,7 +799,8 @@ impl GameState {
     }
     fn treat(&mut self, i: usize, a: &str) -> Result<Vec<Outcome>, CommandError> {
         self.at_camp()?;
-        let doctor_present = self.occupation_id.as_deref() == Some("doctor");
+        let doctor_present =
+            self.party.iter().any(|member| member.alive && member.skills.medicine >= 4);
         let p = self.party.get_mut(i).ok_or(CommandError::InvalidChoice)?;
         if !p.alive
             || !p.ailments.iter().any(|x| x == a)
@@ -859,10 +864,42 @@ impl GameState {
         self.inventory.quantities.insert("ammunition".into(), boxes_after);
         self.loose_bullets = loose_after;
         self.inventory.add("food", added_food);
+        if added_food > 0 {
+            if let Some((index, _)) = self
+                .party
+                .iter()
+                .enumerate()
+                .filter(|(_, member)| member.alive)
+                .max_by_key(|(_, member)| member.skills.hunting)
+            {
+                self.party[index].skills.hunting =
+                    self.party[index].skills.hunting.saturating_add(1);
+            }
+        }
+        if shots > 0
+            && self.rng.stream("health").gen_range(0..100) < 1
+            && self.content.ailments.iter().any(|ailment| ailment.id == "gunshot")
+        {
+            let candidates = self
+                .party
+                .iter()
+                .enumerate()
+                .filter_map(|(index, member)| {
+                    (member.alive && !member.ailments.iter().any(|ailment| ailment == "gunshot"))
+                        .then_some(index)
+                })
+                .collect::<Vec<_>>();
+            if let Some(&index) = candidates.choose(self.rng.stream("health")) {
+                self.party[index].ailments.push("gunshot".into());
+                self.party[index].ailment_days.insert("gunshot".into(), 0);
+            }
+        }
         self.active_minigame = None;
         let mut outcomes = Vec::new();
         self.pass_camp_day(&mut outcomes, false);
-        self.last_fresh_food_day = Some(self.day);
+        if added_food > 0 {
+            self.last_fresh_food_day = Some(self.day);
+        }
         outcomes.push(Outcome::Message(format!("Brought back {added_food} lbs of food")));
         Ok(outcomes)
     }
@@ -890,8 +927,17 @@ impl GameState {
             .clone();
         self.inventory.take("food", lost);
         let mut outcomes = Vec::new();
-        for member in self.party.iter_mut().filter(|member| member.alive).take(casualties as usize)
+        let casualty_count = usize::from(casualties);
+        let living = self
+            .party
+            .iter()
+            .enumerate()
+            .filter_map(|(index, member)| member.alive.then_some(index))
+            .collect::<Vec<_>>();
+        for index in
+            living.choose_multiple(self.rng.stream("rafting"), casualty_count.min(living.len()))
         {
+            let member = &mut self.party[*index];
             member.health = 0;
             member.alive = false;
             outcomes.push(Outcome::MemberDied { name: member.name.clone() });
@@ -933,7 +979,9 @@ impl GameState {
         self.inventory.add("food", food);
         let mut outcomes = Vec::new();
         self.pass_camp_day(&mut outcomes, false);
-        self.last_fresh_food_day = Some(self.day);
+        if food > 0 {
+            self.last_fresh_food_day = Some(self.day);
+        }
         outcomes.push(Outcome::Message(format!("Foraged {food} lbs of food.")));
         Ok(outcomes)
     }
@@ -950,7 +998,9 @@ impl GameState {
         self.inventory.add("food", food);
         let mut outcomes = Vec::new();
         self.pass_camp_day(&mut outcomes, false);
-        self.last_fresh_food_day = Some(self.day);
+        if food > 0 {
+            self.last_fresh_food_day = Some(self.day);
+        }
         outcomes.push(Outcome::Message(format!("Caught {food} lbs of fish.")));
         Ok(outcomes)
     }
@@ -1262,18 +1312,7 @@ impl GameState {
         Ok(())
     }
     pub fn score(&self) -> u32 {
-        let mul = self
-            .content
-            .occupations
-            .iter()
-            .find(|x| Some(&x.id) == self.occupation_id.as_ref())
-            .map_or(1.0, |x| x.score_multiplier);
-        score::calculate(
-            &self.party,
-            self.cash_cents,
-            &self.inventory.quantities.iter().map(|(a, b)| (a.clone(), *b)).collect::<Vec<_>>(),
-            mul,
-        )
+        score::breakdown(self).total
     }
     pub fn current_landmark(&self) -> Option<&LandmarkDefinition> {
         self.node().ok()
@@ -1815,14 +1854,18 @@ impl GameState {
                     Difficulty::Normal => 100,
                     Difficulty::Hard => 125,
                 };
-                let mut mortality =
-                    definition.mortality_per_mille.saturating_mul(difficulty_multiplier) / 100;
-                if self.occupation_id.as_deref() == Some("doctor") {
+                let mut mortality = (u32::from(definition.mortality_per_mille)
+                    .saturating_mul(difficulty_multiplier)
+                    / 100)
+                    .min(1_000) as u16;
+                if self.party.iter().any(|member| member.alive && member.skills.medicine >= 4) {
                     mortality /= 2;
                 }
-                mortality = mortality
-                    .saturating_sub(trait_modifier.max(0) as u16)
-                    .saturating_add((-trait_modifier.min(0)) as u16);
+                if mortality < 1_000 {
+                    mortality = mortality
+                        .saturating_sub(trait_modifier.max(0) as u16)
+                        .saturating_add((-trait_modifier.min(0)) as u16);
+                }
                 if matches!(
                     crate::health::stage(days, definition.severity),
                     crate::health::AilmentStage::Acute
@@ -1916,12 +1959,17 @@ impl GameState {
         }
     }
     fn party_daily(&mut self, out: &mut Vec<Outcome>, resting: bool, filling: bool) {
-        let varied_food =
-            self.last_fresh_food_day.is_some_and(|day| self.day.saturating_sub(day) <= 3);
+        let varied_food = self.has_fresh_food();
         out.extend(
-            crate::party::daily(&mut self.party, resting, filling, varied_food, &mut self.rng)
-                .into_iter()
-                .map(Outcome::Message),
+            crate::party::daily(
+                &mut self.party,
+                resting,
+                filling && self.rations == RationLevel::Filling,
+                varied_food,
+                &mut self.rng,
+            )
+            .into_iter()
+            .map(Outcome::Message),
         );
     }
     fn ailment_damage(&self, member: &PartyMember) -> u8 {
@@ -1941,6 +1989,9 @@ impl GameState {
                 })
             })
             .fold(0u8, u8::saturating_add);
+        if damage == 0 {
+            return 0;
+        }
         match self.difficulty {
             Difficulty::Easy => damage.saturating_sub(1),
             Difficulty::Normal => damage,
@@ -1958,11 +2009,17 @@ impl GameState {
             >= self.party.iter().filter(|member| member.alive).count() as u32;
         let chance = if protected { 1 } else { 5 };
         if self.rng.stream("health").gen_range(0..100) < chance {
-            if let Some(member) = self
+            let candidates = self
                 .party
-                .iter_mut()
-                .find(|member| member.alive && !member.ailments.iter().any(|id| id == ailment))
-            {
+                .iter()
+                .enumerate()
+                .filter_map(|(index, member)| {
+                    (member.alive && !member.ailments.iter().any(|id| id == ailment))
+                        .then_some(index)
+                })
+                .collect::<Vec<_>>();
+            if let Some(&index) = candidates.choose(self.rng.stream("health")) {
+                let member = &mut self.party[index];
                 if self.content.ailments.iter().any(|definition| definition.id == ailment) {
                     member.ailments.push(ailment.into());
                     member.ailment_days.insert(ailment.into(), 0);
@@ -1979,12 +2036,19 @@ impl GameState {
         }
     }
     pub fn terrain(&self) -> Terrain {
-        match self.current_node_id.as_deref().unwrap_or_default() {
+        let node_id = if self.status == RunStatus::Travelling {
+            self.target_node_id.as_deref().or(self.current_node_id.as_deref())
+        } else {
+            self.current_node_id.as_deref()
+        }
+        .unwrap_or_default();
+        match node_id {
             id if id.contains("sierra") || id.contains("mountain") || id.contains("pass") => {
                 Terrain::Mountains
             }
             "salt_desert" | "humboldt" => Terrain::Desert,
             "willamette" | "barlow" => Terrain::Forest,
+            "chimney_rock" | "independence_rock" => Terrain::Hills,
             id if id.contains("river") => Terrain::RiverValley,
             _ => Terrain::Plains,
         }
@@ -2634,11 +2698,14 @@ mod tests {
         game.inventory.quantities.insert("food".into(), 2_000);
         assert!(matches!(game.apply(Command::Forage).as_slice(), outcomes
             if outcomes.iter().any(|outcome| matches!(outcome, Outcome::Message(message) if message == "Foraged 0 lbs of food."))));
+        assert!(game.last_fresh_food_day.is_none());
         game.content.items.iter_mut().find(|item| item.id == "food").unwrap().limit = 5_000;
         game.inventory.quantities.insert("food".into(), 2_400);
         game.current_node_id = Some("river".into());
+        game.target_node_id = Some("river".into());
         assert!(matches!(game.apply(Command::Fish).as_slice(), outcomes
             if outcomes.iter().any(|outcome| matches!(outcome, Outcome::Message(message) if message == "Caught 0 lbs of fish."))));
+        assert!(game.last_fresh_food_day.is_none());
     }
 
     #[test]
@@ -2668,6 +2735,25 @@ mod tests {
             .filter(|outcome| matches!(outcome, Outcome::MemberDied { name } if name == "Ada"))
             .count();
         assert_eq!(deaths, 1);
+    }
+
+    #[test]
+    fn full_mortality_remains_certain_on_normal_and_hard() {
+        for difficulty in [Difficulty::Normal, Difficulty::Hard] {
+            let mut game = run(161);
+            game.difficulty = difficulty;
+            game.content.ailments = vec![AilmentDefinition {
+                id: "fatal".into(),
+                name: "Fatal".into(),
+                severity: 2,
+                daily_damage: 0,
+                mortality_per_mille: 1_000,
+            }];
+            game.party[0].ailments = vec!["fatal".into()];
+            game.party[0].ailment_days.insert("fatal".into(), 1);
+            game.progress_ailments(&mut Vec::new());
+            assert!(!game.party[0].alive);
+        }
     }
 
     #[test]
@@ -2753,7 +2839,10 @@ mod tests {
         assert_eq!(game.status, RunStatus::AwaitingFork("the_dalles".into()));
         assert_eq!(game.day, day + 1);
         assert_eq!(game.inventory.get("food"), 0);
-        assert!(!game.party[0].alive && game.party[0].health == 0);
+        assert_eq!(
+            game.party.iter().filter(|member| !member.alive && member.health == 0).count(),
+            1
+        );
         game.apply(Command::ChooseRoute { route_id: "columbia".into() });
         game.apply(Command::RaftResult { cargo_lost_lbs: 0, casualties: 0, completed: true });
         assert_eq!(game.status, RunStatus::Arrived);
@@ -2808,10 +2897,13 @@ mod tests {
         game.active_minigame.as_mut().unwrap().ammo_available = 1;
         assert_eq!(game.validate(), Err(CommandError::InvalidSetup));
         game.current_node_id = Some("sierra".into());
+        game.target_node_id = Some("sierra".into());
         assert_eq!(game.terrain(), Terrain::Mountains);
         game.current_node_id = Some("salt_desert".into());
+        game.target_node_id = Some("salt_desert".into());
         assert_eq!(game.terrain(), Terrain::Desert);
         game.current_node_id = Some("willamette".into());
+        game.target_node_id = Some("willamette".into());
         assert_eq!(game.terrain(), Terrain::Forest);
     }
 
@@ -2846,6 +2938,7 @@ mod tests {
     #[test]
     fn restricted_occupations_and_eras_reject_without_mutation() {
         let mut soldier = modifier_game(24, "farmer", "1848");
+        soldier.status = RunStatus::Setup;
         assert_rejected_without_mutation(
             &mut soldier,
             Command::Configure {
