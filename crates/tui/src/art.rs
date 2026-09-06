@@ -304,6 +304,52 @@ pub fn render(image: &PxImage, buffer: &mut Buffer, area: Rect, mode: ColorMode)
     }
 }
 
+/// Renders a vertical cell slice of an image. This keeps short scene vignettes
+/// focused on their ground-level action rather than an empty stretch of sky.
+pub fn render_section(
+    image: &PxImage,
+    buffer: &mut Buffer,
+    area: Rect,
+    source_y: u16,
+    mode: ColorMode,
+) {
+    let bounds = area.intersection(buffer.area);
+    let source_x = bounds.x.saturating_sub(area.x);
+    let source_y = source_y.saturating_add(bounds.y.saturating_sub(area.y));
+    let columns = image.width.saturating_sub(source_x).min(bounds.width);
+    let rows = image.cell_height().saturating_sub(source_y).min(bounds.height);
+    for y in 0..rows {
+        for x in 0..columns {
+            let top = image.pixel(source_x + x, (source_y + y) * 2);
+            let bottom = image.pixel(source_x + x, (source_y + y) * 2 + 1);
+            let cell =
+                buffer.cell_mut((bounds.x + x, bounds.y + y)).expect("clipped to buffer bounds");
+            if mode == ColorMode::Mono {
+                let glyph = match (top, bottom) {
+                    (None, None) => continue,
+                    (Some(top), Some(bottom)) => {
+                        ColorMode::mono_glyph(if mono_level(top) >= mono_level(bottom) {
+                            top
+                        } else {
+                            bottom
+                        })
+                    }
+                    (Some(pixel), None) | (None, Some(pixel)) => ColorMode::mono_glyph(pixel),
+                };
+                cell.set_symbol(glyph).set_fg(Color::White).set_bg(Color::Black);
+                continue;
+            }
+            if top.is_none() && bottom.is_none() {
+                continue;
+            }
+            let (old_top, old_bottom) = cell_halves(cell.symbol(), cell.fg, cell.bg);
+            cell.set_symbol("▀")
+                .set_fg(top.map(|pixel| mode.color(pixel)).unwrap_or(old_top))
+                .set_bg(bottom.map(|pixel| mode.color(pixel)).unwrap_or(old_bottom));
+        }
+    }
+}
+
 /// Recovers the colors represented by the renderer's half-block cell. Unknown
 /// terminal glyphs are treated as a solid foreground color.
 fn cell_halves(symbol: &str, fg: Color, bg: Color) -> (Color, Color) {
@@ -393,6 +439,15 @@ mod tests {
         render(&image, &mut buffer, Rect::new(1, 0, 2, 1), ColorMode::Ansi256);
         let cell = buffer.cell((2, 0)).unwrap();
         assert_eq!((cell.fg, cell.bg), (Color::Indexed(202), Color::Indexed(40)));
+    }
+
+    #[test]
+    fn section_starts_at_the_requested_cell_row() {
+        let image = PxImage::parse("W\nW\nO\nO\n").unwrap();
+        let mut buffer = Buffer::empty(Rect::new(0, 0, 1, 1));
+        render_section(&image, &mut buffer, Rect::new(0, 0, 1, 1), 1, ColorMode::Ansi256);
+        let cell = buffer.cell((0, 0)).unwrap();
+        assert_eq!((cell.fg, cell.bg), (Color::Indexed(202), Color::Indexed(202)));
     }
 
     #[test]
