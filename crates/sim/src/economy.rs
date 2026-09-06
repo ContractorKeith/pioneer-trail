@@ -33,9 +33,33 @@ pub struct NpcTrain {
     pub reputation: i16,
     pub inventory: BTreeMap<String, u32>,
     pub recurring: bool,
+    /// The day on which this train last improved the party's reputation.
+    /// This prevents repeating the same interaction from becoming a reputation faucet.
+    #[serde(default)]
+    pub last_reputation_day: Option<u32>,
 }
 impl NpcTrain {
-    pub fn accepts(&self, offered: u32, wanted: u32, reputation: i16) -> bool {
-        i64::from(offered) + i64::from(reputation.max(0)) / 10 >= i64::from(wanted)
+    pub fn accepts(
+        &self,
+        offered_value_cents: u64,
+        wanted_value_cents: u64,
+        reputation: i16,
+    ) -> bool {
+        let goodwill_discount = u64::try_from(reputation.max(0)).unwrap_or(0).min(25);
+        u128::from(offered_value_cents) * u128::from(100 + goodwill_discount)
+            >= u128::from(wanted_value_cents) * 100
     }
+}
+
+/// A trade the NPC has priced and left open for explicit confirmation.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Counteroffer {
+    pub npc_id: String,
+    pub offered_item: String,
+    pub offered_quantity: u32,
+    pub wanted_item: String,
+    pub wanted_quantity: u32,
+    pub offered_value_cents: u64,
+    pub wanted_value_cents: u64,
+    pub quoted_day: u32,
 }

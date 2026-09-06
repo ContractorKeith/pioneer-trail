@@ -5,6 +5,9 @@ use std::collections::BTreeMap;
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PartyMember {
     pub name: String,
+    /// `None` identifies an original party member. Joined NPCs retain their stable train id.
+    #[serde(default)]
+    pub npc_id: Option<String>,
     pub health: u8,
     pub morale: i16,
     pub ailments: Vec<String>,
@@ -43,6 +46,7 @@ impl PartyMember {
     pub fn new(name: String) -> Self {
         Self {
             name,
+            npc_id: None,
             health: 100,
             morale: 50,
             ailments: Vec::new(),
