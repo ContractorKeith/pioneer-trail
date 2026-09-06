@@ -656,6 +656,7 @@ dependencies = [
  "insta",
  "pioneer-data",
  "pioneer-sim",
+ "rand 0.8.8",
  "ratatui",
  "ron",
  "serde",
