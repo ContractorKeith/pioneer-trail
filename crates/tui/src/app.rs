@@ -1,10 +1,11 @@
 use crate::{
     input::{decode, Input},
-    persist::{new_run_id, Settings, Storage},
+    persist::{new_run_id, RunRecord, Settings, Storage},
     screens::Screen,
+    seed::WorldSeed,
 };
-use crossterm::event::KeyEvent;
 use crossterm::event::{self, Event};
+use crossterm::event::{KeyCode, KeyEvent};
 use pioneer_sim::{Command, CrossMethod, GameContent, GameState, Outcome, Pace, RationLevel};
 use ratatui::{
     prelude::*,
@@ -18,6 +19,7 @@ struct SetupDraft {
     era: usize,
     occupation: usize,
     names: [String; 5],
+    edited: [bool; 5],
     month: u8,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -38,6 +40,7 @@ impl Default for SetupDraft {
                 "Traveler 4".into(),
                 "Traveler 5".into(),
             ],
+            edited: [false; 5],
             month: 4,
         }
     }
@@ -56,6 +59,9 @@ pub struct App {
     run_id: String,
     hall: Vec<String>,
     minigame_request: Option<MinigameRequest>,
+    store_quantity: u32,
+    seed_text: String,
+    recorded: bool,
 }
 impl App {
     pub fn new(content: GameContent, seed: u64, settings: Settings) -> Self {
@@ -72,6 +78,9 @@ impl App {
             run_id: new_run_id(),
             hall: Vec::new(),
             minigame_request: None,
+            store_quantity: 1,
+            seed_text: String::new(),
+            recorded: false,
         }
     }
     pub fn with_storage(mut self, storage: Storage) -> Self {
@@ -86,6 +95,36 @@ impl App {
         self.minigame_request.take()
     }
     pub fn handle_key(&mut self, key: KeyEvent) {
+        if self.screen == Screen::SetupParty && self.cursor < 5 {
+            match key.code {
+                KeyCode::Backspace | KeyCode::Delete => {
+                    self.draft.names[self.cursor].pop();
+                    return;
+                }
+                KeyCode::Char(c) if !c.is_control() && self.draft.names[self.cursor].len() < 24 => {
+                    if !self.draft.edited[self.cursor] {
+                        self.draft.names[self.cursor].clear();
+                        self.draft.edited[self.cursor] = true;
+                    }
+                    self.draft.names[self.cursor].push(c);
+                    return;
+                }
+                _ => {}
+            }
+        }
+        if self.screen == Screen::Seed {
+            match key.code {
+                KeyCode::Backspace => {
+                    self.seed_text.pop();
+                    return;
+                }
+                KeyCode::Char(c) if !c.is_control() => {
+                    self.seed_text.push(c);
+                    return;
+                }
+                _ => {}
+            }
+        }
         match decode(key) {
             Input::Quit => self.quit = true,
             Input::Up => self.cursor = self.cursor.saturating_sub(1),
@@ -106,6 +145,11 @@ impl App {
         match self.screen {
             Screen::Title => match self.cursor % 6 {
                 0 => {
+                    self.game =
+                        GameState::with_content(self.game.rng.seed(), self.game.content.clone());
+                    self.run_id = new_run_id();
+                    self.draft = SetupDraft::default();
+                    self.recorded = false;
                     self.screen = Screen::SetupTrail;
                     self.cursor = 0;
                 }
@@ -155,16 +199,18 @@ impl App {
                     party: self.draft.names.to_vec(),
                     departure_month: self.draft.month,
                 });
-                self.screen = Screen::Store;
                 self.cursor = 0;
             }
             Screen::Store => {
                 if self.cursor < self.game.content.items.len() {
                     let id = self.game.content.items[self.cursor].id.clone();
-                    self.apply(Command::Buy { item_id: id, quantity: 1 });
+                    self.apply(Command::Buy { item_id: id, quantity: self.store_quantity });
                 } else {
-                    self.apply(Command::Depart);
-                    self.screen = Screen::Journey;
+                    if matches!(self.game.status, pioneer_sim::RunStatus::Outfitting) {
+                        self.apply(Command::Depart);
+                    } else {
+                        self.apply(Command::Continue);
+                    }
                 }
             }
             Screen::Journey => match self.cursor % 9 {
@@ -190,27 +236,31 @@ impl App {
             Screen::Pace => {
                 let pace = [Pace::Steady, Pace::Strenuous, Pace::Grueling][self.cursor % 3];
                 self.apply(Command::SetPace(pace));
-                self.screen = Screen::Journey;
             }
             Screen::Rations => {
                 let rations = [RationLevel::Filling, RationLevel::Meager, RationLevel::BareBones]
                     [self.cursor % 3];
                 self.apply(Command::SetRations(rations));
-                self.screen = Screen::Journey;
             }
             Screen::Rest => {
                 self.apply(Command::Rest { days: (self.cursor + 1) as u32 });
-                self.screen = Screen::Journey;
             }
             Screen::Talk => {
                 self.apply(Command::Talk);
-                self.screen = Screen::Journey;
+            }
+            Screen::Treat => {
+                if let Some((member_index, ailment_id)) =
+                    self.game.party.iter().enumerate().find_map(|(index, member)| {
+                        member.ailments.first().map(|ailment| (index, ailment.clone()))
+                    })
+                {
+                    self.apply(Command::Treat { member_index, ailment_id });
+                }
             }
             Screen::Fork => {
                 if let Some(node) = self.game.current_landmark() {
                     if let Some(route) = node.routes.get(self.cursor % node.routes.len().max(1)) {
                         self.apply(Command::ChooseRoute { route_id: route.id.clone() });
-                        self.screen = Screen::Journey;
                     }
                 }
             }
@@ -223,9 +273,6 @@ impl App {
                     CrossMethod::Guide,
                 ][self.cursor % 5];
                 self.apply(Command::CrossRiver { method });
-                if !matches!(method, CrossMethod::Wait) {
-                    self.screen = Screen::Journey;
-                }
             }
             Screen::Event => {
                 if let Some(id) = self.pending_event.clone() {
@@ -240,18 +287,37 @@ impl App {
                                 choice_id: choice.id.clone(),
                             });
                             self.pending_event = None;
-                            self.screen = Screen::Journey;
                         }
                     }
                 }
             }
+            Screen::Seed => match WorldSeed::parse(&self.seed_text) {
+                Ok(world) => {
+                    self.game = GameState::with_content(world.seed, self.game.content.clone());
+                    if let Some(index) =
+                        self.game.content.trails.iter().position(|trail| trail.id == world.trail)
+                    {
+                        self.draft.trail = index;
+                    }
+                    if let Some(index) =
+                        self.game.content.eras.iter().position(|era| era.id == world.era)
+                    {
+                        self.draft.era = index;
+                    }
+                    self.draft = SetupDraft {
+                        trail: self.draft.trail,
+                        era: self.draft.era,
+                        ..SetupDraft::default()
+                    };
+                    self.screen = Screen::SetupTrail;
+                }
+                Err(error) => self.note(error.to_string()),
+            },
             Screen::Score
             | Screen::Hall
             | Screen::Settings
-            | Screen::Seed
             | Screen::Supplies
             | Screen::Map
-            | Screen::Treat
             | Screen::Minigame => self.back(),
         }
     }
@@ -263,9 +329,13 @@ impl App {
             Screen::SetupDeparture => {
                 self.draft.month = cycle(usize::from(self.draft.month - 3), 5, delta) as u8 + 3
             }
-            Screen::Store if self.cursor < self.game.content.items.len() && delta > 0 => {
-                let id = self.game.content.items[self.cursor].id.clone();
-                self.apply(Command::Buy { item_id: id, quantity: 1 });
+            Screen::Store if self.cursor < self.game.content.items.len() => {
+                let step = if self.game.content.items[self.cursor].id == "food" { 100 } else { 1 };
+                self.store_quantity = if delta > 0 {
+                    self.store_quantity.saturating_add(step)
+                } else {
+                    self.store_quantity.saturating_sub(step).max(1)
+                };
             }
             _ => {}
         }
@@ -278,14 +348,33 @@ impl App {
             (Screen::Journey, 'r') => self.screen = Screen::Rations,
             (Screen::Journey, 'x') => self.screen = Screen::Rest,
             (Screen::Journey, 't') => self.screen = Screen::Talk,
+            (Screen::Journey, 'i') => self.screen = Screen::Treat,
             (Screen::Journey, 'b') if self.game.can_shop() => self.screen = Screen::Store,
-            (Screen::SetupParty, c) if self.cursor < 5 && !c.is_control() => {
-                self.draft.names[self.cursor].push(c)
+            (Screen::Settings, 'c') => {
+                self.settings.color = match self.settings.color {
+                    crate::persist::ColorMode::Truecolor => crate::persist::ColorMode::Indexed,
+                    crate::persist::ColorMode::Indexed => crate::persist::ColorMode::Basic,
+                    crate::persist::ColorMode::Basic => crate::persist::ColorMode::Mono,
+                    crate::persist::ColorMode::Mono => crate::persist::ColorMode::Truecolor,
+                };
+                self.save_settings();
+            }
+            (Screen::Settings, 'b') => {
+                self.settings.bell = !self.settings.bell;
+                self.save_settings();
+            }
+            (Screen::Settings, 'a') => {
+                self.settings.no_art = !self.settings.no_art;
+                self.save_settings();
             }
             _ => {}
         }
     }
     fn back(&mut self) {
+        if matches!(self.screen, Screen::Fork | Screen::River | Screen::Event) {
+            self.note("A decision is required before continuing.");
+            return;
+        }
         self.cursor = 0;
         self.screen = match self.screen {
             Screen::Title => {
@@ -314,6 +403,30 @@ impl App {
             self.outcome(outcome);
         }
         self.autosave();
+        self.sync_screen();
+    }
+    fn sync_screen(&mut self) {
+        if self.game.pending_event.is_some() {
+            self.pending_event = self.game.pending_event.clone();
+            self.screen = Screen::Event;
+            return;
+        }
+        self.screen = match self.game.status {
+            pioneer_sim::RunStatus::Setup => Screen::SetupTrail,
+            pioneer_sim::RunStatus::Outfitting => Screen::Store,
+            pioneer_sim::RunStatus::Travelling | pioneer_sim::RunStatus::AtLandmark(_) => {
+                Screen::Journey
+            }
+            pioneer_sim::RunStatus::AwaitingFork(_) => Screen::Fork,
+            pioneer_sim::RunStatus::AwaitingRiver(_) => Screen::River,
+            pioneer_sim::RunStatus::Arrived | pioneer_sim::RunStatus::Failed => Screen::Score,
+        };
+        if matches!(
+            self.game.status,
+            pioneer_sim::RunStatus::Arrived | pioneer_sim::RunStatus::Failed
+        ) {
+            self.record_run();
+        }
     }
     fn outcome(&mut self, outcome: Outcome) {
         match outcome {
@@ -343,6 +456,13 @@ impl App {
         if let Some(storage) = &self.storage {
             if let Err(error) = storage.save_session(&self.run_id, &self.game) {
                 self.note(format!("Save failed: {error}"));
+            }
+        }
+    }
+    fn save_settings(&mut self) {
+        if let Some(storage) = &self.storage {
+            if let Err(error) = storage.save_settings(&self.settings) {
+                self.note(format!("Settings save failed: {error}"));
             }
         }
     }
@@ -381,6 +501,42 @@ impl App {
             self.note("No local storage is attached.");
         }
         self.screen = Screen::Hall;
+    }
+    fn record_run(&mut self) {
+        if self.recorded {
+            return;
+        }
+        if let Some(storage) = &self.storage {
+            let arrived = matches!(self.game.status, pioneer_sim::RunStatus::Arrived);
+            let record = RunRecord {
+                run_id: self.run_id.clone(),
+                leader: self
+                    .game
+                    .party
+                    .first()
+                    .map_or_else(|| "Unknown".into(), |member| member.name.clone()),
+                seed: self.game.rng.seed(),
+                trail: self.game.trail_id.clone().unwrap_or_default(),
+                era: self
+                    .game
+                    .era_id
+                    .as_deref()
+                    .and_then(|era| era.parse().ok())
+                    .unwrap_or_default(),
+                occupation: self.game.occupation_id.clone().unwrap_or_default(),
+                score: self.game.score(),
+                survivors: self.game.party.iter().filter(|member| member.alive).count(),
+                days: self.game.day,
+                miles: self.game.miles,
+                arrived,
+                epitaph: String::new(),
+                cause: if arrived { "Arrived".into() } else { "Trail ended".into() },
+            };
+            match storage.record_run(record) {
+                Ok(_) => self.recorded = true,
+                Err(error) => self.note(format!("Hall save failed: {error}")),
+            }
+        }
     }
     pub fn render(&mut self, frame: &mut Frame) {
         let area = frame.area();
@@ -460,8 +616,14 @@ impl App {
                     )));
                 }
                 lines.push(Line::from(format!(
-                    "{} Depart  Cash ${:.2}  Weight {} lb",
+                    "{} {}  Qty {} [←/→]  Cash ${:.2}  Weight {} lb",
                     marker(self.cursor >= self.game.content.items.len()),
+                    if matches!(self.game.status, pioneer_sim::RunStatus::Outfitting) {
+                        "Depart"
+                    } else {
+                        "Leave"
+                    },
+                    self.store_quantity,
                     self.game.cash_cents as f64 / 100.0,
                     self.game.weight()
                 )));
@@ -487,10 +649,32 @@ impl App {
                     lines.push(Line::from(format!("{id}: {quantity}")));
                 }
             }
-            Screen::Map => lines.push(Line::from(format!(
-                "Position: {} miles. Next landmark is shown on arrival.",
-                self.game.miles
-            ))),
+            Screen::Map => {
+                lines.push(Line::from(format!(
+                    "Position: {} miles · destination {:?} · {} miles remaining",
+                    self.game.miles, self.game.target_node_id, self.game.route_miles_remaining
+                )));
+                if let Some(trail) = self
+                    .game
+                    .content
+                    .trails
+                    .iter()
+                    .find(|trail| Some(&trail.id) == self.game.trail_id.as_ref())
+                {
+                    for node in &trail.nodes {
+                        lines.push(Line::from(format!(
+                                        "{} {}: {} miles",
+                            if Some(&node.id) == self.game.current_node_id.as_ref() {
+                                "►"
+                            } else {
+                                " "
+                            },
+                            node.name,
+                            node.mile
+                        )));
+                    }
+                }
+            }
             Screen::Pace => lines.extend(menu(&["Steady", "Strenuous", "Grueling"], self.cursor)),
             Screen::Rations => {
                 lines.extend(menu(&["Filling", "Meager", "Bare Bones"], self.cursor))
@@ -538,12 +722,21 @@ impl App {
                     }
                 }
             }
-            Screen::Settings => {
-                lines.push(Line::from("Settings are saved by the application host."))
-            }
-            Screen::Seed => lines.push(Line::from(format!("Seed: {}", self.game.rng.seed()))),
+            Screen::Settings => lines.push(Line::from(format!(
+                "[C]olor {:?}  [B]ell {}  [A]rt text-only {}",
+                self.settings.color, self.settings.bell, self.settings.no_art
+            ))),
+            Screen::Seed => lines.push(Line::from(format!("Enter world code: {}", self.seed_text))),
             Screen::Treat => {
-                lines.push(Line::from("Treatment is available when a party member is ill."))
+                for (index, member) in self.game.party.iter().enumerate() {
+                    lines.push(Line::from(format!(
+                        "{} {}: {:?}",
+                        marker(index == self.cursor),
+                        member.name,
+                        member.ailments
+                    )));
+                }
+                lines.push(Line::from("Enter treats the first listed ailment."));
             }
             Screen::Minigame => {
                 lines.push(Line::from("A real-time trail action has been requested."))
@@ -664,5 +857,22 @@ mod tests {
         let mut app = App::new(GameContent::starter(), 1, Settings::default());
         app.handle_key(KeyEvent::from(crossterm::event::KeyCode::Enter));
         assert_eq!(app.screen, Screen::SetupTrail);
+    }
+    #[test]
+    fn party_name_input_keeps_navigation_letters_and_spaces() {
+        let mut app = App::new(GameContent::starter(), 1, Settings::default());
+        app.screen = Screen::SetupParty;
+        for key in ['h', 'j', 'k', 'l', ' ', '7'] { app.handle_key(KeyEvent::from(KeyCode::Char(key))); }
+        assert_eq!(app.draft.names[0], "hjkl 7");
+        app.handle_key(KeyEvent::from(KeyCode::Backspace));
+        assert_eq!(app.draft.names[0], "hjkl ");
+    }
+    #[test]
+    fn store_quantity_can_buy_bulk_food() {
+        let mut app = App::new(GameContent::starter(), 2, Settings::default());
+        app.apply(Command::Configure { trail_id: "oregon".into(), era_id: "1848".into(), occupation_id: "farmer".into(), party: vec!["A".into(), "B".into(), "C".into(), "D".into(), "E".into()], departure_month: 4 });
+        app.screen = Screen::Store; app.cursor = 1; app.store_quantity = 2_000; app.select();
+        assert_eq!(app.game.inventory.get("food"), 2_000);
+        assert_eq!(app.screen, Screen::Store);
     }
 }

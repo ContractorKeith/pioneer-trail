@@ -140,7 +140,7 @@ expression: "all_screens(80, 24)"
 │   Food  $0.20  owned 0                                                       │
 │   Clothing  $10.00  owned 0                                                  │
 │   Medicine  $15.00  owned 0                                                  │
-│   Depart  Cash $0.00  Weight 0 lb                                            │
+│   Leave  Qty 1 [←/→]  Cash $0.00  Weight 0 lb                                │
 │ Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                 │
 │                                                                              │
 │                                                                              │
@@ -214,7 +214,7 @@ expression: "all_screens(80, 24)"
 === Map ===
 ┌PIONEER TRAIL─────────────────────────────────────────────────────────────────┐
 │ PIONEER TRAIL                                                                │
-│ Position: 0 miles. Next landmark is shown on arrival.                        │
+│ Position: 0 miles · destination None · 0 miles remaining                     │
 │ Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                 │
 │                                                                              │
 │                                                                              │
@@ -344,7 +344,7 @@ expression: "all_screens(80, 24)"
 === Treat ===
 ┌PIONEER TRAIL─────────────────────────────────────────────────────────────────┐
 │ PIONEER TRAIL                                                                │
-│ Treatment is available when a party member is ill.                           │
+│ Enter treats the first listed ailment.                                       │
 │ Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                 │
 │                                                                              │
 │                                                                              │
@@ -500,7 +500,7 @@ expression: "all_screens(80, 24)"
 === Settings ===
 ┌PIONEER TRAIL─────────────────────────────────────────────────────────────────┐
 │ PIONEER TRAIL                                                                │
-│ Settings are saved by the application host.                                  │
+│ [C]olor Truecolor  [B]ell false  [A]rt text-only false                       │
 │ Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                 │
 │                                                                              │
 │                                                                              │
@@ -526,7 +526,7 @@ expression: "all_screens(80, 24)"
 === Seed ===
 ┌PIONEER TRAIL─────────────────────────────────────────────────────────────────┐
 │ PIONEER TRAIL                                                                │
-│ Seed: 7                                                                      │
+│ Enter world code:                                                            │
 │ Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                 │
 │                                                                              │
 │                                                                              │
