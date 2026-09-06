@@ -1,4 +1,7 @@
-use crate::{health::PartyMember, rng::SimRng};
+use crate::{
+    health::{PartyMember, Sex},
+    rng::SimRng,
+};
 use rand::{seq::SliceRandom, Rng};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -81,6 +84,7 @@ pub fn initialize(party: &mut [PartyMember], occupation: &str, rng: &mut SimRng)
 
     for (index, member) in party.iter_mut().enumerate() {
         member.age = rng.stream("party-profile").gen_range(18..=65);
+        member.sex = if rng.stream("family").gen_bool(0.5) { Sex::Female } else { Sex::Male };
         member.traits =
             if index == 0 { leader_traits.to_vec() } else { next_pair(&mut available, rng) };
         member.skills = Skills::default();

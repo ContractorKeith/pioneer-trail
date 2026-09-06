@@ -3,7 +3,8 @@ use crate::{
     calendar::CalendarDate,
     content::*,
     economy::{Counteroffer, Market, NpcTrain},
-    health::{advance, PartyMember},
+    family::{FamilyState, Pregnancy},
+    health::{advance, PartyMember, Sex},
     minigame::{MinigameKind, MinigameSession},
     rng::SimRng,
     score,
@@ -96,6 +97,8 @@ pub struct GameState {
     pub trail_id: Option<String>,
     pub occupation_id: Option<String>,
     pub party: Vec<PartyMember>,
+    #[serde(default)]
+    pub family: FamilyState,
     pub cash_cents: i64,
     pub inventory: Inventory,
     pub pace: Pace,
@@ -254,6 +257,7 @@ impl GameState {
             trail_id: None,
             occupation_id: None,
             party: vec![],
+            family: FamilyState::default(),
             cash_cents: 0,
             inventory: Inventory::default(),
             pace: Pace::Steady,
@@ -435,6 +439,17 @@ impl GameState {
         self.cash_cents = job.starting_cash_cents;
         self.party = names.into_iter().map(PartyMember::new).collect();
         crate::party::initialize(&mut self.party, &o, &mut self.rng);
+        self.family = FamilyState::default();
+        if self.rng.stream("family").gen_range(0..100) < 15 {
+            if let Some(mother) = self.party.iter().find(|member| {
+                member.alive && member.sex == Sex::Female && (18..=40).contains(&member.age)
+            }) {
+                self.family.pregnancies.push(Pregnancy {
+                    mother: mother.name.clone(),
+                    due_day: self.day + self.rng.stream("family").gen_range(60..=130),
+                });
+            }
+        }
         self.departure_month = month;
         self.current_node_id = Some(trail.start_node_id.clone());
         self.trail_id = Some(t);
@@ -535,6 +550,7 @@ impl GameState {
             }
         }
         self.party_daily(&mut out, false, eaten_food == required_food);
+        self.family_daily(&mut out);
         if !self.party.iter().any(|member| member.alive) {
             self.status = RunStatus::Failed;
             return Ok(out);
@@ -1339,6 +1355,12 @@ impl GameState {
                         supplies.add(item_id, *quantity as u32);
                     }
                 }
+                Effect::AddMember { name, .. }
+                    if self.party.len() >= 12
+                        || self.party.iter().any(|member| member.name == *name) =>
+                {
+                    return false;
+                }
                 _ => {}
             }
         }
@@ -1535,6 +1557,22 @@ impl GameState {
                 }
             }
         }
+        let mut mothers = BTreeSet::new();
+        for pregnancy in &self.family.pregnancies {
+            if pregnancy.due_day < self.day
+                || pregnancy.due_day > self.day.saturating_add(130)
+                || !mothers.insert(&pregnancy.mother)
+            {
+                return Err(CommandError::InvalidSetup);
+            }
+            let Some(mother) = self.party.iter().find(|member| member.name == pregnancy.mother)
+            else {
+                return Err(CommandError::InvalidSetup);
+            };
+            if mother.sex != Sex::Female || !(18..=50).contains(&mother.age) {
+                return Err(CommandError::InvalidSetup);
+            }
+        }
         if let Some(offer) = &self.pending_counteroffer {
             if !self.npcs.iter().any(|npc| npc.id == offer.npc_id)
                 || self.trade_values(
@@ -1704,6 +1742,11 @@ impl GameState {
             Condition::MoraleBelow(morale) => {
                 self.party.iter().any(|member| member.alive && member.morale < *morale)
             }
+            Condition::RelationshipAtLeast(affinity) => {
+                self.live_adult_pair(true).is_some_and(|(_, _, current)| current >= *affinity)
+            }
+            Condition::PartySizeBelow(size) => self.party.len() < usize::from(*size),
+            Condition::HasAdultPair => self.live_adult_pair(true).is_some(),
         }
     }
     fn effects(&mut self, es: &[Effect], out: &mut Vec<Outcome>) {
@@ -1767,6 +1810,33 @@ impl GameState {
                 Effect::Schedule { event_id, days } => self
                     .scheduled_events
                     .push(PendingEvent { event_id: event_id.clone(), due_day: self.day + days }),
+                Effect::AdjustRelationship(change) => {
+                    if let Some((left, right, _)) = self.adjust_live_relationship(*change) {
+                        out.push(Outcome::Message(format!(
+                            "{} and {} grow {}.",
+                            left,
+                            right,
+                            if *change > 0 { "closer" } else { "more distant" }
+                        )));
+                    }
+                }
+                Effect::CelebrateWedding => self.celebrate_wedding(out),
+                Effect::MemberLeaves => self.member_leaves(out),
+                Effect::AddMember { name, age } => {
+                    if self.party.len() < 12
+                        && !self.party.iter().any(|member| member.name == *name)
+                    {
+                        let mut member = PartyMember::new(name.clone());
+                        member.age = *age;
+                        member.sex = if self.rng.stream("family").gen_bool(0.5) {
+                            Sex::Female
+                        } else {
+                            Sex::Male
+                        };
+                        self.party.push(member);
+                        out.push(Outcome::Message(format!("{} joins the party.", name)));
+                    }
+                }
             }
         }
     }
@@ -1943,6 +2013,7 @@ impl GameState {
         self.progress_ailments(out);
         self.weather_illness();
         self.party_daily(out, resting, eaten == required);
+        self.family_daily(out);
         if !self.party.iter().any(|member| member.alive) {
             self.status = RunStatus::Failed;
         }
@@ -1971,6 +2042,144 @@ impl GameState {
             .into_iter()
             .map(Outcome::Message),
         );
+    }
+    /// Resolve pregnancies after each completed game day. A due pregnancy is consumed even when
+    /// the mother has died or the wagon is full, so old saves cannot repeatedly retry a birth.
+    fn family_daily(&mut self, out: &mut Vec<Outcome>) {
+        if matches!(self.status, RunStatus::Arrived | RunStatus::Failed) {
+            return;
+        }
+        let pregnancies = std::mem::take(&mut self.family.pregnancies);
+        for pregnancy in pregnancies {
+            let Some(mother_index) =
+                self.party.iter().position(|member| member.name == pregnancy.mother)
+            else {
+                continue;
+            };
+            let mother = &self.party[mother_index];
+            if !mother.alive || mother.sex != Sex::Female || !(18..=50).contains(&mother.age) {
+                continue;
+            }
+            if pregnancy.due_day > self.day {
+                self.family.pregnancies.push(pregnancy);
+                continue;
+            }
+            if self.party.len() >= 12 {
+                out.push(Outcome::Message(format!(
+                    "{} gives birth, but the full wagon cannot take another traveler.",
+                    mother.name
+                )));
+                continue;
+            }
+            let mother_name = mother.name.clone();
+            let baby_name = self.next_baby_name();
+            let mut baby = PartyMember::new(baby_name.clone());
+            baby.age = 0;
+            baby.health = 80;
+            baby.sex =
+                if self.rng.stream("family").gen_bool(0.5) { Sex::Female } else { Sex::Male };
+            self.party.push(baby);
+            out.push(Outcome::Message(format!("{} gives birth to {}.", mother_name, baby_name)));
+
+            let complication_chance =
+                if self.party.iter().any(|member| member.alive && member.skills.medicine >= 4) {
+                    5
+                } else {
+                    10
+                };
+            if self.rng.stream("family").gen_range(0..100) < complication_chance
+                && self
+                    .content
+                    .ailments
+                    .iter()
+                    .any(|ailment| ailment.id == "childbirth_complications")
+            {
+                let mother = &mut self.party[mother_index];
+                if !mother.ailments.iter().any(|ailment| ailment == "childbirth_complications") {
+                    mother.ailments.push("childbirth_complications".into());
+                    mother.ailment_days.insert("childbirth_complications".into(), 0);
+                    out.push(Outcome::Message(format!(
+                        "{} suffers childbirth complications.",
+                        mother.name
+                    )));
+                }
+            }
+        }
+    }
+    fn next_baby_name(&self) -> String {
+        let mut ordinal = 1;
+        loop {
+            let candidate = format!("Baby {ordinal}");
+            if !self.party.iter().any(|member| member.name == candidate) {
+                return candidate;
+            }
+            ordinal += 1;
+        }
+    }
+    fn live_adult_pair(&self, prefer_highest: bool) -> Option<(usize, usize, i16)> {
+        let mut selected = None;
+        for left in 0..self.party.len() {
+            for right in (left + 1)..self.party.len() {
+                let a = &self.party[left];
+                let b = &self.party[right];
+                if !a.alive || !b.alive || a.age < 18 || b.age < 18 {
+                    continue;
+                }
+                let affinity = a.relationships.affinity.get(&b.name).copied().unwrap_or(0);
+                if selected.is_none_or(|(_, _, current)| {
+                    if prefer_highest {
+                        affinity > current
+                    } else {
+                        affinity < current
+                    }
+                }) {
+                    selected = Some((left, right, affinity));
+                }
+            }
+        }
+        selected
+    }
+    fn adjust_live_relationship(&mut self, change: i16) -> Option<(String, String, i16)> {
+        let (left, right, affinity) = self.live_adult_pair(change >= 0)?;
+        let left_name = self.party[left].name.clone();
+        let right_name = self.party[right].name.clone();
+        let updated = (affinity + change).clamp(-100, 100);
+        self.party[left].relationships.affinity.insert(right_name.clone(), updated);
+        self.party[right].relationships.affinity.insert(left_name.clone(), updated);
+        Some((left_name, right_name, updated))
+    }
+    fn celebrate_wedding(&mut self, out: &mut Vec<Outcome>) {
+        let Some((left, right, affinity)) = self.live_adult_pair(true) else { return };
+        if affinity < 20 {
+            return;
+        }
+        let pair = (self.party[left].name.clone(), self.party[right].name.clone());
+        if self
+            .family
+            .marriages
+            .iter()
+            .any(|existing| existing == &pair || existing == &(pair.1.clone(), pair.0.clone()))
+        {
+            return;
+        }
+        self.family.marriages.push(pair.clone());
+        out.push(Outcome::Message(format!("{} and {} celebrate their union.", pair.0, pair.1)));
+    }
+    fn member_leaves(&mut self, out: &mut Vec<Outcome>) {
+        let Some(index) = self
+            .party
+            .iter()
+            .enumerate()
+            .skip(1)
+            .filter(|(_, member)| member.alive && member.age >= 18)
+            .min_by_key(|(_, member)| member.morale)
+            .map(|(index, _)| index)
+        else {
+            return;
+        };
+        let member = self.party.remove(index);
+        self.family.pregnancies.retain(|pregnancy| pregnancy.mother != member.name);
+        out.push(Outcome::Message(format!("{} leaves the party.", member.name)));
     }
     fn ailment_damage(&self, member: &PartyMember) -> u8 {
         let damage = member
@@ -2319,6 +2528,142 @@ mod tests {
         for _ in 0..5 {
             assert_eq!(a.apply(Command::TravelDay), b.apply(Command::TravelDay));
         }
+    }
+    #[test]
+    fn seeded_family_pregnancy_is_eligible_and_reproducible() {
+        let seed = (0..1_000)
+            .find(|seed| {
+                let mut game = GameState::new(*seed);
+                game.apply(Command::Configure {
+                    trail_id: "oregon".into(),
+                    era_id: "1848".into(),
+                    occupation_id: "farmer".into(),
+                    party: vec![
+                        "Ada".into(),
+                        "Ben".into(),
+                        "Clara".into(),
+                        "David".into(),
+                        "Eve".into(),
+                    ],
+                    departure_month: 4,
+                });
+                !game.family.pregnancies.is_empty()
+            })
+            .expect("a seeded family pregnancy should be reachable");
+        let mut left = GameState::new(seed);
+        let mut right = GameState::new(seed);
+        let command = Command::Configure {
+            trail_id: "oregon".into(),
+            era_id: "1848".into(),
+            occupation_id: "farmer".into(),
+            party: vec!["Ada".into(), "Ben".into(), "Clara".into(), "David".into(), "Eve".into()],
+            departure_month: 4,
+        };
+        left.apply(command.clone());
+        right.apply(command);
+        assert_eq!(left.family, right.family);
+        let pregnancy = &left.family.pregnancies[0];
+        let mother = left.party.iter().find(|member| member.name == pregnancy.mother).unwrap();
+        assert_eq!(mother.sex, Sex::Female);
+        assert!((18..=40).contains(&mother.age));
+        assert!((60..=130).contains(&pregnancy.due_day));
+    }
+    #[test]
+    fn due_pregnancy_births_once_per_completed_day() {
+        let mut game = run(71);
+        game.party[0].sex = Sex::Female;
+        game.party[0].age = 30;
+        game.family.pregnancies =
+            vec![Pregnancy { mother: game.party[0].name.clone(), due_day: game.day + 1 }];
+        let mut outcomes = Vec::new();
+        game.pass_camp_day(&mut outcomes, false);
+        assert_eq!(game.party.iter().filter(|member| member.name == "Baby 1").count(), 1);
+        assert!(game.family.pregnancies.is_empty());
+        assert!(outcomes.iter().any(|outcome| matches!(outcome, Outcome::Message(message) if message.contains("gives birth to Baby 1"))));
+        game.family_daily(&mut outcomes);
+        assert_eq!(game.party.iter().filter(|member| member.name == "Baby 1").count(), 1);
+        let baby = game.party.iter().find(|member| member.name == "Baby 1").unwrap();
+        assert_eq!((baby.age, baby.health), (0, 80));
+    }
+    #[test]
+    fn due_pregnancy_does_not_revive_dead_mothers_or_overfill_party() {
+        let mut dead_mother = run(72);
+        dead_mother.party[0].sex = Sex::Female;
+        dead_mother.party[0].alive = false;
+        dead_mother.family.pregnancies =
+            vec![Pregnancy { mother: dead_mother.party[0].name.clone(), due_day: dead_mother.day }];
+        dead_mother.family_daily(&mut Vec::new());
+        assert!(dead_mother.family.pregnancies.is_empty());
+        assert!(!dead_mother.party[0].alive);
+        assert_eq!(dead_mother.party.len(), 5);
+
+        let mut full_party = run(73);
+        full_party.party[0].sex = Sex::Female;
+        full_party.party[0].age = 30;
+        while full_party.party.len() < 12 {
+            full_party.party.push(PartyMember::new(format!("Extra {}", full_party.party.len())));
+        }
+        full_party.family.pregnancies =
+            vec![Pregnancy { mother: full_party.party[0].name.clone(), due_day: full_party.day }];
+        full_party.family_daily(&mut Vec::new());
+        assert!(full_party.family.pregnancies.is_empty());
+        assert_eq!(full_party.party.len(), 12);
+    }
+    #[test]
+    fn wedding_and_departure_keep_durable_family_and_party_records() {
+        let mut game = run(74);
+        for member in &mut game.party {
+            member.age = 30;
+        }
+        let first = game.party[0].name.clone();
+        let second = game.party[1].name.clone();
+        game.party[0].relationships.affinity.insert(second.clone(), 25);
+        game.party[1].relationships.affinity.insert(first, 25);
+        game.effects(&[Effect::CelebrateWedding], &mut Vec::new());
+        assert_eq!(
+            game.family.marriages,
+            vec![(game.party[0].name.clone(), game.party[1].name.clone())]
+        );
+
+        let leader = game.party[0].name.clone();
+        let dead_name = game.party[1].name.clone();
+        let departing = game.party[2].name.clone();
+        game.party[0].morale = 0;
+        game.party[1].alive = false;
+        game.party[2].morale = 1;
+        game.effects(&[Effect::MemberLeaves], &mut Vec::new());
+        assert!(game.party.iter().any(|member| member.name == leader));
+        assert!(game.party.iter().any(|member| member.name == dead_name && !member.alive));
+        assert!(!game.party.iter().any(|member| member.name == departing));
+        assert_eq!(game.family.marriages.len(), 1);
+    }
+    #[test]
+    fn family_dsl_effects_target_deterministic_live_pairs_and_add_members() {
+        let mut game = run(76);
+        for member in &mut game.party {
+            member.age = 30;
+        }
+        let names = game.party.iter().map(|member| member.name.clone()).collect::<Vec<_>>();
+        game.party[0].relationships.affinity.insert(names[1].clone(), 20);
+        game.party[1].relationships.affinity.insert(names[0].clone(), 20);
+        game.party[2].relationships.affinity.insert(names[3].clone(), -20);
+        game.party[3].relationships.affinity.insert(names[2].clone(), -20);
+        game.effects(&[Effect::AdjustRelationship(5)], &mut Vec::new());
+        game.effects(&[Effect::AdjustRelationship(-5)], &mut Vec::new());
+        assert_eq!(game.party[0].relationships.affinity[&names[1]], 25);
+        assert_eq!(game.party[2].relationships.affinity[&names[3]], -25);
+        game.effects(&[Effect::AddMember { name: "Elias".into(), age: 22 }], &mut Vec::new());
+        assert!(game.party.iter().any(|member| member.name == "Elias" && member.age == 22));
+    }
+    #[test]
+    fn invalid_saved_pregnancy_reference_or_due_date_is_rejected() {
+        let mut game = run(75);
+        game.family.pregnancies =
+            vec![Pregnancy { mother: "Missing".into(), due_day: game.day + 60 }];
+        assert!(matches!(game.validate(), Err(CommandError::InvalidSetup)));
+        game.family.pregnancies =
+            vec![Pregnancy { mother: game.party[0].name.clone(), due_day: game.day + 131 }];
+        assert!(matches!(game.validate(), Err(CommandError::InvalidSetup)));
     }
     #[test]
     fn resume() {
