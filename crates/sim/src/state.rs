@@ -1,5 +1,6 @@
 //! Command-driven deterministic journey state.
 use crate::{
+    calendar::CalendarDate,
     content::*,
     health::{advance, PartyMember},
     rng::SimRng,
@@ -220,6 +221,9 @@ impl GameState {
             Command::Buy { item_id, quantity } => self.buy(&item_id, quantity),
             Command::Depart => {
                 self.phase(RunStatus::Outfitting)?;
+                if self.inventory.get("oxen") == 0 {
+                    return Err(CommandError::InvalidChoice);
+                }
                 self.begin_only_route()?;
                 Ok(vec![Outcome::Departed])
             }
@@ -307,7 +311,13 @@ impl GameState {
             .ok_or_else(|| CommandError::UnknownId(id.into()))?;
         let cost =
             item.price_cents.checked_mul(i64::from(n)).ok_or(CommandError::InsufficientCash)?;
-        if self.inventory.get(id) + n > item.limit || self.weight() + item.weight_lbs * n > 2400 {
+        if self.inventory.get(id).checked_add(n).ok_or(CommandError::CapacityExceeded)? > item.limit
+            || self
+                .weight()
+                .checked_add(item.weight_lbs.checked_mul(n).ok_or(CommandError::CapacityExceeded)?)
+                .ok_or(CommandError::CapacityExceeded)?
+                > 2400
+        {
             return Err(CommandError::CapacityExceeded);
         }
         if cost > self.cash_cents {
@@ -357,6 +367,12 @@ impl GameState {
                 }
             }
         }
+        for member in &mut self.party {
+            if member.alive && member.health == 0 {
+                member.alive = false;
+                out.push(Outcome::MemberDied { name: member.name.clone() });
+            }
+        }
         if !self.party.iter().any(|member| member.alive) {
             self.status = RunStatus::Failed;
             return Ok(out);
@@ -386,21 +402,12 @@ impl GameState {
     }
     fn rest(&mut self, days: u32) -> Result<Vec<Outcome>, CommandError> {
         self.traveling()?;
+        let mut outcomes = Vec::new();
         for _ in 0..days.min(30) {
-            self.day += 1;
-            let required_food = self.party.iter().filter(|p| p.alive).count() as u32 * 3;
-            let eaten_food = self.inventory.take("food", required_food);
-            for p in &mut self.party {
-                if p.alive {
-                    p.health = if eaten_food < required_food {
-                        p.health.saturating_sub(5)
-                    } else {
-                        (p.health + 5).min(100)
-                    };
-                }
-            }
+            self.pass_camp_day(&mut outcomes, true);
         }
-        Ok(vec![Outcome::Message(format!("Rested {} days", days.min(30)))])
+        outcomes.push(Outcome::Message(format!("Rested {} days", days.min(30))));
+        Ok(outcomes)
     }
     fn route(&mut self, id: &str) -> Result<Vec<Outcome>, CommandError> {
         if !matches!(self.status, RunStatus::AwaitingFork(_)) {
@@ -425,6 +432,12 @@ impl GameState {
             return Err(CommandError::InvalidPhase);
         }
         let river = self.node()?.river.clone().ok_or(CommandError::InvalidPhase)?;
+        if m == CrossMethod::Wait {
+            self.day = self.day.saturating_add(1);
+            let needed = self.party.iter().filter(|member| member.alive).count() as u32 * 3;
+            self.inventory.take("food", needed);
+            return Ok(vec![Outcome::Message("You wait one day for lower water.".into())]);
+        }
         if m == CrossMethod::Ferry {
             let cost = river.ferry_cost_cents.ok_or(CommandError::InvalidChoice)?;
             if self.cash_cents < cost {
@@ -433,7 +446,8 @@ impl GameState {
             self.cash_cents -= cost
         }
         let risk = match m {
-            CrossMethod::Ferry | CrossMethod::Wait => 0,
+            CrossMethod::Ferry => 0,
+            CrossMethod::Wait => 0,
             CrossMethod::Guide => 10,
             CrossMethod::Ford => river.depth_feet * 20,
             CrossMethod::Caulk => river.width_feet / 20,
@@ -441,7 +455,7 @@ impl GameState {
         if self.rng.stream("rivers").gen_range(0..100) < risk.min(90) {
             self.inventory.remove("food", 50);
         }
-        self.status = RunStatus::Travelling;
+        self.begin_only_route()?;
         Ok(vec![Outcome::Message("The crossing is behind you.".into())])
     }
     fn respond(&mut self, event: &str, choice: &str) -> Result<Vec<Outcome>, CommandError> {
@@ -478,8 +492,9 @@ impl GameState {
         Ok(vec![Outcome::Quote { quote_id: q.id.clone(), text: q.text.clone() }])
     }
     fn treat(&mut self, i: usize, a: &str) -> Result<Vec<Outcome>, CommandError> {
+        self.traveling()?;
         let p = self.party.get_mut(i).ok_or(CommandError::InvalidChoice)?;
-        if !p.ailments.iter().any(|x| x == a) || !self.inventory.remove("medicine", 1) {
+        if !p.alive || !p.ailments.iter().any(|x| x == a) || !self.inventory.remove("medicine", 1) {
             return Err(CommandError::InvalidChoice);
         }
         p.ailments.retain(|x| x != a);
@@ -488,14 +503,25 @@ impl GameState {
     }
     fn hunt(&mut self, food: u32, ammo: u32) -> Result<Vec<Outcome>, CommandError> {
         self.traveling()?;
-        if !self.inventory.remove("ammunition", ammo) {
+        if (food > 0 && ammo == 0)
+            || food > 500
+            || self.weight().checked_add(food).ok_or(CommandError::CapacityExceeded)? > 2400
+            || !self.inventory.remove("ammunition", ammo)
+        {
             return Err(CommandError::InvalidChoice);
         }
         self.inventory.add("food", food);
-        Ok(vec![Outcome::Message(format!("Brought back {} lbs of food", food))])
+        let mut outcomes = Vec::new();
+        self.pass_camp_day(&mut outcomes, false);
+        outcomes.push(Outcome::Message(format!("Brought back {} lbs of food", food)));
+        Ok(outcomes)
     }
     fn raft(&mut self, lost: u32, casualties: u8) -> Result<Vec<Outcome>, CommandError> {
-        self.traveling()?;
+        if !matches!(self.status, RunStatus::AtLandmark(_))
+            || !matches!(self.current_landmark().map(|node| node.kind), Some(LandmarkKind::Finale))
+        {
+            return Err(CommandError::InvalidPhase);
+        }
         self.inventory.remove("food", lost);
         for p in self.party.iter_mut().filter(|p| p.alive).take(casualties as usize) {
             p.alive = false
@@ -529,12 +555,10 @@ impl GameState {
             .iter()
             .find(|era| Some(&era.id) == self.era_id.as_ref())
             .map_or(1848, |era| era.year);
-        let ordinal = u32::from(self.departure_month.saturating_sub(1)) * 30 + self.day;
-        (
-            year + (ordinal / 360) as i32,
-            ((ordinal % 360) / 30 + 1) as u8,
-            ((ordinal % 30) + 1) as u8,
-        )
+        let date = CalendarDate::new(year, self.departure_month, 1)
+            .expect("validated departure month")
+            .add_days(self.day);
+        (date.year, date.month, date.day)
     }
     pub fn can_shop(&self) -> bool {
         matches!(self.status, RunStatus::Outfitting | RunStatus::AtLandmark(_))
@@ -573,12 +597,23 @@ impl GameState {
                 }
             }
         }
-        for id in [&self.era_id, &self.occupation_id].into_iter().flatten() {
-            let found = self.content.eras.iter().any(|x| &x.id == id)
-                || self.content.occupations.iter().any(|x| &x.id == id);
-            if !found {
+        if let Some(id) = &self.era_id {
+            if !self.content.eras.iter().any(|era| &era.id == id) {
                 return Err(CommandError::UnknownId(id.clone()));
             }
+        }
+        if let Some(id) = &self.occupation_id {
+            if !self.content.occupations.iter().any(|occupation| &occupation.id == id) {
+                return Err(CommandError::UnknownId(id.clone()));
+            }
+        }
+        if matches!(self.status, RunStatus::Travelling)
+            && (self.target_node_id.is_none() || self.route_miles_remaining == 0)
+        {
+            return Err(CommandError::InvalidSetup);
+        }
+        if !matches!(self.status, RunStatus::Travelling) && self.target_node_id.is_some() {
+            return Err(CommandError::InvalidSetup);
         }
         Ok(())
     }
@@ -638,15 +673,27 @@ impl GameState {
         }
     }
     fn event(&mut self, out: &mut Vec<Outcome>) {
-        let ids: Vec<String> = self
+        let ids: Vec<(String, u32)> = self
             .content
             .events
             .iter()
             .filter(|e| e.weight > 0 && e.conditions.iter().all(|c| self.matches(c)))
-            .map(|e| e.id.clone())
+            .map(|e| (e.id.clone(), e.weight))
             .collect();
         if !ids.is_empty() && self.rng.stream("events").gen_range(0..100) < 15 {
-            let id = ids.choose(self.rng.stream("events")).unwrap().clone();
+            let total: u64 = ids.iter().map(|(_, weight)| u64::from(*weight)).sum();
+            let mut roll = self.rng.stream("events").gen_range(0..total);
+            let id = ids
+                .iter()
+                .find_map(|(id, weight)| {
+                    if roll < u64::from(*weight) {
+                        Some(id.clone())
+                    } else {
+                        roll -= u64::from(*weight);
+                        None
+                    }
+                })
+                .expect("positive total");
             self.trigger(&id, out)
         }
     }
@@ -686,7 +733,7 @@ impl GameState {
                     if *x >= 0 {
                         self.inventory.add("food", *x as u32)
                     } else {
-                        self.inventory.remove("food", x.unsigned_abs());
+                        self.inventory.take("food", x.unsigned_abs());
                     }
                 }
                 Effect::AdjustCash(x) => self.cash_cents = self.cash_cents.saturating_add(*x),
@@ -707,7 +754,11 @@ impl GameState {
                         p.ailments.retain(|a| a != x)
                     }
                 }
-                Effect::LoseDays(x) => self.day += *x,
+                Effect::LoseDays(x) => {
+                    for _ in 0..*x {
+                        self.pass_camp_day(out, false);
+                    }
+                }
                 Effect::SetFlag(x) => {
                     self.flags.insert(x.clone());
                 }
@@ -748,7 +799,14 @@ impl GameState {
                 self.status = RunStatus::AwaitingRiver(n.id.clone());
                 out.push(Outcome::RiverCrossingRequired { landmark_id: n.id })
             }
-            LandmarkKind::Finale => {
+            LandmarkKind::Finale
+                if self
+                    .content
+                    .trails
+                    .iter()
+                    .find(|trail| Some(&trail.id) == self.trail_id.as_ref())
+                    .is_some_and(|trail| trail.goal_node_id == n.id) =>
+            {
                 self.status = RunStatus::Arrived;
                 out.push(Outcome::ArrivedAt { landmark_id: n.id });
                 out.push(Outcome::Score { points: self.score() })
@@ -757,6 +815,50 @@ impl GameState {
                 self.status = RunStatus::AtLandmark(n.id.clone());
                 out.push(Outcome::ArrivedAt { landmark_id: n.id })
             }
+        }
+    }
+    fn pass_camp_day(&mut self, out: &mut Vec<Outcome>, resting: bool) {
+        self.day = self.day.saturating_add(1);
+        let required = self.party.iter().filter(|member| member.alive).count() as u32 * 3;
+        let eaten = self.inventory.take("food", required);
+        let damages: Vec<u8> = self
+            .party
+            .iter()
+            .map(|member| {
+                member
+                    .ailments
+                    .iter()
+                    .filter_map(|id| {
+                        self.content
+                            .ailments
+                            .iter()
+                            .find(|ailment| &ailment.id == id)
+                            .map(|ailment| ailment.daily_damage)
+                    })
+                    .sum()
+            })
+            .collect();
+        for (member, damage) in self.party.iter_mut().zip(damages) {
+            if !member.alive {
+                continue;
+            }
+            if advance(member, damage) {
+                out.push(Outcome::MemberDied { name: member.name.clone() });
+                continue;
+            }
+            if eaten < required {
+                member.health = member.health.saturating_sub(5);
+            }
+            if resting && eaten == required {
+                member.health = member.health.saturating_add(5).min(100);
+            }
+            if member.health == 0 {
+                member.alive = false;
+                out.push(Outcome::MemberDied { name: member.name.clone() });
+            }
+        }
+        if !self.party.iter().any(|member| member.alive) {
+            self.status = RunStatus::Failed;
         }
     }
     fn season(&self) -> Season {
@@ -771,6 +873,89 @@ impl GameState {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn branch_content() -> GameContent {
+        let mut content = GameContent::starter();
+        content.trails[0].nodes = vec![
+            LandmarkDefinition {
+                id: "independence".into(),
+                name: "Start".into(),
+                mile: 0,
+                kind: LandmarkKind::Town,
+                routes: vec![RouteDefinition {
+                    id: "to-river".into(),
+                    label: "River".into(),
+                    target_id: "river".into(),
+                    distance_miles: 10,
+                }],
+                river: None,
+                store: true,
+            },
+            LandmarkDefinition {
+                id: "river".into(),
+                name: "River".into(),
+                mile: 10,
+                kind: LandmarkKind::River,
+                routes: vec![RouteDefinition {
+                    id: "to-fork".into(),
+                    label: "Fork".into(),
+                    target_id: "fork".into(),
+                    distance_miles: 10,
+                }],
+                river: Some(RiverDefinition {
+                    width_feet: 10,
+                    depth_feet: 1,
+                    ferry_cost_cents: Some(100),
+                }),
+                store: false,
+            },
+            LandmarkDefinition {
+                id: "fork".into(),
+                name: "Fork".into(),
+                mile: 20,
+                kind: LandmarkKind::Fork,
+                routes: vec![
+                    RouteDefinition {
+                        id: "short".into(),
+                        label: "Short".into(),
+                        target_id: "willamette".into(),
+                        distance_miles: 5,
+                    },
+                    RouteDefinition {
+                        id: "long".into(),
+                        label: "Long".into(),
+                        target_id: "detour".into(),
+                        distance_miles: 100,
+                    },
+                ],
+                river: None,
+                store: false,
+            },
+            LandmarkDefinition {
+                id: "detour".into(),
+                name: "Detour".into(),
+                mile: 120,
+                kind: LandmarkKind::Landmark,
+                routes: vec![RouteDefinition {
+                    id: "finish".into(),
+                    label: "Finish".into(),
+                    target_id: "willamette".into(),
+                    distance_miles: 5,
+                }],
+                river: None,
+                store: false,
+            },
+            LandmarkDefinition {
+                id: "willamette".into(),
+                name: "Goal".into(),
+                mile: 25,
+                kind: LandmarkKind::Finale,
+                routes: vec![],
+                river: None,
+                store: false,
+            },
+        ];
+        content
+    }
     fn run(seed: u64) -> GameState {
         let mut g = GameState::new(seed);
         g.apply(Command::Configure {
@@ -797,5 +982,94 @@ mod tests {
         a.apply(Command::TravelDay);
         let mut b: GameState = serde_json::from_str(&serde_json::to_string(&a).unwrap()).unwrap();
         assert_eq!(a.apply(Command::TravelDay), b.apply(Command::TravelDay));
+    }
+    #[test]
+    fn river_wait_consumes_day_but_does_not_cross() {
+        let mut game = GameState::with_content(1, branch_content());
+        game.apply(Command::Configure {
+            trail_id: "oregon".into(),
+            era_id: "1848".into(),
+            occupation_id: "farmer".into(),
+            party: vec!["Ada".into()],
+            departure_month: 4,
+        });
+        game.apply(Command::Buy { item_id: "oxen".into(), quantity: 1 });
+        game.apply(Command::Buy { item_id: "food".into(), quantity: 100 });
+        game.apply(Command::Depart);
+        game.apply(Command::TravelDay);
+        assert!(matches!(game.status, RunStatus::AwaitingRiver(_)));
+        let day = game.day;
+        let food = game.inventory.get("food");
+        game.apply(Command::CrossRiver { method: CrossMethod::Wait });
+        assert!(matches!(game.status, RunStatus::AwaitingRiver(_)));
+        assert_eq!(game.day, day + 1);
+        assert!(game.inventory.get("food") < food);
+    }
+    #[test]
+    fn selected_route_clamps_and_arrives_only_at_goal() {
+        let mut game = GameState::with_content(2, branch_content());
+        game.apply(Command::Configure {
+            trail_id: "oregon".into(),
+            era_id: "1848".into(),
+            occupation_id: "farmer".into(),
+            party: vec!["Ada".into()],
+            departure_month: 4,
+        });
+        game.apply(Command::Buy { item_id: "oxen".into(), quantity: 1 });
+        game.apply(Command::Buy { item_id: "food".into(), quantity: 100 });
+        game.apply(Command::Depart);
+        game.apply(Command::TravelDay);
+        game.apply(Command::CrossRiver { method: CrossMethod::Ferry });
+        game.apply(Command::TravelDay);
+        assert!(matches!(game.status, RunStatus::AwaitingFork(_)));
+        game.apply(Command::ChooseRoute { route_id: "short".into() });
+        game.apply(Command::TravelDay);
+        assert_eq!(game.status, RunStatus::Arrived);
+        assert_eq!(game.miles, 25);
+    }
+    #[test]
+    fn rejected_command_does_not_mutate_state() {
+        let mut game = GameState::new(2);
+        let before = serde_json::to_string(&game).unwrap();
+        assert!(matches!(game.apply(Command::Depart).as_slice(), [Outcome::Rejected(_)]));
+        assert_eq!(before, serde_json::to_string(&game).unwrap());
+    }
+    #[test]
+    fn event_weights_bias_deterministic_selection() {
+        let mut game = run(19);
+        game.content.events = vec![
+            EventDefinition {
+                id: "common".into(),
+                text: "common".into(),
+                weight: 100,
+                conditions: vec![Condition::Always],
+                effects: vec![],
+                choices: vec![],
+            },
+            EventDefinition {
+                id: "rare".into(),
+                text: "rare".into(),
+                weight: 1,
+                conditions: vec![Condition::Always],
+                effects: vec![],
+                choices: vec![],
+            },
+        ];
+        let mut common = 0;
+        let mut rare = 0;
+        for _ in 0..10_000 {
+            let mut outcomes = Vec::new();
+            game.event(&mut outcomes);
+            for outcome in outcomes {
+                if let Outcome::Event { event_id, .. } = outcome {
+                    if event_id == "common" {
+                        common += 1
+                    } else {
+                        rare += 1
+                    }
+                }
+            }
+        }
+        assert!(common > rare * 20, "common={common}, rare={rare}");
     }
 }
