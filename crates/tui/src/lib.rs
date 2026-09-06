@@ -6,6 +6,7 @@ pub mod headless;
 pub mod input;
 pub mod legacy;
 pub mod minigame;
+mod outfitting;
 pub mod persist;
 pub mod screens;
 pub mod seed;

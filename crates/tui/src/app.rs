@@ -1,5 +1,6 @@
 use crate::{
     input::{decode, Input},
+    outfitting::OutfittingAdvice,
     persist::{new_run_id, RunRecord, Settings, Storage},
     screens::Screen,
     seed::WorldSeed,
@@ -71,6 +72,8 @@ pub struct App {
     graves: Vec<crate::legacy::Grave>,
     auto_travel: bool,
     bell_pending: bool,
+    outfitting_advice_visible: bool,
+    departure_warning_armed: bool,
 }
 impl App {
     pub fn new(content: GameContent, seed: u64, settings: Settings) -> Self {
@@ -102,6 +105,8 @@ impl App {
             graves: Vec::new(),
             auto_travel: false,
             bell_pending: false,
+            outfitting_advice_visible: false,
+            departure_warning_armed: false,
         }
     }
     pub fn with_storage(mut self, storage: Storage) -> Self {
@@ -240,6 +245,12 @@ impl App {
                 _ => {}
             }
         }
+        if self.screen == Screen::Store && self.outfitting_advice_visible {
+            if matches!(key.code, KeyCode::Char('?') | KeyCode::Esc) {
+                self.outfitting_advice_visible = false;
+            }
+            return;
+        }
         let previous_cursor = self.cursor;
         match decode(key) {
             Input::Quit => self.quit = true,
@@ -277,6 +288,8 @@ impl App {
                     self.minigame = None;
                     self.log.clear();
                     self.epitaph.clear();
+                    self.outfitting_advice_visible = false;
+                    self.departure_warning_armed = false;
                     self.screen = Screen::SetupTrail;
                     self.cursor = self.draft.trail;
                 }
@@ -371,9 +384,19 @@ impl App {
             Screen::Store => {
                 if self.cursor < self.game.content.items.len() {
                     let id = self.game.content.items[self.cursor].id.clone();
+                    self.departure_warning_armed = false;
                     self.apply(Command::Buy { item_id: id, quantity: self.store_quantity });
                 } else {
                     if matches!(self.game.status, pioneer_sim::RunStatus::Outfitting) {
+                        let advice = OutfittingAdvice::for_game(&self.game);
+                        if !advice.warnings.is_empty() && !self.departure_warning_armed {
+                            self.departure_warning_armed = true;
+                            self.note(format!(
+                                "Caution: {} Select Depart again to leave as packed.",
+                                advice.warnings[0]
+                            ));
+                            return;
+                        }
                         self.apply(Command::Depart);
                     } else {
                         self.apply(Command::Continue);
@@ -615,10 +638,14 @@ impl App {
                 self.apply(Command::SetDifficulty(next));
             }
             (Screen::Store, 's') if self.cursor < self.game.content.items.len() => {
+                self.departure_warning_armed = false;
                 self.apply(Command::Sell {
                     item_id: self.game.content.items[self.cursor].id.clone(),
                     quantity: self.store_quantity,
                 });
+            }
+            (Screen::Store, '?') => {
+                self.outfitting_advice_visible = !self.outfitting_advice_visible
             }
             (Screen::Journey, 'b') if self.game.can_shop() => self.screen = Screen::Store,
             (Screen::Score, 'e') => self.screen = Screen::Epitaph,
@@ -657,6 +684,10 @@ impl App {
         }
     }
     fn back(&mut self) {
+        if self.screen == Screen::Store && self.outfitting_advice_visible {
+            self.outfitting_advice_visible = false;
+            return;
+        }
         if self.screen == Screen::Party
             && matches!(
                 self.game.status,
@@ -1200,11 +1231,14 @@ impl App {
                 ));
                 if let Some(job) = self.game.content.occupations.get(self.cursor) {
                     lines.push(Line::from(format!(
-                        "${:.0} · score ×{} · {}",
+                        "Starting funds ${:.0} · score ×{} · {}",
                         job.starting_cash_cents as f64 / 100.,
                         job.score_multiplier,
                         job.perk
                     )));
+                    lines.push(Line::from(
+                        "Starting funds affect your shopping choices, not the trail's rules.",
+                    ));
                 }
             }
             Screen::SetupParty => {
@@ -1214,11 +1248,49 @@ impl App {
                 }
                 lines.push(Line::from("► Done"));
             }
-            Screen::SetupDeparture => lines.push(Line::from(format!(
-                "Departure month: {}  [Left/Right]  Enter to outfit",
-                self.draft.month
-            ))),
+            Screen::SetupDeparture => {
+                lines.push(Line::from(format!(
+                    "Departure month: {}  [Left/Right]  Enter to outfit",
+                    self.draft.month
+                )));
+                lines.push(Line::from(match self.draft.month {
+                    3 => "March gives you time, but cold weather can slow the first weeks.",
+                    4 | 5 => "Spring balances fair weather with enough time before autumn.",
+                    6 => "June is late enough to make steady progress matter.",
+                    _ => "July is a late start. Carry a deep food reserve and keep moving.",
+                }));
+            }
             Screen::Store => {
+                let advice = OutfittingAdvice::for_game(&self.game);
+                if self.outfitting_advice_visible {
+                    lines.push(Line::from("OUTFITTING ADVICE  [?] return to the store"));
+                    lines.push(Line::from(format!(
+                        "{} travelers eat {} lb/day on {:?} rations.",
+                        self.game.party.iter().filter(|member| member.alive).count(),
+                        advice.food_per_day,
+                        self.game.rations
+                    )));
+                    lines.push(Line::from(format!(
+                        "Food on hand: {} lb — about {} days before spoilage.",
+                        self.game.inventory.get("food"),
+                        advice.food_days
+                    )));
+                    lines.push(Line::from(advice.target_line(&self.game)));
+                    lines.push(Line::from(format!(
+                        "Target food: {} lb ({} days). Buy missing goods for ${:.2}; ${:.2} remains.",
+                        advice.target_food_lbs,
+                        advice.target_food_days,
+                        advice.completion_cost_cents as f64 / 100.0,
+                        advice.cash_after_cents as f64 / 100.0,
+                    )));
+                    lines.push(Line::from(
+                        "Prioritize oxen, food, clothes, and one spare wheel. Extras are your call.",
+                    ));
+                    for warning in advice.warnings.iter().take(2) {
+                        lines.push(Line::from(format!("CAUTION: {warning}")));
+                    }
+                    return lines;
+                }
                 for (index, item) in self.game.content.items.iter().enumerate() {
                     lines.push(Line::from(format!(
                         "{} {}  ${:.2}  owned {}",
@@ -1240,9 +1312,20 @@ impl App {
                     self.game.cash_cents as f64 / 100.0,
                     self.game.weight()
                 )));
-                lines.push(Line::from(
-                    "Enter buys · S sells selected quantity at half the quoted price",
-                ));
+                lines.push(Line::from("Enter buys · S sells at half price · ? outfitting advice"));
+                if let Some(item) = self.game.content.items.get(self.cursor) {
+                    if let Some(detail) = advice.selected_item_line(&self.game, &item.id) {
+                        lines.push(Line::from(detail));
+                    }
+                }
+                if self.departure_warning_armed {
+                    if let Some(warning) = advice.warnings.first() {
+                        lines.push(Line::from(format!("CAUTION: {warning}")));
+                    }
+                    lines.push(Line::from(
+                        "Enter Depart again leaves as packed; select an item to change supplies.",
+                    ));
+                }
             }
             Screen::Journey => {
                 lines.push(Line::from(format!(
@@ -1877,6 +1960,40 @@ mod tests {
         assert_eq!(app.screen, Screen::Store);
     }
     #[test]
+    fn outfitting_advice_is_explicit_and_departure_warning_allows_a_second_choice() {
+        let mut app = App::new(pioneer_data::load().unwrap(), 2, Settings::default());
+        app.apply(Command::Configure {
+            trail_id: "oregon".into(),
+            era_id: "1848".into(),
+            occupation_id: "carpenter".into(),
+            party: ["A", "B", "C", "D", "E"].map(str::to_owned).to_vec(),
+            departure_month: 4,
+        });
+        app.apply(Command::Buy { item_id: "oxen".into(), quantity: 1 });
+        app.screen = Screen::Store;
+        app.handle_key(KeyEvent::from(KeyCode::Char('?')));
+        assert!(app.outfitting_advice_visible);
+        let advice =
+            app.body().into_iter().map(|line| line.to_string()).collect::<Vec<_>>().join("\n");
+        assert!(advice.contains("15 lb/day"));
+        assert!(advice.contains("box of 20"), "starter target should use the actual ammo unit");
+        let before = serde_json::to_value(&app.game).unwrap();
+        app.handle_key(KeyEvent::from(KeyCode::Enter));
+        app.handle_key(KeyEvent::from(KeyCode::Char('s')));
+        app.handle_key(KeyEvent::from(KeyCode::Char('1')));
+        assert_eq!(serde_json::to_value(&app.game).unwrap(), before);
+        app.handle_key(KeyEvent::from(KeyCode::Esc));
+        assert!(!app.outfitting_advice_visible);
+        app.handle_key(KeyEvent::from(KeyCode::Char('?')));
+        app.handle_key(KeyEvent::from(KeyCode::Char('?')));
+        app.cursor = app.game.content.items.len();
+        app.select();
+        assert_eq!(app.screen, Screen::Store, "first warning does not depart");
+        assert!(app.departure_warning_armed);
+        app.select();
+        assert_eq!(app.screen, Screen::Journey, "a deliberate second departure remains allowed");
+    }
+    #[test]
     fn loaded_content_journey_keeps_mandatory_phases_after_resume() {
         let content = pioneer_data::load().unwrap();
         let mut app = App::new(content, 41, Settings::default());
@@ -1896,6 +2013,9 @@ mod tests {
         app.select();
         app.cursor = app.game.content.items.len();
         app.select();
+        if app.screen == Screen::Store {
+            app.select();
+        }
         let mut saw_event = false;
         for _ in 0..100 {
             match app.screen {
