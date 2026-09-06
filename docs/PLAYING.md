@@ -2,12 +2,17 @@
 
 ## Start and resume
 
-Run `cargo run -p pioneer-trail` from the repository root. At the title screen, begin a new journey
-or continue the latest one. `cargo run -p pioneer-trail -- --continue` opens that save directly.
+Run `cargo run --release -p pioneer-trail` from the repository root. The game requires a terminal at
+least 80 by 24 characters. At the title screen, begin a new journey or continue the latest one.
+`cargo run --release -p pioneer-trail -- --continue` opens that save directly.
 
 Choose an occupation, month, trail, and era, name your party, then buy supplies before leaving
 Independence. A seed makes the same setup and command sequence repeatable. Pass a number with
 `--seed`, or copy the displayed `pt-` seed code.
+
+For a forgiving first trip, choose Banker and March. Start with three oxen, 1,500 pounds of food,
+five clothing sets, ten rounds of ammunition, one wheel, axle, and tongue, two medicine kits, and
+one tool set. Keep supply bags below 2,400 pounds.
 
 ## Keyboard controls
 
@@ -17,9 +22,13 @@ The game is keyboard-only.
 |---|---|
 | Menus | Arrow keys or `h` `j` `k` `l` to move, Enter or Space to choose, number keys for visible choices |
 | General | Esc goes back, Ctrl-Q quits |
-| On the trail | `a` travel, `s` supplies, `m` map, `p` pace, `r` rations, `x` rest |
+| Trail setup | Up and Down choose a trail, Left and Right choose an era, `d` cycles difficulty, Enter continues |
+| On the trail | Enter or `1` advances one day; `a` toggles automatic travel |
+| On the trail | `s` supplies, `m` map, `p` pace, `r` rations, `x` rest, `7` hunt |
 | On the trail | `i` treatment, `u` trade, `v` party, `f` forage, `g` fish, `t` talk |
-| At a fort | `b` buy and `s` sell, where available |
+| Store | Up and Down choose an item, Left and Right set quantity, Enter buys, `s` sells |
+| Events | `r` repairs when a repair action is offered |
+| Settings | `c` cycles color, `b` toggles the bell, `a` toggles text-only art, `s` cycles speed |
 | Hunt | Arrow keys or `h` `j` `k` `l` aim, Space shoots, Esc finishes |
 | Raft | Left and Right, or `h` and `l`, steer; Esc aborts the crossing |
 
@@ -78,5 +87,5 @@ does not preserve an in-progress aim, timer position, or raft steering position.
 | `--headless-sim N` | Run N simulated journeys without the TUI |
 | `--verbose` | Print daily details during a headless simulation |
 
-Set `NO_COLOR` to any nonempty value to disable color. Run `cargo run -p pioneer-trail -- --help`
-for the command-line help from your current build.
+Set `NO_COLOR` to any nonempty value to disable color. Run
+`cargo run --release -p pioneer-trail -- --help` for command-line help from your current build.

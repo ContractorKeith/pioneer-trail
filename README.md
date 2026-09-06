@@ -15,7 +15,7 @@ distribution are not yet verified. Until then, use the source commands below.
 Install a current Rust toolchain, clone this repository, then run:
 
 ```bash
-cargo run -p pioneer-trail
+cargo run --release -p pioneer-trail
 ```
 
 To install the local binary into your Cargo bin directory:
@@ -32,19 +32,19 @@ save directly. See [Playing](docs/PLAYING.md) for the full controls and save beh
 
 ```bash
 # Repeat a journey from a known seed.
-cargo run -p pioneer-trail -- --seed 42
+cargo run --release -p pioneer-trail -- --seed 42
 
 # Start with a particular setup.
-cargo run -p pioneer-trail -- --occupation banker --month march --trail oregon --era 1848
+cargo run --release -p pioneer-trail -- --occupation banker --month march --trail oregon --era 1848
 
 # Keep saves separate while testing.
-cargo run -p pioneer-trail -- --save-dir ./pioneer-save-test
+cargo run --release -p pioneer-trail -- --save-dir ./pioneer-save-test
 
 # Use text-only scenes and turn-based minigames.
-cargo run -p pioneer-trail -- --no-art
+cargo run --release -p pioneer-trail -- --no-art
 
 # Run simulated journeys without opening the terminal interface.
-cargo run -p pioneer-trail -- --headless-sim 100 --seed 42
+cargo run --release -p pioneer-trail -- --headless-sim 100 --seed 42
 ```
 
 `--month` accepts `march` through `july` or `3` through `7`. `--no-art`, `--mono`, and a nonempty

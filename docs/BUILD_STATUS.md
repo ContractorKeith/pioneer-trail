@@ -10,10 +10,10 @@ record, not a release announcement. Play from source using the commands in the [
 | 3. Terminal scenes | Pixel scenes, wagon animation, map, and responsive terminal layouts | Implemented |
 | 4. Active encounters | Hunting, rafting, talk, and route decisions | Implemented |
 | 5. Persistence | Autosave, resume, seed codes, local hall of fame, and tombstones | Implemented |
-| 6. Deeper journey state | Regional weather and terrain, expanded events, party morale, traits, and relationships | Active integration |
-| 7. Economy and people | Fort stock and prices, reputation, trade, and scheduled emigrant trains | Active integration |
-| 8. Routes and eras | Alternate trails, occupations, era rules, and location-specific world behavior | Active integration |
-| 9. Access and polish | Monochrome and text-only play, turn-based text minigames, keyboard journeys, and wide-screen checks | Active integration |
+| 6. Deeper journey state | Regional weather and terrain, expanded events, party morale, traits, and relationships | Implemented; final integration verification pending |
+| 7. Economy and people | Fort stock and prices, reputation, trade, and scheduled emigrant trains | Implemented; final integration verification pending |
+| 8. Routes and eras | Alternate trails, occupations, era rules, and location-specific world behavior | Implemented; final integration verification pending |
+| 9. Access and polish | Monochrome and text-only play, turn-based text minigames, keyboard journeys, wide-screen checks, and distribution readiness | Active integration; publication pending |
 
 ## Deliberate limits
 
