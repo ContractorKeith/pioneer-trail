@@ -136,9 +136,12 @@ impl RaftingGame {
             "Choose 1 Left, 2 Center, or 3 Right. Space holds course one second. Esc aborts."
                 .into(),
         ];
-        let mut rocks =
-            self.rocks.iter().filter(|rock| rock.y >= -30 && rock.y <= 22).collect::<Vec<_>>();
-        rocks.sort_by_key(|rock| rock.y);
+        let mut rocks = self
+            .rocks
+            .iter()
+            .filter(|rock| !rock.charged && rock.y >= -30 && rock.y < 22)
+            .collect::<Vec<_>>();
+        rocks.sort_by_key(|rock| std::cmp::Reverse(rock.y));
         for rock in rocks.into_iter().take(5) {
             let seconds = ((19 - rock.y).max(0) + 9) / 10;
             lines.push(format!(
@@ -279,5 +282,22 @@ mod tests {
             .text_lines()
             .iter()
             .all(|line| line.bytes().all(|byte| byte == b' ' || byte.is_ascii_graphic())));
+    }
+    #[test]
+    fn text_rafting_prioritizes_the_nearest_uncharged_rocks() {
+        let mut g = RaftingGame::new(1);
+        g.rocks = vec![
+            Rock { x: 14, y: -6, charged: false },
+            Rock { x: 40, y: -5, charged: false },
+            Rock { x: 66, y: -4, charged: false },
+            Rock { x: 14, y: -3, charged: false },
+            Rock { x: 40, y: -2, charged: false },
+            Rock { x: 66, y: -1, charged: false },
+            Rock { x: 40, y: 21, charged: true },
+            Rock { x: 14, y: 21, charged: false },
+        ];
+        let lines = g.text_lines();
+        assert!(lines.iter().any(|line| line.contains("left lane, row 21")));
+        assert!(!lines.iter().any(|line| line.contains("center lane, row 21")));
     }
 }

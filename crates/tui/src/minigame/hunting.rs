@@ -200,8 +200,8 @@ impl HuntingGame {
             ),
             "Choose 1-5 to shoot a living animal. Space waits one second. Esc finishes.".into(),
         ];
-        for (index, target) in self.targets.iter().filter(|target| target.alive).take(5).enumerate()
-        {
+        let targets = self.text_targets();
+        for (index, (target, _)) in targets.iter().take(5).enumerate() {
             lines.push(format!(
                 "{}. {}: {} lb meat",
                 index + 1,
@@ -209,8 +209,8 @@ impl HuntingGame {
                 target.kind.food()
             ));
         }
-        if !self.targets.iter().any(|target| target.alive) {
-            lines.push("No living animals remain.".into());
+        if targets.is_empty() {
+            lines.push("No living animals are currently visible.".into());
         }
         lines
     }
@@ -218,12 +218,7 @@ impl HuntingGame {
         if self.ammo == 0 {
             return;
         }
-        let Some(target) =
-            self.targets.iter().filter(|target| target.alive).nth(number - 1).copied()
-        else {
-            return;
-        };
-        let Some(aim) = self.visible_cell(target) else {
+        let Some((_, aim)) = self.text_targets().get(number - 1).copied() else {
             return;
         };
         self.crosshair = aim;
@@ -244,6 +239,13 @@ impl HuntingGame {
             }
         }
         None
+    }
+    fn text_targets(&self) -> Vec<(Target, (i16, i16))> {
+        self.targets
+            .iter()
+            .filter(|target| target.alive)
+            .filter_map(|target| self.visible_cell(*target).map(|aim| (*target, aim)))
+            .collect()
     }
     fn advance_turn(&mut self) {
         for _ in 0..TICKS_PER_SECOND {
@@ -404,5 +406,13 @@ mod tests {
             .text_lines()
             .iter()
             .all(|line| line.bytes().all(|byte| byte == b' ' || byte.is_ascii_graphic())));
+    }
+    #[test]
+    fn text_hunt_omits_living_targets_without_a_visible_cell() {
+        let mut g = HuntingGame::new(1, Biome::Desert, false, 20);
+        g.targets = vec![Target { kind: Animal::Rabbit, x: -30, y: -30, dx: 1, alive: true }];
+        assert!(g.text_lines().iter().any(|line| line.contains("currently visible")));
+        g.text_key(KeyCode::Char('1'));
+        assert_eq!(g.result(), HuntingResult { food_lbs: 0, shots: 0 });
     }
 }
