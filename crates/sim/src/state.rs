@@ -574,12 +574,7 @@ impl GameState {
         self.weather_state.advance_in(&mut self.rng, season, climate);
         self.weather = self.weather_state.kind;
         self.spoil_food();
-        let eat = match self.rations {
-            RationLevel::Filling => 3,
-            RationLevel::Meager => 2,
-            RationLevel::BareBones => 1,
-        };
-        let required_food = eat * self.party.iter().filter(|p| p.alive).count() as u32;
+        let required_food = self.daily_food_lbs();
         let eaten_food = self.inventory.take("food", required_food);
         let mut out = vec![];
         let damages: Vec<u8> =
@@ -1608,6 +1603,18 @@ impl GameState {
             self.shop_unit_price(&market, item)
         })
     }
+    /// Pounds of food the living party consumes on one camp or travel day.
+    ///
+    /// UI guidance uses this so its food-day estimate remains tied to the
+    /// simulation's ration rule.
+    pub fn daily_food_lbs(&self) -> u32 {
+        let ration = match self.rations {
+            RationLevel::Filling => 3,
+            RationLevel::Meager => 2,
+            RationLevel::BareBones => 1,
+        };
+        self.party.iter().filter(|member| member.alive).count() as u32 * ration
+    }
     pub fn sell_price_cents(&self, item_id: &str) -> Option<i64> {
         self.price_cents(item_id).map(|price| price / 2)
     }
@@ -2251,12 +2258,7 @@ impl GameState {
         if resting {
             self.ox_fatigue = self.ox_fatigue.saturating_sub(25);
         }
-        let ration = match self.rations {
-            RationLevel::Filling => 3,
-            RationLevel::Meager => 2,
-            RationLevel::BareBones => 1,
-        };
-        let required = self.party.iter().filter(|member| member.alive).count() as u32 * ration;
+        let required = self.daily_food_lbs();
         let eaten = self.inventory.take("food", required);
         let damages: Vec<u8> =
             self.party.iter().map(|member| self.ailment_damage(member)).collect();
