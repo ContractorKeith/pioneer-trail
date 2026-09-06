@@ -1,15 +1,17 @@
 # Trail graphs
 
-The California Trail reuses the Independence-to-Fort-Bridger corridor with its
-own node IDs. That keeps each trail graph self-contained while retaining the
-California-specific branches at Fort Bridger, the Humboldt, the Great Salt
-Desert, and the Sierra.
+The California Trail reuses the Independence-to-Fort-Hall corridor with its own
+node IDs. That keeps each trail graph self-contained while retaining the
+California-specific Hastings branch at Fort Bridger, the Humboldt, the Great
+Salt Desert, and the Sierra.
 
 The segment values through Fort Bridger are existing game-route approximations,
 not newly asserted historical survey mileage. They deliberately mirror the
 Oregon graph: Independence to Kansas River (102), Big Blue (83), Fort Kearney
 (119), Chimney Rock (250), Fort Laramie (86), Independence Rock (190), South
-Pass (102), and Fort Bridger (219).
+Pass (102), Fort Bridger (219), Soda Springs (144), and Fort Hall (57). The
+normal California continuation from Fort Hall to the Humboldt is 159, preserving
+the previous 360-mile Fort Bridger-to-Humboldt game distance.
 
 NPS confirms the historical routing premise: the Oregon Trail supplied the
 established route from Missouri to Fort Bridger before California routes split

@@ -418,8 +418,7 @@ fn collect_all_requirements<'a>(
 fn has_unconditional_fallback(choice: &pioneer_sim::EventChoice) -> bool {
     choice.conditions.is_empty()
         && choice.effects.iter().all(|effect| {
-            !matches!(effect, Effect::AdjustFood(amount) if *amount < 0)
-                && !matches!(effect, Effect::AdjustCash(amount) if *amount < 0)
+            !matches!(effect, Effect::AdjustCash(amount) if *amount < 0)
                 && !matches!(effect, Effect::AdjustItem { quantity, .. } if *quantity < 0)
         })
 }
@@ -526,6 +525,31 @@ mod tests {
         let mut content = load().unwrap();
         content.trails[0].nodes[0].routes[0].target_id = content.trails[0].goal_node_id.clone();
         assert!(validate(&content).unwrap_err().to_string().contains("unreachable"));
+    }
+
+    #[test]
+    fn california_uses_the_shared_spine_through_fort_hall() {
+        let content = load().unwrap();
+        let california = content.trails.iter().find(|trail| trail.id == "california").unwrap();
+        for id in [
+            "kansas_river_ca",
+            "big_blue_ca",
+            "fort_kearney_ca",
+            "chimney_rock_ca",
+            "independence_rock_ca",
+            "south_pass_ca",
+            "soda_springs_ca",
+            "fort_hall_ca",
+        ] {
+            assert!(california.nodes.iter().any(|node| node.id == id));
+        }
+        let bridger = california.nodes.iter().find(|node| node.id == "fort_bridger_ca").unwrap();
+        assert_eq!(
+            bridger.routes.iter().find(|route| route.id == "main").unwrap().target_id,
+            "soda_springs_ca"
+        );
+        let hall = california.nodes.iter().find(|node| node.id == "fort_hall_ca").unwrap();
+        assert_eq!(hall.routes[0].target_id, "humboldt");
     }
 
     #[test]
