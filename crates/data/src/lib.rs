@@ -493,7 +493,7 @@ mod tests {
     #[test]
     fn family_events_load_and_invalid_family_dsl_bounds_are_rejected() {
         let content = load().unwrap();
-        for id in ["wedding_offer", "family_feud", "care_stay_behind", "relative_joins"] {
+        for id in ["wedding_offer", "family_feud", "party_departure", "relative_joins"] {
             assert!(content.events.iter().any(|event| event.id == id), "missing {id}");
         }
         let mut invalid = content.clone();
