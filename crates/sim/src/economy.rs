@@ -37,6 +37,14 @@ pub struct NpcTrain {
     /// This prevents repeating the same interaction from becoming a reputation faucet.
     #[serde(default)]
     pub last_reputation_day: Option<u32>,
+    #[serde(default)]
+    pub first_mile: u32,
+    #[serde(default)]
+    pub last_mile: u32,
+    #[serde(default)]
+    pub period_days: u32,
+    #[serde(default)]
+    pub day_window: u32,
 }
 impl NpcTrain {
     pub fn accepts(
