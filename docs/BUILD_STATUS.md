@@ -1,8 +1,11 @@
 # Build status
 
 This page maps the original [phase plan](PLAN.md) to the current source tree. It is a development
-record. Version 0.1.0 is released on GitHub and Homebrew; see the [README](../README.md) to play
+record. Version 0.1.1 is released on GitHub and Homebrew; see the [README](../README.md) to play
 and [release acceptance](RELEASE_ACCEPTANCE.md) for verification.
+
+[First-journey improvements](features/first-journey/README.md) records the v0.1.1 buying advice,
+survival tips, automatic-travel safeguards, illustrated screens, and verification.
 
 | Phase | Player-visible result | Status |
 |---|---|---|

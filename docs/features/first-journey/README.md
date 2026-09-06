@@ -61,4 +61,19 @@ no starting cash, consumption rate, mortality, or random sequence changed.
 - A separate copy of the player's v0.1.0 save loads in the updated binary. The original save and
   hall of fame are not used as recording or test destinations.
 
-Release and installed-build verification will be recorded after those checks complete.
+- Release source: `18383a2`, annotated tag `v0.1.1`. The
+  [five-platform release workflow](https://github.com/ContractorKeith/pioneer-trail/actions/runs/34040453131)
+  passed and published five binary archives plus `SHA256SUMS`.
+- A fresh unauthenticated Apple Silicon public download passed its checksum, version 0.1.1,
+  and a three-journey smoke test. The real terminal demo was regenerated and inspected, including
+  the advice view, hunting, and the journey's full status, tips, and wagon. The isolated failed-save
+  recording was also inspected with the new grounded tombstone and complete exit controls.
+- Homebrew tap commit `0cde698` passed a source upgrade, `brew test`, strict audit, and style checks.
+  `/opt/homebrew/bin/pioneer-trail` resolves to 0.1.1 and reproduced the 1,000-run Carpenter baseline.
+  A real PTY opened the installed game with the isolated save; Ctrl-Q restored terminal settings.
+  Homebrew replaced the old installation and removed its old cache; the v0.1.0 public release remains available.
+- Original save and hall-of-fame SHA256 checksums were unchanged after verification. All three
+  issues are closed, the team branches are merged, and their worktrees are removed.
+
+KödMem checkpointing remains unavailable because this workspace is not registered. Crates.io
+credentials remain a separate follow-up in GH #11; neither blocks GitHub or Homebrew play.

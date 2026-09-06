@@ -12,8 +12,8 @@ for a pushed version tag.
 2. Create and push the matching annotated tag:
 
    ```bash
-   git tag -a v0.1.0 -m "Pioneer Trail v0.1.0"
-   git push origin v0.1.0
+   git tag -a v0.1.1 -m "Pioneer Trail v0.1.1"
+   git push origin v0.1.1
    ```
 
 3. Confirm the GitHub Actions release job completed and download a released
@@ -45,7 +45,7 @@ brew install contractorkeith/tap/pioneer-trail
 pioneer-trail
 ```
 
-Version 0.1.0 was installed from source on Apple Silicon, then passed `brew test` and
-`brew audit --strict`. Tap commit: `162d5b8`. Its tagged source archive SHA256 is
-`cd75168a49e76d9228f9ba1549cedb3ac08f3629c24640ce1ea87a346ba6eca5`.
-See [release acceptance](../RELEASE_ACCEPTANCE.md) for the separate public binary check.
+Version 0.1.1 was installed from source on Apple Silicon, then passed `brew test`, formula style,
+and `brew audit --strict`. Tap commit: `0cde698`. Its tagged source archive SHA256 is
+`458669bf990b584cac62bcca384c4ffae7f8f2912a0c530d2e7b4120ff23679a`.
+See [first-journey verification](first-journey/README.md#verification) for the separate public binary check.

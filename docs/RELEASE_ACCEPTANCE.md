@@ -1,5 +1,8 @@
 # Release acceptance — v0.1.0
 
+This is the original release record. For v0.1.1, see
+[first-journey verification](features/first-journey/README.md#verification).
+
 Release source: `a89abb8bcc2ea7ccd44a6223e8611cbb314036c6`, annotated tag `v0.1.0`.
 
 ## Code and playable journeys

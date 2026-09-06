@@ -8,8 +8,9 @@ polished, keyboard-only game at 80×24 published on crates.io and a Homebrew tap
 **Full design and phase plan: `docs/PLAN.md`. Visual system (palette, `.px` format, layouts): `docs/DESIGN.md`. Read both before starting any phase.**
 
 ## Status
-v0.1.0 released — phases 1–9 are implemented and tested, with public binaries for five platforms
-and a verified Homebrew formula. Crates.io publication awaits credentials (GH #11).
+v0.1.1 released: first-journey guidance and illustrated decisions/outcomes are tested and shipped.
+Phases 1–9 have public binaries for five platforms and a verified Homebrew formula. Crates.io
+publication awaits credentials (GH #11). See `docs/features/first-journey/README.md` for this update.
 See `docs/BUILD_STATUS.md` and `docs/RELEASE_ACCEPTANCE.md` for scope and evidence.
 
 ## Commands
