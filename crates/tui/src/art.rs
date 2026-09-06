@@ -6,6 +6,70 @@
 use std::{fmt, str::FromStr};
 
 use ratatui::{buffer::Buffer, layout::Rect, style::Color};
+use std::{collections::BTreeMap, sync::OnceLock};
+
+/// Parse embedded assets once; malformed assets fail the content test gate.
+pub fn embedded(name: &str) -> Option<&'static PxImage> {
+    static IMAGES: OnceLock<BTreeMap<String, PxImage>> = OnceLock::new();
+    IMAGES
+        .get_or_init(|| {
+            pioneer_data::ART
+                .files()
+                .filter(|f| f.path().extension().is_some_and(|e| e == "px"))
+                .map(|f| {
+                    (
+                        f.path().to_string_lossy().into_owned(),
+                        PxImage::parse(f.contents_utf8().expect("ASCII sprite"))
+                            .expect("validated embedded sprite"),
+                    )
+                })
+                .collect()
+        })
+        .get(name)
+}
+
+/// Draw a sprite at a signed cell origin, clipping all four edges of the viewport.
+pub fn render_at(
+    image: &PxImage,
+    buffer: &mut Buffer,
+    viewport: Rect,
+    x: i32,
+    y: i32,
+    mode: ColorMode,
+) {
+    let bounds = viewport.intersection(buffer.area);
+    for dy in 0..i32::from(image.cell_height()) {
+        for dx in 0..i32::from(image.width()) {
+            let px = x + dx;
+            let py = y + dy;
+            if px < i32::from(bounds.x)
+                || py < i32::from(bounds.y)
+                || px >= i32::from(bounds.right())
+                || py >= i32::from(bounds.bottom())
+            {
+                continue;
+            }
+            let top = image.pixel(dx as u16, (dy * 2) as u16);
+            let bottom = image.pixel(dx as u16, (dy * 2 + 1) as u16);
+            if top.is_none() && bottom.is_none() {
+                continue;
+            }
+            let cell = &mut buffer[(px as u16, py as u16)];
+            if mode == ColorMode::Mono {
+                let pixel =
+                    [top, bottom].into_iter().flatten().max_by_key(|p| mono_level(*p)).unwrap();
+                cell.set_symbol(ColorMode::mono_glyph(pixel))
+                    .set_fg(Color::White)
+                    .set_bg(Color::Black);
+            } else {
+                let (a, b) = cell_halves(cell.symbol(), cell.fg, cell.bg);
+                cell.set_symbol("▀")
+                    .set_fg(top.map_or(a, |p| mode.color(p)))
+                    .set_bg(bottom.map_or(b, |p| mode.color(p)));
+            }
+        }
+    }
+}
 
 /// The six colors available to Pioneer Trail sprites.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -334,10 +398,7 @@ mod tests {
     #[test]
     fn every_embedded_sprite_is_valid_and_has_its_expected_size() {
         let manifest = pioneer_data::ART.get_file("manifest.ron").unwrap().contents_utf8().unwrap();
-        let _: ron::Value = ron::from_str(manifest).expect("valid art manifest");
-        for expected in ["fps: 4", "fps: 6", "fps: 30", "wagon_3.px", "rock_2.px", "layers:"] {
-            assert!(manifest.contains(expected), "manifest missing {expected}");
-        }
+        crate::art_manifest::Manifest::parse(manifest).expect("valid art manifest");
         for file in pioneer_data::ART.files() {
             let path = file.path().to_str().unwrap();
             if !path.ends_with(".px") {
