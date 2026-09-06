@@ -1,4 +1,5 @@
 //! Reusable TUI building blocks for Pioneer Trail.
+mod advice;
 pub mod app;
 pub mod art;
 pub mod art_manifest;
