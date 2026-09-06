@@ -67,9 +67,9 @@ expression: "all_screens(80, 24)"
 │   7. Preacher                                                                │
 │   8. Farmer                                                                  │
 │   9. Soldier                                                                 │
-│ $1600 · score ×1 · Haggles for better fort prices.                           │
+│ Starting funds $1600 · score ×1 · Haggles for better fort prices.            │
+│ Starting funds affect your shopping choices, not the trail's rules.          │
 │ Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                 │
-│                                                                              │
 │                                                                              │
 │                                                                              │
 │                                                                              │
@@ -111,8 +111,8 @@ expression: "all_screens(80, 24)"
 ┌PIONEER TRAIL─────────────────────────────────────────────────────────────────┐
 │ PIONEER TRAIL                                                                │
 │ Departure month: 4  [Left/Right]  Enter to outfit                            │
+│ Spring balances fair weather with enough time before autumn.                 │
 │ Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                 │
-│                                                                              │
 │                                                                              │
 │                                                                              │
 │                                                                              │
@@ -147,9 +147,9 @@ expression: "all_screens(80, 24)"
 │   Tools  $25.00  owned 0                                                     │
 │   Trade goods  $20.00  owned 0                                               │
 │   Depart  Qty 1 [←/→]  Cash $1080.00  Weight 1524 lb                         │
-│ Enter buys · S sells selected quantity at half the quoted price              │
+│ Enter buys · S sells at half price · ? outfitting advice                     │
+│ Oxen: $42.80 per yoke · 3 on hand                                            │
 │ Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                 │
-│                                                                              │
 │                                                                              │
 │                                                                              │
 │ TRAIL LOG─────────────────────────────────────────────────────────────────── │
