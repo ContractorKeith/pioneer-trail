@@ -1679,6 +1679,11 @@ impl GameState {
     }
     /// Reject corrupted saves before a UI attempts to navigate their content IDs.
     pub fn validate(&self) -> Result<(), CommandError> {
+        if matches!(self.status, RunStatus::Arrived | RunStatus::Failed)
+            && (self.pending_event.is_some() || self.active_minigame.is_some())
+        {
+            return Err(CommandError::InvalidSetup);
+        }
         if self.party.len() > 12
             || self.party.len().saturating_add(self.family.pregnancies.len()) > 12
             || !(3..=7).contains(&self.departure_month)

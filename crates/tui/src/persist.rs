@@ -326,6 +326,19 @@ mod tests {
     }
 
     #[test]
+    fn terminal_saves_cannot_resume_into_mandatory_events() {
+        let temp = Temp::new();
+        let store = Storage::at(&temp.0);
+        let mut game = GameState::with_content(41, pioneer_data::load().unwrap());
+        game.status = pioneer_sim::RunStatus::Failed;
+        game.pending_event = Some(game.content.events[0].id.clone());
+        store.save_session("terminal-corrupt", &game).unwrap();
+        let before = fs::read(temp.0.join("save.json")).unwrap();
+        assert!(store.load_session().is_err());
+        assert_eq!(before, fs::read(temp.0.join("save.json")).unwrap());
+    }
+
+    #[test]
     fn stale_temporary_file_does_not_prevent_replacing_save() {
         let temp = Temp::new();
         let store = Storage::at(&temp.0);

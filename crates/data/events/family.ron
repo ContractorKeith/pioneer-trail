@@ -7,7 +7,7 @@
         (id:"mediate",label:"Hear them out before dawn",effects:[AdjustRelationship(8),AdjustMorale(2),SetFlag("family_feud_settled")]),
         (id:"leave",label:"Let tempers cool on their own",effects:[AdjustRelationship(-8),AdjustMorale(-2),SetFlag("family_feud_settled")]),
     ]),
-    (id:"party_departure",text:"One weary companion says they cannot face another day on the road.",weight:2,conditions:[All([HasAdultPair,MoraleBelow(30)])],effects:[],choices:[
+    (id:"party_departure",text:"With spirits low in camp, a companion asks whether they should keep traveling with the wagon.",weight:2,conditions:[All([HasAdultPair,MoraleBelow(30)])],effects:[],choices:[
         (id:"leave",label:"Let the traveler take their leave",effects:[MemberLeaves,AdjustMorale(-2)]),
         (id:"stay",label:"Talk the traveler into staying",effects:[AdjustMorale(3),AdjustRelationship(2)]),
     ]),
