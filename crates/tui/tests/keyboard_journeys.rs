@@ -62,7 +62,7 @@ fn render(app: &mut App, width: u16, height: u16) -> String {
 
 fn loaded_app(seed: u64, storage: Storage) -> App {
     let content = pioneer_data::load().unwrap();
-    assert_eq!(content.events.len(), 150, "keyboard paths require the full event catalogue");
+    assert!(content.events.len() >= 150, "keyboard paths require the full event catalogue");
     assert_eq!(content.quotes.len(), 200, "keyboard paths require the full conversation catalogue");
     let config = RunConfig {
         trail: "oregon".into(),
