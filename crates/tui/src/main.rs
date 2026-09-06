@@ -1,6 +1,8 @@
 use clap::Parser;
 use pioneer_trail::{
+    app::{self, App},
     headless::{self, BalanceSummary, RunConfig},
+    persist::Storage,
     seed::WorldSeed,
 };
 
@@ -24,6 +26,15 @@ struct Cli {
     /// Print each advancing day during headless journeys.
     #[arg(long)]
     verbose: bool,
+    /// Resume the most recent local journey.
+    #[arg(long = "continue")]
+    resume: bool,
+    /// Text-only presentation without animated pixel scenes.
+    #[arg(long)]
+    no_art: bool,
+    /// Render using monochrome glyphs.
+    #[arg(long)]
+    mono: bool,
 }
 
 fn parse_month(value: &str) -> Result<u8, String> {
@@ -98,6 +109,20 @@ fn main() -> anyhow::Result<()> {
         );
         return Ok(());
     }
-    println!("Pioneer Trail (seed {seed}). The TUI is being built; run --headless-sim 3 for complete simulated journeys.");
-    Ok(())
+    use std::io::IsTerminal;
+    anyhow::ensure!(
+        std::io::stdin().is_terminal() && std::io::stdout().is_terminal(),
+        "Pioneer Trail needs an interactive terminal. Use --headless-sim N for batch runs."
+    );
+    let storage = Storage::platform()?;
+    let mut settings = storage.load_settings()?;
+    settings.no_art |= cli.no_art;
+    if cli.mono {
+        settings.color = pioneer_trail::persist::ColorMode::Mono;
+    }
+    let mut game = App::new(content, seed, settings).with_defaults(&config).with_storage(storage);
+    if cli.resume {
+        game.resume();
+    }
+    app::run(game)
 }
