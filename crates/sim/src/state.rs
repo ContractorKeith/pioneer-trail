@@ -2,9 +2,11 @@
 use crate::{
     calendar::CalendarDate,
     content::*,
+    economy::{Counteroffer, Market, NpcTrain},
     health::{advance, PartyMember},
     rng::SimRng,
     score,
+    weather::{Terrain, WeatherState},
 };
 use rand::{seq::SliceRandom, Rng};
 use serde::{Deserialize, Serialize};
@@ -41,6 +43,13 @@ pub enum RunStatus {
     AwaitingRiver(String),
     Arrived,
     Failed,
+}
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub enum Difficulty {
+    Easy,
+    #[default]
+    Normal,
+    Hard,
 }
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Inventory {
@@ -98,9 +107,50 @@ pub struct GameState {
     pub pending_event: Option<String>,
     pub scheduled_events: Vec<PendingEvent>,
     pub flags: BTreeSet<String>,
+    #[serde(default)]
+    pub weather_state: WeatherState,
+    #[serde(default)]
+    pub difficulty: Difficulty,
+    #[serde(default)]
+    pub ox_fatigue: u8,
+    #[serde(default)]
+    pub reputation: i16,
+    #[serde(default)]
+    pub markets: BTreeMap<String, Market>,
+    #[serde(default)]
+    pub npcs: Vec<NpcTrain>,
+    #[serde(default)]
+    pub pending_counteroffer: Option<Counteroffer>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum Command {
+    SetDifficulty(Difficulty),
+    Forage,
+    Fish,
+    Sell {
+        item_id: String,
+        quantity: u32,
+    },
+    Barter {
+        npc_id: String,
+        offered_item: String,
+        offered_quantity: u32,
+        wanted_item: String,
+        wanted_quantity: u32,
+    },
+    InviteNpc {
+        npc_id: String,
+    },
+    DismissNpc {
+        npc_id: String,
+    },
+    AcceptCounteroffer {
+        npc_id: String,
+        offered_item: String,
+        offered_quantity: u32,
+        wanted_item: String,
+        wanted_quantity: u32,
+    },
     Configure {
         trail_id: String,
         era_id: String,
@@ -206,6 +256,20 @@ impl GameState {
             pending_event: None,
             scheduled_events: vec![],
             flags: BTreeSet::new(),
+            weather_state: WeatherState::default(),
+            difficulty: Difficulty::Normal,
+            ox_fatigue: 0,
+            reputation: 0,
+            markets: BTreeMap::new(),
+            npcs: vec![NpcTrain {
+                id: "emigrant_train".into(),
+                name: "Holloway family".into(),
+                reputation: 0,
+                inventory: BTreeMap::from([("food".into(), 100)]),
+                recurring: true,
+                last_reputation_day: None,
+            }],
+            pending_counteroffer: None,
         }
     }
     pub fn apply(&mut self, c: Command) -> Vec<Outcome> {
@@ -219,6 +283,40 @@ impl GameState {
             return Err(CommandError::InvalidPhase);
         }
         match c {
+            Command::SetDifficulty(difficulty) => {
+                if self.status != RunStatus::Setup {
+                    return Err(CommandError::InvalidPhase);
+                }
+                self.difficulty = difficulty;
+                Ok(vec![Outcome::Message("Difficulty changed".into())])
+            }
+            Command::Forage => self.forage(),
+            Command::Fish => self.fish(),
+            Command::Sell { item_id, quantity } => self.sell(&item_id, quantity),
+            Command::Barter {
+                npc_id,
+                offered_item,
+                offered_quantity,
+                wanted_item,
+                wanted_quantity,
+            } => {
+                self.barter(&npc_id, &offered_item, offered_quantity, &wanted_item, wanted_quantity)
+            }
+            Command::InviteNpc { npc_id } => self.invite_npc(&npc_id),
+            Command::DismissNpc { npc_id } => self.dismiss_npc(&npc_id),
+            Command::AcceptCounteroffer {
+                npc_id,
+                offered_item,
+                offered_quantity,
+                wanted_item,
+                wanted_quantity,
+            } => self.accept_counteroffer(
+                &npc_id,
+                &offered_item,
+                offered_quantity,
+                &wanted_item,
+                wanted_quantity,
+            ),
             Command::Configure { trail_id, era_id, occupation_id, party, departure_month } => {
                 self.configure(trail_id, era_id, occupation_id, party, departure_month)
             }
@@ -298,7 +396,22 @@ impl GameState {
             .find(|x| x.id == o)
             .ok_or_else(|| CommandError::UnknownId(o.clone()))?;
         self.cash_cents = job.starting_cash_cents;
-        self.party = names.into_iter().map(PartyMember::new).collect();
+        self.party = names
+            .into_iter()
+            .enumerate()
+            .map(|(index, name)| {
+                let mut member = PartyMember::new(name);
+                member.age =
+                    18 + ((self.rng.stream("party").gen_range(0..40) + index as u32) % 55) as u8;
+                member.traits = match o.as_str() {
+                    "doctor" => vec![crate::party::Trait::Herbalist, crate::party::Trait::Hardy],
+                    "hunter" => vec![crate::party::Trait::Sharpshooter, crate::party::Trait::Hardy],
+                    "preacher" => vec![crate::party::Trait::Devout, crate::party::Trait::Cheerful],
+                    _ => vec![crate::party::Trait::Cheerful, crate::party::Trait::Hardy],
+                };
+                member
+            })
+            .collect();
         self.departure_month = month;
         self.current_node_id = Some(trail.start_node_id.clone());
         self.trail_id = Some(t);
@@ -316,12 +429,26 @@ impl GameState {
             .items
             .iter()
             .find(|x| x.id == id)
-            .ok_or_else(|| CommandError::UnknownId(id.into()))?;
-        let cost =
-            item.price_cents.checked_mul(i64::from(n)).ok_or(CommandError::InsufficientCash)?;
+            .ok_or_else(|| CommandError::UnknownId(id.into()))?
+            .clone();
+        let season_markup = match self.season() {
+            Season::Winter => 25,
+            Season::Summer => 10,
+            _ => 0,
+        };
+        let current_weight = self.weight();
+        let market_id = self.current_node_id.clone().unwrap_or_default();
+        let mut market = self.market_at(&market_id);
+        market.replenish(self.day);
+        if market.stock.get(id).copied().unwrap_or_default() < n {
+            return Err(CommandError::InvalidChoice);
+        }
+        let cost = market
+            .price_for(id, item.price_cents, season_markup)
+            .checked_mul(i64::from(n))
+            .ok_or(CommandError::InsufficientCash)?;
         if self.inventory.get(id).checked_add(n).ok_or(CommandError::CapacityExceeded)? > item.limit
-            || self
-                .weight()
+            || current_weight
                 .checked_add(item.weight_lbs.checked_mul(n).ok_or(CommandError::CapacityExceeded)?)
                 .ok_or(CommandError::CapacityExceeded)?
                 > 2400
@@ -333,6 +460,9 @@ impl GameState {
         }
         self.cash_cents -= cost;
         self.inventory.add(id, n);
+        let stock = market.stock.entry(id.into()).or_default();
+        *stock = stock.checked_sub(n).ok_or(CommandError::InvalidChoice)?;
+        self.markets.insert(market_id, market);
         Ok(vec![Outcome::Purchased { item_id: id.into(), quantity: n, cost_cents: cost }])
     }
     fn travel(&mut self) -> Result<Vec<Outcome>, CommandError> {
@@ -342,7 +472,9 @@ impl GameState {
             self.status = RunStatus::Failed;
             return Ok(vec![Outcome::Message("Your wagon cannot move without oxen.".into())]);
         }
-        self.weather = self.weather_roll();
+        let season = self.season();
+        self.weather_state.advance(&mut self.rng, season);
+        self.weather = self.weather_state.kind;
         let eat = match self.rations {
             RationLevel::Filling => 3,
             RationLevel::Meager => 2,
@@ -368,6 +500,7 @@ impl GameState {
                 out.push(Outcome::MemberDied { name: p.name.clone() })
             }
         }
+        self.progress_ailments(&mut out);
         if eaten_food < required_food {
             for member in &mut self.party {
                 if member.alive {
@@ -385,17 +518,43 @@ impl GameState {
             self.status = RunStatus::Failed;
             return Ok(out);
         }
-        let base = match self.pace {
-            Pace::Steady => 15,
-            Pace::Strenuous => 20,
-            Pace::Grueling => 25,
+        let base: u32 = match self.pace {
+            Pace::Steady => 18,
+            Pace::Strenuous => 25,
+            Pace::Grueling => 30,
         };
-        let penalty = match self.weather {
-            WeatherKind::Storm | WeatherKind::Snow => 7,
-            WeatherKind::Rain | WeatherKind::Cold => 3,
-            _ => 0,
+        let terrain = self.terrain();
+        let morale_penalty = if self
+            .party
+            .iter()
+            .filter(|member| member.alive)
+            .map(|member| member.morale)
+            .sum::<i16>()
+            / (self.party.iter().filter(|member| member.alive).count().max(1) as i16)
+            < 25
+        {
+            3
+        } else {
+            0
         };
-        let moved = (base - penalty).min(self.route_miles_remaining);
+        let weight_penalty = self.weight().saturating_sub(2_000) / 200;
+        let fatigue_penalty = u32::from(self.ox_fatigue / 20);
+        let moved = base
+            .saturating_sub(
+                self.weather_state.travel_penalty(terrain)
+                    + morale_penalty
+                    + weight_penalty
+                    + fatigue_penalty,
+            )
+            .min(self.route_miles_remaining);
+        self.ox_fatigue = self
+            .ox_fatigue
+            .saturating_add(match self.pace {
+                Pace::Steady => 2,
+                Pace::Strenuous => 5,
+                Pace::Grueling => 9,
+            })
+            .min(100);
         self.miles += moved;
         self.route_miles_remaining -= moved;
         out.push(Outcome::DayAdvanced { day: self.day, miles: self.miles, weather: self.weather });
@@ -530,8 +689,15 @@ impl GameState {
     }
     fn treat(&mut self, i: usize, a: &str) -> Result<Vec<Outcome>, CommandError> {
         self.at_camp()?;
+        let doctor_present = self
+            .party
+            .iter()
+            .any(|member| member.alive && member.traits.contains(&crate::party::Trait::Herbalist));
         let p = self.party.get_mut(i).ok_or(CommandError::InvalidChoice)?;
-        if !p.alive || !p.ailments.iter().any(|x| x == a) || !self.inventory.remove("medicine", 1) {
+        if !p.alive
+            || !p.ailments.iter().any(|x| x == a)
+            || (!doctor_present && !self.inventory.remove("medicine", 1))
+        {
             return Err(CommandError::InvalidChoice);
         }
         p.ailments.retain(|x| x != a);
@@ -564,6 +730,345 @@ impl GameState {
             p.alive = false
         }
         Ok(vec![Outcome::Message("Rafting result recorded".into())])
+    }
+    fn forage(&mut self) -> Result<Vec<Outcome>, CommandError> {
+        self.at_camp()?;
+        let bonus = self
+            .party
+            .iter()
+            .filter(|member| {
+                member.traits.contains(&crate::party::Trait::Herbalist)
+                    || member.traits.contains(&crate::party::Trait::Sharpshooter)
+            })
+            .count() as u32
+            * 10;
+        let food = (self.rng.stream("forage").gen_range(5..=25) + bonus)
+            .min(self.max_addable("food").unwrap_or(0));
+        self.inventory.add("food", food);
+        let mut outcomes = Vec::new();
+        self.pass_camp_day(&mut outcomes, false);
+        outcomes.push(Outcome::Message(format!("Foraged {food} lbs of food.")));
+        Ok(outcomes)
+    }
+    fn fish(&mut self) -> Result<Vec<Outcome>, CommandError> {
+        self.at_camp()?;
+        if !matches!(self.terrain(), Terrain::RiverValley) {
+            return Err(CommandError::InvalidPhase);
+        }
+        let food = self
+            .rng
+            .stream("fishing")
+            .gen_range(10..=45)
+            .min(self.max_addable("food").unwrap_or(0));
+        self.inventory.add("food", food);
+        let mut outcomes = Vec::new();
+        self.pass_camp_day(&mut outcomes, false);
+        outcomes.push(Outcome::Message(format!("Caught {food} lbs of fish.")));
+        Ok(outcomes)
+    }
+    fn sell(&mut self, item_id: &str, quantity: u32) -> Result<Vec<Outcome>, CommandError> {
+        if !self.can_shop() || quantity == 0 {
+            return Err(CommandError::InvalidChoice);
+        }
+        let item = self
+            .content
+            .items
+            .iter()
+            .find(|item| item.id == item_id)
+            .ok_or_else(|| CommandError::UnknownId(item_id.into()))?;
+        if self.inventory.get(item_id) < quantity {
+            return Err(CommandError::InvalidChoice);
+        }
+        let market_id = self.current_node_id.clone().unwrap_or_default();
+        let mut market = self.market_at(&market_id);
+        market.replenish(self.day);
+        let stock = market.stock.get(item_id).copied().unwrap_or_default();
+        let max_stock = item.limit.max(20);
+        let new_stock = stock.checked_add(quantity).ok_or(CommandError::CapacityExceeded)?;
+        if new_stock > max_stock {
+            return Err(CommandError::CapacityExceeded);
+        }
+        let price = market.price_for(item_id, item.price_cents, self.season_markup()) / 2;
+        let credit =
+            price.checked_mul(i64::from(quantity)).ok_or(CommandError::CapacityExceeded)?;
+        let cash = self.cash_cents.checked_add(credit).ok_or(CommandError::CapacityExceeded)?;
+        self.inventory.remove(item_id, quantity);
+        market.stock.insert(item_id.into(), new_stock);
+        self.markets.insert(market_id, market);
+        self.cash_cents = cash;
+        Ok(vec![Outcome::Message(format!("Sold {quantity} {item_id}."))])
+    }
+    fn barter(
+        &mut self,
+        npc_id: &str,
+        offered_item: &str,
+        offered_quantity: u32,
+        wanted_item: &str,
+        wanted_quantity: u32,
+    ) -> Result<Vec<Outcome>, CommandError> {
+        self.at_camp()?;
+        if offered_quantity == 0 || wanted_quantity == 0 || offered_item == wanted_item {
+            return Err(CommandError::InvalidChoice);
+        }
+        let (offered_value, wanted_value) =
+            self.trade_values(offered_item, offered_quantity, wanted_item, wanted_quantity)?;
+        let npc = self
+            .npcs
+            .iter()
+            .find(|npc| npc.id == npc_id)
+            .ok_or_else(|| CommandError::UnknownId(npc_id.into()))?;
+        if !self.trade_fits(npc, offered_item, offered_quantity, wanted_item, wanted_quantity)? {
+            return Err(CommandError::InvalidChoice);
+        }
+        if !npc.accepts(offered_value, wanted_value, self.reputation) {
+            let counteroffer = self.make_counteroffer(
+                npc_id,
+                offered_item,
+                wanted_item,
+                wanted_quantity,
+                wanted_value,
+            )?;
+            let counteroffer = counteroffer.ok_or(CommandError::InvalidChoice)?;
+            self.pending_counteroffer = Some(counteroffer);
+            return Ok(vec![Outcome::Message("The emigrants make a counteroffer.".into())]);
+        }
+        self.execute_trade(npc_id, offered_item, offered_quantity, wanted_item, wanted_quantity)?;
+        Ok(vec![Outcome::Message("Trade accepted.".into())])
+    }
+    fn invite_npc(&mut self, npc_id: &str) -> Result<Vec<Outcome>, CommandError> {
+        self.at_camp()?;
+        let npc = self
+            .npcs
+            .iter()
+            .find(|npc| npc.id == npc_id)
+            .ok_or_else(|| CommandError::UnknownId(npc_id.into()))?;
+        if i32::from(npc.reputation) + i32::from(self.reputation) < 0
+            || self.party.len() >= 12
+            || !npc.recurring
+            || self.party.iter().any(|member| member.npc_id.as_deref() == Some(npc_id))
+        {
+            return Err(CommandError::InvalidChoice);
+        }
+        let name = npc.name.clone();
+        let npc = self.npcs.iter_mut().find(|npc| npc.id == npc_id).expect("NPC was found above");
+        npc.recurring = false;
+        let mut member = PartyMember::new(name.clone());
+        member.npc_id = Some(npc_id.into());
+        self.party.push(member);
+        Ok(vec![Outcome::Message(format!("{name} joins the party."))])
+    }
+    fn dismiss_npc(&mut self, npc_id: &str) -> Result<Vec<Outcome>, CommandError> {
+        self.at_camp()?;
+        let npc = self
+            .npcs
+            .iter()
+            .find(|npc| npc.id == npc_id)
+            .ok_or_else(|| CommandError::UnknownId(npc_id.into()))?;
+        if npc.recurring {
+            return Err(CommandError::InvalidChoice);
+        }
+        let index = self
+            .party
+            .iter()
+            .position(|member| member.alive && member.npc_id.as_deref() == Some(npc_id))
+            .ok_or(CommandError::InvalidChoice)?;
+        let name = self.party[index].name.clone();
+        self.party.remove(index);
+        let npc = self.npcs.iter_mut().find(|npc| npc.id == npc_id).expect("NPC was found above");
+        npc.recurring = true;
+        Ok(vec![Outcome::Message(format!("{name} leaves the party."))])
+    }
+    fn accept_counteroffer(
+        &mut self,
+        npc_id: &str,
+        offered_item: &str,
+        offered_quantity: u32,
+        wanted_item: &str,
+        wanted_quantity: u32,
+    ) -> Result<Vec<Outcome>, CommandError> {
+        self.at_camp()?;
+        let offer = self.pending_counteroffer.clone().ok_or(CommandError::InvalidChoice)?;
+        if offer.quoted_day != self.day
+            || offer.npc_id != npc_id
+            || offer.offered_item != offered_item
+            || offer.offered_quantity != offered_quantity
+            || offer.wanted_item != wanted_item
+            || offer.wanted_quantity != wanted_quantity
+        {
+            return Err(CommandError::InvalidChoice);
+        }
+        let (offered_value, wanted_value) =
+            self.trade_values(offered_item, offered_quantity, wanted_item, wanted_quantity)?;
+        if offered_value != offer.offered_value_cents || wanted_value != offer.wanted_value_cents {
+            return Err(CommandError::InvalidChoice);
+        }
+        let npc = self
+            .npcs
+            .iter()
+            .find(|npc| npc.id == npc_id)
+            .ok_or_else(|| CommandError::UnknownId(npc_id.into()))?;
+        if !self.trade_fits(npc, offered_item, offered_quantity, wanted_item, wanted_quantity)?
+            || !npc.accepts(offered_value, wanted_value, self.reputation)
+        {
+            return Err(CommandError::InvalidChoice);
+        }
+        self.execute_trade(npc_id, offered_item, offered_quantity, wanted_item, wanted_quantity)?;
+        Ok(vec![Outcome::Message("Counteroffer accepted.".into())])
+    }
+    fn trade_values(
+        &self,
+        offered_item: &str,
+        offered_quantity: u32,
+        wanted_item: &str,
+        wanted_quantity: u32,
+    ) -> Result<(u64, u64), CommandError> {
+        if offered_item == wanted_item || offered_quantity == 0 || wanted_quantity == 0 {
+            return Err(CommandError::InvalidChoice);
+        }
+        let price = |id: &str| -> Result<u64, CommandError> {
+            let item = self
+                .content
+                .items
+                .iter()
+                .find(|item| item.id == id)
+                .ok_or_else(|| CommandError::UnknownId(id.into()))?;
+            u64::try_from(item.price_cents)
+                .ok()
+                .filter(|price| *price > 0)
+                .ok_or(CommandError::InvalidChoice)
+        };
+        let offered = price(offered_item)?
+            .checked_mul(u64::from(offered_quantity))
+            .ok_or(CommandError::CapacityExceeded)?;
+        let wanted = price(wanted_item)?
+            .checked_mul(u64::from(wanted_quantity))
+            .ok_or(CommandError::CapacityExceeded)?;
+        Ok((offered, wanted))
+    }
+    fn trade_fits(
+        &self,
+        npc: &NpcTrain,
+        offered_item: &str,
+        offered_quantity: u32,
+        wanted_item: &str,
+        wanted_quantity: u32,
+    ) -> Result<bool, CommandError> {
+        let wanted = self
+            .content
+            .items
+            .iter()
+            .find(|item| item.id == wanted_item)
+            .ok_or_else(|| CommandError::UnknownId(wanted_item.into()))?;
+        let offered = self
+            .content
+            .items
+            .iter()
+            .find(|item| item.id == offered_item)
+            .ok_or_else(|| CommandError::UnknownId(offered_item.into()))?;
+        if self.inventory.get(offered_item) < offered_quantity
+            || npc.inventory.get(wanted_item).copied().unwrap_or_default() < wanted_quantity
+            || npc
+                .inventory
+                .get(offered_item)
+                .copied()
+                .unwrap_or_default()
+                .checked_add(offered_quantity)
+                .is_none()
+            || self.inventory.get(wanted_item).checked_add(wanted_quantity).is_none()
+            || self.inventory.get(wanted_item).saturating_add(wanted_quantity) > wanted.limit
+        {
+            return Ok(false);
+        }
+        let weight_after = u64::from(self.weight())
+            .checked_sub(u64::from(offered.weight_lbs) * u64::from(offered_quantity))
+            .and_then(|weight| {
+                weight.checked_add(u64::from(wanted.weight_lbs) * u64::from(wanted_quantity))
+            })
+            .ok_or(CommandError::CapacityExceeded)?;
+        Ok(weight_after <= 2400)
+    }
+    fn make_counteroffer(
+        &self,
+        npc_id: &str,
+        offered_item: &str,
+        wanted_item: &str,
+        wanted_quantity: u32,
+        wanted_value: u64,
+    ) -> Result<Option<Counteroffer>, CommandError> {
+        let offered_price = self
+            .content
+            .items
+            .iter()
+            .find(|item| item.id == offered_item)
+            .ok_or_else(|| CommandError::UnknownId(offered_item.into()))?
+            .price_cents;
+        let offered_price =
+            u64::try_from(offered_price).map_err(|_| CommandError::InvalidChoice)?;
+        if offered_price == 0 {
+            return Ok(None);
+        }
+        let npc = self
+            .npcs
+            .iter()
+            .find(|npc| npc.id == npc_id)
+            .ok_or_else(|| CommandError::UnknownId(npc_id.into()))?;
+        let discount = u64::try_from(self.reputation.max(0)).unwrap_or(0).min(25);
+        let required_value = wanted_value
+            .checked_mul(100)
+            .and_then(|value| value.checked_add(99 + discount))
+            .ok_or(CommandError::CapacityExceeded)?
+            / (100 + discount);
+        let offered_quantity =
+            required_value.checked_add(offered_price - 1).ok_or(CommandError::CapacityExceeded)?
+                / offered_price;
+        let offered_quantity =
+            u32::try_from(offered_quantity).map_err(|_| CommandError::CapacityExceeded)?;
+        let (offered_value, wanted_value) =
+            self.trade_values(offered_item, offered_quantity, wanted_item, wanted_quantity)?;
+        if !self.trade_fits(npc, offered_item, offered_quantity, wanted_item, wanted_quantity)?
+            || !npc.accepts(offered_value, wanted_value, self.reputation)
+        {
+            return Ok(None);
+        }
+        Ok(Some(Counteroffer {
+            npc_id: npc_id.into(),
+            offered_item: offered_item.into(),
+            offered_quantity,
+            wanted_item: wanted_item.into(),
+            wanted_quantity,
+            offered_value_cents: offered_value,
+            wanted_value_cents: wanted_value,
+            quoted_day: self.day,
+        }))
+    }
+    fn execute_trade(
+        &mut self,
+        npc_id: &str,
+        offered_item: &str,
+        offered_quantity: u32,
+        wanted_item: &str,
+        wanted_quantity: u32,
+    ) -> Result<(), CommandError> {
+        let npc = self
+            .npcs
+            .iter_mut()
+            .find(|npc| npc.id == npc_id)
+            .ok_or_else(|| CommandError::UnknownId(npc_id.into()))?;
+        self.inventory.remove(offered_item, offered_quantity);
+        self.inventory.add(wanted_item, wanted_quantity);
+        let offered_stock = npc.inventory.entry(offered_item.into()).or_default();
+        *offered_stock =
+            offered_stock.checked_add(offered_quantity).ok_or(CommandError::CapacityExceeded)?;
+        let wanted_stock = npc.inventory.entry(wanted_item.into()).or_default();
+        *wanted_stock =
+            wanted_stock.checked_sub(wanted_quantity).ok_or(CommandError::InvalidChoice)?;
+        if npc.last_reputation_day != Some(self.day) {
+            self.reputation = self.reputation.saturating_add(1);
+            npc.reputation = npc.reputation.saturating_add(1);
+            npc.last_reputation_day = Some(self.day);
+        }
+        self.pending_counteroffer = None;
+        Ok(())
     }
     pub fn score(&self) -> u32 {
         let mul = self
@@ -629,7 +1134,38 @@ impl GameState {
             && self.current_landmark().is_some_and(|node| node.store)
     }
     pub fn price_cents(&self, item_id: &str) -> Option<i64> {
-        self.content.items.iter().find(|item| item.id == item_id).map(|item| item.price_cents)
+        self.content.items.iter().find(|item| item.id == item_id).map(|item| {
+            let mut market = self.market_at(self.current_node_id.as_deref().unwrap_or_default());
+            market.replenish(self.day);
+            market.price_for(item_id, item.price_cents, self.season_markup())
+        })
+    }
+    fn season_markup(&self) -> i64 {
+        match self.season() {
+            Season::Winter => 25,
+            Season::Summer => 10,
+            _ => 0,
+        }
+    }
+    fn market_at(&self, market_id: &str) -> Market {
+        self.markets.get(market_id).cloned().unwrap_or_else(|| Market {
+            normal_stock: self.content.items.iter().map(|item| (item.id.clone(), item.limit.max(20))).collect(),
+            stock: self
+                .content
+                .items
+                .iter()
+                .map(|item| (item.id.clone(), item.limit.max(20)))
+                .collect(),
+            reputation: self.reputation,
+            last_restock_day: self.day,
+        })
+    }
+    fn max_addable(&self, item_id: &str) -> Option<u32> {
+        let item = self.content.items.iter().find(|item| item.id == item_id)?;
+        let item_limit = item.limit.checked_sub(self.inventory.get(item_id))?;
+        let weight_limit =
+            2400u32.saturating_sub(self.weight()).checked_div(item.weight_lbs).unwrap_or(u32::MAX);
+        Some(item_limit.min(weight_limit))
     }
     /// Reject corrupted saves before a UI attempts to navigate their content IDs.
     pub fn validate(&self) -> Result<(), CommandError> {
@@ -642,6 +1178,16 @@ impl GameState {
                     || !(0..=100).contains(&member.morale)
                     || (member.alive && member.health == 0)
             })
+        {
+            return Err(CommandError::InvalidSetup);
+        }
+        let mut joined_npcs = BTreeSet::new();
+        if self
+            .party
+            .iter()
+            .filter_map(|member| member.npc_id.as_ref())
+            .any(|id| !joined_npcs.insert(id))
+            || self.npcs.iter().any(|npc| npc.id.is_empty())
         {
             return Err(CommandError::InvalidSetup);
         }
@@ -723,6 +1269,18 @@ impl GameState {
                 if !self.content.ailments.iter().any(|ailment| &ailment.id == id) {
                     return Err(CommandError::UnknownId(id.clone()));
                 }
+            }
+        }
+        if let Some(offer) = &self.pending_counteroffer {
+            if !self.npcs.iter().any(|npc| npc.id == offer.npc_id)
+                || self.trade_values(
+                    &offer.offered_item,
+                    offer.offered_quantity,
+                    &offer.wanted_item,
+                    offer.wanted_quantity,
+                )? != (offer.offered_value_cents, offer.wanted_value_cents)
+            {
+                return Err(CommandError::InvalidSetup);
             }
         }
         Ok(())
@@ -965,6 +1523,70 @@ impl GameState {
             }
         }
     }
+    fn progress_ailments(&mut self, out: &mut Vec<Outcome>) {
+        let mut spread = Vec::new();
+        for index in 0..self.party.len() {
+            if !self.party[index].alive {
+                continue;
+            }
+            let ailments = self.party[index].ailments.clone();
+            for id in ailments {
+                let Some(definition) =
+                    self.content.ailments.iter().find(|ailment| ailment.id == id)
+                else {
+                    continue;
+                };
+                let days = {
+                    let entry = self.party[index].ailment_days.entry(id.clone()).or_default();
+                    *entry = entry.saturating_add(1);
+                    *entry
+                };
+                let trait_modifier =
+                    if self.party[index].traits.contains(&crate::party::Trait::Hardy) {
+                        2
+                    } else if self.party[index].traits.contains(&crate::party::Trait::Sickly) {
+                        -2
+                    } else {
+                        0
+                    };
+                if matches!(
+                    crate::health::stage(days, definition.severity),
+                    crate::health::AilmentStage::Acute
+                ) && self.rng.stream("health").gen_range(0..1000)
+                    < definition
+                        .mortality_per_mille
+                        .saturating_sub(trait_modifier.max(0) as u16)
+                        .saturating_add((-trait_modifier.min(0)) as u16)
+                {
+                    self.party[index].health = 0;
+                    self.party[index].alive = false;
+                    out.push(Outcome::MemberDied { name: self.party[index].name.clone() });
+                    // A person can die only once per day, even if several ailments are present.
+                    break;
+                }
+                if days >= u16::from(definition.severity.max(2)) * 3
+                    && self.party[index].health >= 35
+                {
+                    self.party[index].ailments.retain(|ailment| ailment != &id);
+                    self.party[index].ailment_days.remove(&id);
+                }
+                if crate::health::contagious(&id)
+                    && days <= u16::from(definition.severity.max(2)) * 2
+                    && self.rng.stream("health").gen_range(0..100) < 18
+                {
+                    spread.push(id);
+                }
+            }
+        }
+        for id in spread {
+            if let Some(target) =
+                self.party.iter_mut().find(|member| member.alive && !member.ailments.contains(&id))
+            {
+                target.ailments.push(id.clone());
+                target.ailment_days.insert(id, 0);
+            }
+        }
+    }
     fn pass_camp_day(&mut self, out: &mut Vec<Outcome>, resting: bool) {
         if self.status == RunStatus::Failed {
             return;
@@ -1014,6 +1636,7 @@ impl GameState {
                 out.push(Outcome::MemberDied { name: member.name.clone() });
             }
         }
+        self.progress_ailments(out);
         if !self.party.iter().any(|member| member.alive) {
             self.status = RunStatus::Failed;
         }
@@ -1024,6 +1647,14 @@ impl GameState {
             6..=8 => Season::Summer,
             9..=11 => Season::Autumn,
             _ => Season::Winter,
+        }
+    }
+    fn terrain(&self) -> Terrain {
+        match self.current_node_id.as_deref().unwrap_or_default() {
+            id if id.contains("mountain") || id.contains("pass") => Terrain::Mountains,
+            id if id.contains("river") => Terrain::RiverValley,
+            id if id.contains("fort") => Terrain::Plains,
+            _ => Terrain::Plains,
         }
     }
 }
@@ -1127,6 +1758,17 @@ mod tests {
         g.apply(Command::Depart);
         assert_eq!(g.status, RunStatus::Travelling);
         g
+    }
+    fn trade_game(seed: u64) -> GameState {
+        let mut game = run(seed);
+        let npc = game.npcs.iter_mut().find(|npc| npc.id == "emigrant_train").unwrap();
+        npc.inventory.insert("clothing".into(), 4);
+        game
+    }
+    fn assert_rejected_without_mutation(game: &mut GameState, command: Command) {
+        let before = serde_json::to_value(&*game).unwrap();
+        assert!(matches!(game.apply(command).as_slice(), [Outcome::Rejected(_)]));
+        assert_eq!(serde_json::to_value(&*game).unwrap(), before);
     }
     #[test]
     fn deterministic() {
@@ -1271,6 +1913,271 @@ mod tests {
         assert!(!game.party[0].alive);
         assert_eq!(game.party[0].health, 0);
         assert_eq!(game.inventory.get("food"), 476);
+    }
+
+    #[test]
+    fn market_stock_depletes_and_npc_trade_is_atomic() {
+        let mut game = GameState::new(8);
+        game.apply(Command::Configure {
+            trail_id: "oregon".into(),
+            era_id: "1848".into(),
+            occupation_id: "farmer".into(),
+            party: vec!["A".into(), "B".into(), "C".into(), "D".into(), "E".into()],
+            departure_month: 4,
+        });
+        game.apply(Command::Buy { item_id: "food".into(), quantity: 10 });
+        assert_eq!(game.markets["independence"].stock["food"], 1_990);
+        let before = serde_json::to_value(&game).unwrap();
+        assert!(matches!(
+            game.apply(Command::Barter {
+                npc_id: "emigrant_train".into(),
+                offered_item: "food".into(),
+                offered_quantity: 0,
+                wanted_item: "food".into(),
+                wanted_quantity: 1
+            })
+            .as_slice(),
+            [Outcome::Rejected(_)]
+        ));
+        assert_eq!(serde_json::to_value(&game).unwrap(), before);
+    }
+
+    #[test]
+    fn barter_uses_priced_quantities_and_conserves_items() {
+        let mut game = trade_game(9);
+        let before_food = game.inventory.get("food");
+        let before_clothing = game.inventory.get("clothing");
+        assert!(matches!(
+            game.apply(Command::Barter {
+                npc_id: "emigrant_train".into(),
+                offered_item: "food".into(),
+                offered_quantity: 50,
+                wanted_item: "clothing".into(),
+                wanted_quantity: 1,
+            })
+            .as_slice(),
+            [Outcome::Message(message)] if message == "Trade accepted."
+        ));
+        assert_eq!(game.inventory.get("food"), before_food - 50);
+        assert_eq!(game.inventory.get("clothing"), before_clothing + 1);
+        let npc = &game.npcs[0];
+        assert_eq!(npc.inventory["food"], 150);
+        assert_eq!(npc.inventory["clothing"], 3);
+    }
+
+    #[test]
+    fn invalid_barter_is_atomic_and_same_item_is_rejected() {
+        let mut game = trade_game(10);
+        assert_rejected_without_mutation(
+            &mut game,
+            Command::Barter {
+                npc_id: "emigrant_train".into(),
+                offered_item: "food".into(),
+                offered_quantity: 1,
+                wanted_item: "food".into(),
+                wanted_quantity: 1,
+            },
+        );
+        assert_rejected_without_mutation(
+            &mut game,
+            Command::Barter {
+                npc_id: "emigrant_train".into(),
+                offered_item: "unknown".into(),
+                offered_quantity: 1,
+                wanted_item: "clothing".into(),
+                wanted_quantity: 1,
+            },
+        );
+    }
+
+    #[test]
+    fn overflowing_barter_quote_is_rejected_without_mutation() {
+        let mut game = trade_game(10);
+        game.content.items.push(ItemDefinition {
+            id: "priceless".into(),
+            name: "Priceless".into(),
+            unit: "crate".into(),
+            price_cents: i64::MAX,
+            weight_lbs: 0,
+            limit: u32::MAX,
+        });
+        game.inventory.quantities.insert("priceless".into(), 3);
+        game.npcs[0].inventory.insert("priceless".into(), 2);
+        assert_rejected_without_mutation(
+            &mut game,
+            Command::Barter {
+                npc_id: "emigrant_train".into(),
+                offered_item: "priceless".into(),
+                offered_quantity: 3,
+                wanted_item: "clothing".into(),
+                wanted_quantity: 1,
+            },
+        );
+    }
+
+    #[test]
+    fn counteroffer_is_persisted_and_revalidated_before_acceptance() {
+        let mut game = trade_game(11);
+        let result = game.apply(Command::Barter {
+            npc_id: "emigrant_train".into(),
+            offered_item: "food".into(),
+            offered_quantity: 1,
+            wanted_item: "clothing".into(),
+            wanted_quantity: 1,
+        });
+        assert!(
+            matches!(result.as_slice(), [Outcome::Message(message)] if message.contains("counteroffer"))
+        );
+        let offer = game.pending_counteroffer.clone().unwrap();
+        assert_eq!(offer.offered_quantity, 50);
+        assert_eq!(offer.offered_value_cents, offer.wanted_value_cents);
+        assert_rejected_without_mutation(
+            &mut game,
+            Command::AcceptCounteroffer {
+                npc_id: offer.npc_id.clone(),
+                offered_item: offer.offered_item.clone(),
+                offered_quantity: offer.offered_quantity - 1,
+                wanted_item: offer.wanted_item.clone(),
+                wanted_quantity: offer.wanted_quantity,
+            },
+        );
+        assert!(matches!(
+            game.apply(Command::AcceptCounteroffer {
+                npc_id: offer.npc_id,
+                offered_item: offer.offered_item,
+                offered_quantity: offer.offered_quantity,
+                wanted_item: offer.wanted_item,
+                wanted_quantity: offer.wanted_quantity,
+            })
+            .as_slice(),
+            [Outcome::Message(message)] if message == "Counteroffer accepted."
+        ));
+        assert!(game.pending_counteroffer.is_none());
+    }
+
+    #[test]
+    fn npc_trade_reputation_can_only_increase_once_per_day() {
+        let mut game = trade_game(12);
+        for _ in 0..2 {
+            game.apply(Command::Barter {
+                npc_id: "emigrant_train".into(),
+                offered_item: "food".into(),
+                offered_quantity: 50,
+                wanted_item: "clothing".into(),
+                wanted_quantity: 1,
+            });
+        }
+        assert_eq!(game.reputation, 1);
+        assert_eq!(game.npcs[0].reputation, 1);
+        assert_eq!(game.npcs[0].last_reputation_day, Some(game.day));
+    }
+
+    #[test]
+    fn npc_identity_prevents_duplicate_invites_and_protects_same_named_leader() {
+        let mut game = trade_game(13);
+        game.party[0].name = "Holloway family".into();
+        game.apply(Command::InviteNpc { npc_id: "emigrant_train".into() });
+        assert_eq!(game.party.iter().filter(|member| member.npc_id.is_some()).count(), 1);
+        assert_rejected_without_mutation(
+            &mut game,
+            Command::InviteNpc { npc_id: "emigrant_train".into() },
+        );
+        game.apply(Command::DismissNpc { npc_id: "emigrant_train".into() });
+        assert_eq!(game.party.len(), 5);
+        assert_eq!(game.party[0].name, "Holloway family");
+        assert!(game.party.iter().all(|member| member.npc_id.is_none()));
+    }
+
+    #[test]
+    fn market_preview_matches_buy_and_sellback_is_stock_bounded() {
+        let mut game = GameState::new(14);
+        game.apply(Command::Configure {
+            trail_id: "oregon".into(),
+            era_id: "1848".into(),
+            occupation_id: "farmer".into(),
+            party: vec!["A".into(), "B".into(), "C".into(), "D".into(), "E".into()],
+            departure_month: 4,
+        });
+        let quote = game.price_cents("food").unwrap();
+        let cash_before = game.cash_cents;
+        assert!(
+            matches!(game.apply(Command::Buy { item_id: "food".into(), quantity: 10 }).as_slice(),
+            [Outcome::Purchased { cost_cents, .. }] if *cost_cents == quote * 10)
+        );
+        game.apply(Command::Sell { item_id: "food".into(), quantity: 10 });
+        assert!(game.cash_cents < cash_before);
+        assert_eq!(game.markets["independence"].stock["food"], 2_000);
+        assert_rejected_without_mutation(
+            &mut game,
+            Command::Sell { item_id: "food".into(), quantity: 1 },
+        );
+    }
+
+    #[test]
+    fn forage_and_fishing_keep_food_under_item_and_wagon_limits() {
+        let mut game = run(15);
+        game.inventory.quantities.insert("food".into(), 2_000);
+        assert!(matches!(game.apply(Command::Forage).as_slice(), outcomes
+            if outcomes.iter().any(|outcome| matches!(outcome, Outcome::Message(message) if message == "Foraged 0 lbs of food."))));
+        game.content.items.iter_mut().find(|item| item.id == "food").unwrap().limit = 5_000;
+        game.inventory.quantities.insert("food".into(), 2_400);
+        game.current_node_id = Some("river".into());
+        assert!(matches!(game.apply(Command::Fish).as_slice(), outcomes
+            if outcomes.iter().any(|outcome| matches!(outcome, Outcome::Message(message) if message == "Caught 0 lbs of fish."))));
+    }
+
+    #[test]
+    fn mortality_emits_one_death_for_a_member_with_multiple_ailments() {
+        let mut game = run(16);
+        game.content.ailments = vec![
+            AilmentDefinition {
+                id: "measles".into(),
+                name: "Measles".into(),
+                severity: 2,
+                daily_damage: 0,
+                mortality_per_mille: 1_000,
+            },
+            AilmentDefinition {
+                id: "cholera".into(),
+                name: "Cholera".into(),
+                severity: 2,
+                daily_damage: 0,
+                mortality_per_mille: 1_000,
+            },
+        ];
+        game.party[0].ailments = vec!["measles".into(), "cholera".into()];
+        game.party[0].ailment_days = BTreeMap::from([("measles".into(), 1), ("cholera".into(), 1)]);
+        let deaths = game
+            .apply(Command::TravelDay)
+            .into_iter()
+            .filter(|outcome| matches!(outcome, Outcome::MemberDied { name } if name == "Ada"))
+            .count();
+        assert_eq!(deaths, 1);
+    }
+
+    #[test]
+    fn contagious_disease_spreads_and_eventually_recovers_deterministically() {
+        let mut game = run(17);
+        game.content.ailments = vec![AilmentDefinition {
+            id: "measles".into(),
+            name: "Measles".into(),
+            severity: 100,
+            daily_damage: 0,
+            mortality_per_mille: 0,
+        }];
+        game.party[0].ailments.push("measles".into());
+        for _ in 0..30 {
+            game.progress_ailments(&mut Vec::new());
+        }
+        assert!(game
+            .party
+            .iter()
+            .skip(1)
+            .any(|member| member.ailments.contains(&"measles".into())));
+        game.content.ailments[0].severity = 2;
+        game.party[0].ailment_days.insert("measles".into(), 5);
+        game.progress_ailments(&mut Vec::new());
+        assert!(!game.party[0].ailments.contains(&"measles".into()));
     }
 
     proptest::proptest! {

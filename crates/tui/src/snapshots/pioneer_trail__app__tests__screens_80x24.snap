@@ -136,14 +136,14 @@ expression: "all_screens(80, 24)"
 === Store ===
 ┌GENERAL STORE─────────────────────────────────────────────────────────────────┐
 │ GENERAL STORE                                                                │
-│ ► Oxen  $40.00  owned 3                                                      │
-│   Food  $0.20  owned 1500                                                    │
-│   Clothing  $10.00  owned 5                                                  │
-│   Ammunition  $2.00  owned 10                                                │
+│ ► Oxen  $42.80  owned 3                                                      │
+│   Food  $0.27  owned 1500                                                    │
+│   Clothing  $10.20  owned 5                                                  │
+│   Ammunition  $2.10  owned 10                                                │
 │   Wagon wheel  $10.00  owned 0                                               │
 │   Wagon axle  $10.00  owned 0                                                │
 │   Wagon tongue  $10.00  owned 0                                              │
-│   Medicine  $15.00  owned 2                                                  │
+│   Medicine  $15.75  owned 2                                                  │
 │   Tools  $25.00  owned 0                                                     │
 │   Trade goods  $20.00  owned 0                                               │
 │   Depart  Qty 1 [←/→]  Cash $1080.00  Weight 1524 lb                         │
