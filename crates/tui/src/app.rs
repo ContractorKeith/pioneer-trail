@@ -183,7 +183,11 @@ impl App {
             return;
         }
         if let Some(game) = &mut self.minigame {
-            game.key(key.code);
+            if self.settings.no_art {
+                game.text_key(key.code);
+            } else {
+                game.key(key.code);
+            }
             self.finish_minigame();
             return;
         }
@@ -903,7 +907,15 @@ impl App {
         if let Some(game) = &self.minigame {
             let canvas =
                 Rect::new(area.x + (area.width - 80) / 2, area.y + (area.height - 24) / 2, 80, 24);
-            game.render(frame.buffer_mut(), canvas, self.color_mode());
+            if self.settings.no_art {
+                frame.render_widget(
+                    Paragraph::new(game.text_lines().join("\n\n"))
+                        .wrap(ratatui::widgets::Wrap { trim: true }),
+                    canvas.inner(Margin { horizontal: 1, vertical: 1 }),
+                );
+            } else {
+                game.render(frame.buffer_mut(), canvas, self.color_mode());
+            }
             return;
         }
         let outer = Block::default().borders(Borders::ALL).title(self.title());
@@ -1484,7 +1496,7 @@ pub fn run(mut app: App) -> anyhow::Result<()> {
             app.bell_pending = false;
         }
         terminal.draw(|frame| app.render(frame))?;
-        let timeout = if app.minigame.is_some() {
+        let timeout = if app.minigame.is_some() && !app.settings.no_art {
             next_tick.saturating_duration_since(std::time::Instant::now())
         } else {
             std::time::Duration::from_millis(100)
@@ -1506,7 +1518,7 @@ pub fn run(mut app: App) -> anyhow::Result<()> {
             next_day =
                 now + std::time::Duration::from_millis(app.settings.speed.milliseconds().max(30));
         }
-        if app.minigame.is_some() && size.width >= 80 && size.height >= 24 {
+        if app.minigame.is_some() && !app.settings.no_art && size.width >= 80 && size.height >= 24 {
             // Bound catch-up after a stalled terminal; never fast-forward a whole hunt.
             for _ in 0..3 {
                 if now < next_tick {
@@ -1837,6 +1849,30 @@ mod tests {
             app.tick_minigame();
         }
         assert_eq!(app.game.day, day + 1, "result must not be applied twice");
+    }
+    #[test]
+    fn text_minigame_renders_without_pixels_and_advances_only_on_commands() {
+        let mut app = outfitted_app();
+        app.settings.no_art = true;
+        app.handle_key(KeyEvent::from(KeyCode::Char('7')));
+        let before = app.minigame.as_ref().unwrap().text_lines();
+        let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+        terminal.draw(|frame| app.render(frame)).unwrap();
+        let text = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect::<String>();
+        assert!(text.contains("TURN-BASED HUNT"));
+        assert!(!text.contains(['▀', '▄', '█']));
+        assert_eq!(app.minigame.as_ref().unwrap().text_lines(), before);
+        app.handle_key(KeyEvent::from(KeyCode::Char('1')));
+        assert_ne!(app.minigame.as_ref().unwrap().text_lines(), before);
+        app.handle_key(KeyEvent::from(KeyCode::Esc));
+        assert_eq!(app.game.inventory.get("ammunition"), 4);
+        assert_eq!(app.game.loose_bullets, 19);
     }
     #[test]
     fn live_raft_escape_returns_to_fork_and_timer_completion_arrives() {

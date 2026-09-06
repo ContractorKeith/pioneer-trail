@@ -34,6 +34,15 @@ enum Animal {
     Squirrel,
 }
 impl Animal {
+    fn name(self) -> &'static str {
+        match self {
+            Self::Buffalo => "Buffalo",
+            Self::Deer => "Deer",
+            Self::Bear => "Bear",
+            Self::Rabbit => "Rabbit",
+            Self::Squirrel => "Squirrel",
+        }
+    }
     fn food(self) -> u16 {
         match self {
             Self::Buffalo => 100,
@@ -162,6 +171,90 @@ impl HuntingGame {
             _ => {}
         }
     }
+    /// Drive one accessible, turn-based action without rendering the pixel field.
+    ///
+    /// A numbered target is aimed at a visible cell in its existing sprite, then uses `shoot`
+    /// so text mode shares normal ammo, corpse, bag-cap, and hit accounting.
+    pub fn text_key(&mut self, key: KeyCode) {
+        if self.finished {
+            return;
+        }
+        match key {
+            KeyCode::Char(number @ '1'..='5') => self.text_shoot((number as u8 - b'0') as usize),
+            KeyCode::Char(' ') => self.advance_turn(),
+            KeyCode::Esc => self.finished = true,
+            _ => {}
+        }
+    }
+    /// Screen-reader-friendly state for the turn-based hunt. It deliberately contains no art.
+    pub fn text_lines(&self) -> Vec<String> {
+        let mut lines = vec![
+            "TURN-BASED HUNT".into(),
+            format!(
+                "Time {}s | Shots {} | Ammo {} | Bag {}/{}",
+                30u16.saturating_sub(self.ticks / TICKS_PER_SECOND),
+                self.shots,
+                self.ammo,
+                self.food,
+                self.capacity
+            ),
+            "Choose 1-5 to shoot a living animal. Space waits one second. Esc finishes.".into(),
+        ];
+        let targets = self.text_targets();
+        for (index, (target, _)) in targets.iter().take(5).enumerate() {
+            lines.push(format!(
+                "{}. {}: {} lb meat",
+                index + 1,
+                target.kind.name(),
+                target.kind.food()
+            ));
+        }
+        if targets.is_empty() {
+            lines.push("No living animals are currently visible.".into());
+        }
+        lines
+    }
+    fn text_shoot(&mut self, number: usize) {
+        if self.ammo == 0 {
+            return;
+        }
+        let Some((_, aim)) = self.text_targets().get(number - 1).copied() else {
+            return;
+        };
+        self.crosshair = aim;
+        self.shoot();
+        self.advance_turn();
+    }
+    fn visible_cell(&self, target: Target) -> Option<(i16, i16)> {
+        let image = art::embedded(&target.kind.sprite(self.ticks / 5)).expect("animal sprite");
+        for y in 0..image.height() {
+            for x in 0..image.width() {
+                if image.pixel(x, y).is_none() {
+                    continue;
+                }
+                let aim = (target.x - 8 + x as i16, target.y - 2 + (y / 2) as i16);
+                if (0..WIDTH).contains(&aim.0) && (0..HEIGHT).contains(&aim.1) {
+                    return Some(aim);
+                }
+            }
+        }
+        None
+    }
+    fn text_targets(&self) -> Vec<(Target, (i16, i16))> {
+        self.targets
+            .iter()
+            .filter(|target| target.alive)
+            .filter_map(|target| self.visible_cell(*target).map(|aim| (*target, aim)))
+            .collect()
+    }
+    fn advance_turn(&mut self) {
+        for _ in 0..TICKS_PER_SECOND {
+            self.tick();
+            if self.finished {
+                break;
+            }
+        }
+    }
     fn shoot(&mut self) {
         if self.ammo == 0 {
             return;
@@ -199,7 +292,7 @@ impl HuntingGame {
             for x in 0..area.width.min(80) {
                 let cell = buffer.cell_mut((area.x + x, area.y + y)).unwrap();
                 cell.set_symbol(if y == 22 { "▄" } else { " " })
-                    .set_fg(Color::Green)
+                    .set_fg(if mode == ColorMode::Mono { Color::White } else { Color::Green })
                     .set_bg(Color::Black);
             }
         }
@@ -287,5 +380,39 @@ mod tests {
         g.handle_key(KeyCode::Char(' '));
         g.handle_key(KeyCode::Char(' '));
         assert_eq!(g.result().food_lbs, 8);
+    }
+    #[test]
+    fn text_controls_use_normal_shots_and_cannot_farm_corpses() {
+        let mut g = HuntingGame::new(1, Biome::Desert, false, 20);
+        g.targets = vec![Target { kind: Animal::Rabbit, x: 40, y: 11, dx: 1, alive: true }];
+        g.text_key(KeyCode::Char('1'));
+        assert_eq!(g.result(), HuntingResult { food_lbs: 8, shots: 1 });
+        assert_eq!(g.ticks, 30);
+        g.text_key(KeyCode::Char('1'));
+        assert_eq!(g.result(), HuntingResult { food_lbs: 8, shots: 1 });
+        assert_eq!(g.ticks, 30);
+    }
+    #[test]
+    fn text_hunt_time_and_ammo_are_finite_and_printable() {
+        let mut g = HuntingGame::new(1, Biome::Desert, false, 1);
+        g.targets = vec![Target { kind: Animal::Rabbit, x: 40, y: 11, dx: 1, alive: true }];
+        g.text_key(KeyCode::Char('1'));
+        for _ in 0..30 {
+            g.text_key(KeyCode::Char(' '));
+        }
+        assert!(g.is_finished());
+        assert_eq!(g.result().shots, 1);
+        assert!(g
+            .text_lines()
+            .iter()
+            .all(|line| line.bytes().all(|byte| byte == b' ' || byte.is_ascii_graphic())));
+    }
+    #[test]
+    fn text_hunt_omits_living_targets_without_a_visible_cell() {
+        let mut g = HuntingGame::new(1, Biome::Desert, false, 20);
+        g.targets = vec![Target { kind: Animal::Rabbit, x: -30, y: -30, dx: 1, alive: true }];
+        assert!(g.text_lines().iter().any(|line| line.contains("currently visible")));
+        g.text_key(KeyCode::Char('1'));
+        assert_eq!(g.result(), HuntingResult { food_lbs: 0, shots: 0 });
     }
 }
