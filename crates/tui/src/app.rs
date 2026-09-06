@@ -1412,7 +1412,7 @@ impl App {
             Screen::Store => {
                 let advice = OutfittingAdvice::for_game(&self.game);
                 if self.outfitting_advice_visible {
-                    lines.push(Line::from("OUTFITTING ADVICE  [?] return to the store"));
+                    lines.push(Line::from("OUTFITTING ADVICE  [? / Esc] return to the store"));
                     lines.push(Line::from(format!(
                         "{} travelers eat {} lb/day on {:?} rations.",
                         self.game.party.iter().filter(|member| member.alive).count(),
@@ -1994,6 +1994,9 @@ mod tests {
                 }
                 Screen::Score | Screen::Epitaph => {
                     app.game.status = pioneer_sim::RunStatus::Arrived;
+                    app.game.current_node_id = Some("willamette".into());
+                    app.game.target_node_id = None;
+                    app.game.route_miles_remaining = 0;
                     app.game.miles = 1885;
                     app.game.day = 155;
                 }

@@ -24,10 +24,16 @@ pub(crate) fn trail_advice(game: &GameState) -> String {
         return fit(food_recovery_tip(game));
     }
     if sick {
-        return fit("Someone is ill. Stop to rest and check the party before continuing.");
+        return if game.inventory.get("medicine") > 0
+            || game.party.iter().any(|member| member.alive && member.skills.medicine >= 4)
+        {
+            fit("Someone is ill. Press I to treat an ailment; X opens the rest menu.")
+        } else {
+            fit("Illness, but no kit or trained medic. X rests with food; seek medicine.")
+        };
     }
     if critical {
-        return fit("Someone is in poor health. Stop to rest before pushing onward.");
+        return fit("Health is low. X opens rest; keep enough food for those camp days.");
     }
 
     match game.pace {
@@ -46,10 +52,10 @@ pub(crate) fn supplies_advice(game: &GameState) -> String {
     let daily_food = game.daily_food_lbs();
     let food = game.inventory.get("food");
     if food == 0 {
-        fit(food_recovery_tip(game))
+        fit("No food remains. Esc returns to camp for hunting, foraging, or buying.")
     } else {
         fit(format!(
-            "At these rations, {food} lb covers about {} day(s) for the living party.",
+            "{food} lb: up to {} ration days, less after spoilage or losses.",
             food / daily_food.max(1)
         ))
     }
@@ -73,7 +79,16 @@ pub(crate) fn screen_advice(game: &GameState, screen: crate::screens::Screen) ->
 }
 
 fn food_recovery_tip(game: &GameState) -> &'static str {
-    if game.can_shop() && game.price_cents("food").is_some_and(|price| game.cash_cents >= price) {
+    let food_in_stock = game
+        .current_node_id
+        .as_ref()
+        .and_then(|id| game.markets.get(id))
+        .and_then(|market| market.stock.get("food"))
+        .is_none_or(|stock| *stock > 0);
+    if game.can_shop()
+        && food_in_stock
+        && game.price_cents("food").is_some_and(|price| game.cash_cents >= price)
+    {
         "Food is short. Press 9 to buy food here before travelling another day."
     } else if matches!(game.terrain(), Terrain::RiverValley) {
         "Food is short. Press G to fish, or F to forage before travelling."
@@ -87,7 +102,7 @@ fn food_recovery_tip(game: &GameState) -> &'static str {
 fn healthy_tip(game: &GameState, food: u32, daily_food: u32, alive: usize) -> String {
     match game.day % 4 {
         0 => format!(
-            "{food} lb covers about {} day(s) at these rations for {alive} travelers.",
+            "{food} lb: up to {} ration days for {alive}, less after spoilage or losses.",
             food / daily_food.max(1)
         ),
         1 => "One ammunition box holds 20 shots. Hunt when food needs justify it.".into(),

@@ -117,7 +117,7 @@ impl OutfittingAdvice {
             completion_cost_cents,
             cash_after_cents: game.cash_cents.saturating_sub(completion_cost_cents),
             affordable,
-            shortfall_cents: completion_cost_cents.saturating_sub(game.cash_cents),
+            shortfall_cents: completion_cost_cents.saturating_sub(game.cash_cents).max(0),
             recommended,
             warnings,
         }
@@ -271,7 +271,7 @@ mod tests {
     }
 
     #[test]
-    fn recommended_carpenter_load_reaches_day_23_without_food_shortage_before_fort() {
+    fn recommended_carpenter_load_covers_the_first_23_days() {
         let mut reached_day_23 = 0;
         let mut three_or_more_alive = 0;
         let mut food_shortages_before_fort = 0;
@@ -342,12 +342,13 @@ mod tests {
             }
         }
         eprintln!(
-            "recommended Carpenter March early trip: {three_or_more_alive}/{reached_day_23} runs had >=3 alive on day 23; {food_shortages_before_fort} food shortages before Fort Kearney"
+            "recommended Carpenter March early trip: {three_or_more_alive}/{reached_day_23} runs had >=3 alive on day 23; {food_shortages_before_fort} food shortages during the first 23 days before Fort Kearney"
         );
         assert_eq!(reached_day_23, 100, "the test is a 100-seed early-trip sample");
+        assert!(three_or_more_alive >= 90, "the recommended early outfit must remain viable");
         assert_eq!(
             food_shortages_before_fort, 0,
-            "the recommended reserve should cover the first fort approach"
+            "the recommended reserve should cover these first 23 days"
         );
     }
 
