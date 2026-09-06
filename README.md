@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/logo.png" alt="Pioneer Trail" width="640"></p>
+
 # Pioneer Trail
 
 A terminal trail-survival game in the spirit of the Apple II classic: outfit a wagon in
@@ -6,7 +8,7 @@ terminal, real-time hunting and rafting, data-driven events, seeded runs, and a 
 
 Rust + ratatui. Original prose and art; no copied content.
 
-**Status:** skeleton. Building in phases; see [docs/PLAN.md](docs/PLAN.md).
+**Status:** skeleton. Building in phases; see [docs/PLAN.md](docs/PLAN.md) and [docs/DESIGN.md](docs/DESIGN.md).
 
 ```bash
 cargo run -p pioneer-trail -- --headless-sim 3

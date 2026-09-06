@@ -5,7 +5,7 @@ Rust with ratatui. Faithful to the original's structure (occupations, store, pac
 landmarks, rivers, ailments, hunting, rafting, score), then expanded with weather/terrain,
 party morale and relationships, trading/economy, and alternate trails/eras. "Done" is a
 polished, keyboard-only game at 80×24 published on crates.io and a Homebrew tap.
-**Full design and phase plan: `docs/PLAN.md`. Read it before starting any phase.**
+**Full design and phase plan: `docs/PLAN.md`. Visual system (palette, `.px` format, layouts): `docs/DESIGN.md`. Read both before starting any phase.**
 
 ## Status
 skeleton — last touched 2026-09-06. Next: Phase 1 (`crates/sim` core + headless runner).
@@ -36,7 +36,8 @@ Cargo workspace, four crates:
   Never use `thread_rng()` in `sim`. Minigame outcomes enter the sim as a `Command` payload.
 - Balance changes ship with a before/after `balance-report` in the commit message (from Phase 1).
 - Content voice rules live in `docs/CONTENT_STYLE.md`. No copied Oregon Trail text or art.
-- Art palette is the six Apple II hi-res colors; fallbacks to 256/16/mono are the renderer's job.
+- Art palette is the six Apple II hi-res colors (`docs/DESIGN.md` §1); fallbacks to 256/16/mono are the renderer's job.
+- The logo/title art is generated: edit sprites in `assets/gen_logo.py`, then run it. Never hand-edit `title.px`, `logo.svg`, `logo.png`.
 - Snapshot tests (`insta`) at 80×24 and 120×40 for every screen from Phase 2.
 - Commit format `<type>: <description>`; author @ContractorKeith only.
 - Checkpoint via the `log-work` skill at the end of each session.
