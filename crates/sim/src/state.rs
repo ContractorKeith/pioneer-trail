@@ -521,9 +521,9 @@ impl GameState {
             return Ok(out);
         }
         let base: u32 = match self.pace {
-            Pace::Steady => 15,
-            Pace::Strenuous => 20,
-            Pace::Grueling => 25,
+            Pace::Steady => 18,
+            Pace::Strenuous => 25,
+            Pace::Grueling => 30,
         };
         let terrain = self.terrain();
         let morale_penalty = if self
@@ -691,8 +691,15 @@ impl GameState {
     }
     fn treat(&mut self, i: usize, a: &str) -> Result<Vec<Outcome>, CommandError> {
         self.at_camp()?;
+        let doctor_present = self
+            .party
+            .iter()
+            .any(|member| member.alive && member.traits.contains(&crate::party::Trait::Herbalist));
         let p = self.party.get_mut(i).ok_or(CommandError::InvalidChoice)?;
-        if !p.alive || !p.ailments.iter().any(|x| x == a) || !self.inventory.remove("medicine", 1) {
+        if !p.alive
+            || !p.ailments.iter().any(|x| x == a)
+            || (!doctor_present && !self.inventory.remove("medicine", 1))
+        {
             return Err(CommandError::InvalidChoice);
         }
         p.ailments.retain(|x| x != a);
@@ -731,7 +738,10 @@ impl GameState {
         let bonus = self
             .party
             .iter()
-            .filter(|member| member.traits.contains(&crate::party::Trait::Herbalist))
+            .filter(|member| {
+                member.traits.contains(&crate::party::Trait::Herbalist)
+                    || member.traits.contains(&crate::party::Trait::Sharpshooter)
+            })
             .count() as u32
             * 10;
         let food = self.rng.stream("forage").gen_range(5..=25) + bonus;
