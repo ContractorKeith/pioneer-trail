@@ -336,6 +336,10 @@ impl GameState {
     }
     pub fn apply(&mut self, c: Command) -> Vec<Outcome> {
         let mut outcomes = self.try_apply(c).unwrap_or_else(|e| vec![Outcome::Rejected(e)]);
+        if matches!(self.status, RunStatus::Arrived | RunStatus::Failed) {
+            self.pending_event = None;
+            self.active_minigame = None;
+        }
         let deaths = outcomes
             .iter()
             .filter_map(|outcome| match outcome {
@@ -350,7 +354,7 @@ impl GameState {
         }
         outcomes
     }
-    pub fn try_apply(&mut self, c: Command) -> Result<Vec<Outcome>, CommandError> {
+    fn try_apply(&mut self, c: Command) -> Result<Vec<Outcome>, CommandError> {
         if matches!(self.status, RunStatus::Arrived | RunStatus::Failed) {
             return Err(CommandError::InvalidPhase);
         }
@@ -2644,6 +2648,33 @@ mod tests {
             |outcome| !matches!(outcome, Outcome::Event { event_id, .. } if event_id == "last_day")
         ));
     }
+
+    #[test]
+    fn terminal_event_effects_clear_the_pending_event() {
+        let mut game = run(202);
+        game.content.events.push(EventDefinition {
+            id: "fatal_delay".into(),
+            text: "The trail closes behind you.".into(),
+            weight: 0,
+            conditions: vec![Condition::Always],
+            effects: vec![Effect::LoseDays(1)],
+            choices: vec![EventChoice {
+                id: "wait".into(),
+                label: "Wait".into(),
+                conditions: vec![],
+                effects: vec![],
+            }],
+        });
+        game.inventory.quantities.insert("food".into(), 0);
+        for member in &mut game.party {
+            member.health = 10;
+        }
+        game.scheduled_events.push(PendingEvent { event_id: "fatal_delay".into(), due_day: 1 });
+        game.apply(Command::Rest { days: 1 });
+        assert_eq!(game.status, RunStatus::Failed);
+        assert!(game.pending_event.is_none());
+        assert!(game.active_minigame.is_none());
+    }
     #[test]
     fn rejected_command_does_not_mutate_state() {
         let mut game = GameState::new(2);
@@ -2891,7 +2922,7 @@ mod tests {
     #[test]
     fn npc_identity_prevents_duplicate_invites_and_protects_same_named_leader() {
         let mut game = trade_game(13);
-        game.party[0].name = "Holloway family".into();
+        game.party[0].name = "Ruth Holloway".into();
         game.apply(Command::InviteNpc { npc_id: "emigrant_train".into() });
         assert_eq!(game.party.iter().filter(|member| member.npc_id.is_some()).count(), 1);
         let joined = game.party.iter().find(|member| member.npc_id.is_some()).unwrap();
@@ -2903,7 +2934,7 @@ mod tests {
         );
         game.apply(Command::DismissNpc { npc_id: "emigrant_train".into() });
         assert_eq!(game.party.len(), 5);
-        assert_eq!(game.party[0].name, "Holloway family");
+        assert_eq!(game.party[0].name, "Ruth Holloway");
         assert!(game.party.iter().all(|member| member.npc_id.is_none()));
     }
 
