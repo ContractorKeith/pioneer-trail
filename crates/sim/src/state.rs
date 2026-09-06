@@ -2,9 +2,11 @@
 use crate::{
     calendar::CalendarDate,
     content::*,
+    economy::Market,
     health::{advance, PartyMember},
     rng::SimRng,
     score,
+    weather::{Terrain, WeatherState},
 };
 use rand::{seq::SliceRandom, Rng};
 use serde::{Deserialize, Serialize};
@@ -41,6 +43,13 @@ pub enum RunStatus {
     AwaitingRiver(String),
     Arrived,
     Failed,
+}
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub enum Difficulty {
+    Easy,
+    #[default]
+    Normal,
+    Hard,
 }
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Inventory {
@@ -98,9 +107,20 @@ pub struct GameState {
     pub pending_event: Option<String>,
     pub scheduled_events: Vec<PendingEvent>,
     pub flags: BTreeSet<String>,
+    #[serde(default)]
+    pub weather_state: WeatherState,
+    #[serde(default)]
+    pub difficulty: Difficulty,
+    #[serde(default)]
+    pub ox_fatigue: u8,
+    #[serde(default)]
+    pub reputation: i16,
+    #[serde(default)]
+    pub markets: BTreeMap<String, Market>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum Command {
+    SetDifficulty(Difficulty),
     Configure {
         trail_id: String,
         era_id: String,
@@ -206,6 +226,11 @@ impl GameState {
             pending_event: None,
             scheduled_events: vec![],
             flags: BTreeSet::new(),
+            weather_state: WeatherState::default(),
+            difficulty: Difficulty::Normal,
+            ox_fatigue: 0,
+            reputation: 0,
+            markets: BTreeMap::new(),
         }
     }
     pub fn apply(&mut self, c: Command) -> Vec<Outcome> {
@@ -219,6 +244,13 @@ impl GameState {
             return Err(CommandError::InvalidPhase);
         }
         match c {
+            Command::SetDifficulty(difficulty) => {
+                if self.status != RunStatus::Setup {
+                    return Err(CommandError::InvalidPhase);
+                }
+                self.difficulty = difficulty;
+                Ok(vec![Outcome::Message("Difficulty changed".into())])
+            }
             Command::Configure { trail_id, era_id, occupation_id, party, departure_month } => {
                 self.configure(trail_id, era_id, occupation_id, party, departure_month)
             }
@@ -342,7 +374,9 @@ impl GameState {
             self.status = RunStatus::Failed;
             return Ok(vec![Outcome::Message("Your wagon cannot move without oxen.".into())]);
         }
-        self.weather = self.weather_roll();
+        let season = self.season();
+        self.weather_state.advance(&mut self.rng, season);
+        self.weather = self.weather_state.kind;
         let eat = match self.rations {
             RationLevel::Filling => 3,
             RationLevel::Meager => 2,
@@ -385,17 +419,43 @@ impl GameState {
             self.status = RunStatus::Failed;
             return Ok(out);
         }
-        let base = match self.pace {
+        let base: u32 = match self.pace {
             Pace::Steady => 15,
             Pace::Strenuous => 20,
             Pace::Grueling => 25,
         };
-        let penalty = match self.weather {
-            WeatherKind::Storm | WeatherKind::Snow => 7,
-            WeatherKind::Rain | WeatherKind::Cold => 3,
-            _ => 0,
+        let terrain = self.terrain();
+        let morale_penalty = if self
+            .party
+            .iter()
+            .filter(|member| member.alive)
+            .map(|member| member.morale)
+            .sum::<i16>()
+            / (self.party.iter().filter(|member| member.alive).count().max(1) as i16)
+            < 25
+        {
+            3
+        } else {
+            0
         };
-        let moved = (base - penalty).min(self.route_miles_remaining);
+        let weight_penalty = self.weight().saturating_sub(2_000) / 200;
+        let fatigue_penalty = u32::from(self.ox_fatigue / 20);
+        let moved = base
+            .saturating_sub(
+                self.weather_state.travel_penalty(terrain)
+                    + morale_penalty
+                    + weight_penalty
+                    + fatigue_penalty,
+            )
+            .min(self.route_miles_remaining);
+        self.ox_fatigue = self
+            .ox_fatigue
+            .saturating_add(match self.pace {
+                Pace::Steady => 2,
+                Pace::Strenuous => 5,
+                Pace::Grueling => 9,
+            })
+            .min(100);
         self.miles += moved;
         self.route_miles_remaining -= moved;
         out.push(Outcome::DayAdvanced { day: self.day, miles: self.miles, weather: self.weather });
@@ -1024,6 +1084,14 @@ impl GameState {
             6..=8 => Season::Summer,
             9..=11 => Season::Autumn,
             _ => Season::Winter,
+        }
+    }
+    fn terrain(&self) -> Terrain {
+        match self.current_node_id.as_deref().unwrap_or_default() {
+            id if id.contains("mountain") || id.contains("pass") => Terrain::Mountains,
+            id if id.contains("river") => Terrain::RiverValley,
+            id if id.contains("fort") => Terrain::Plains,
+            _ => Terrain::Plains,
         }
     }
 }

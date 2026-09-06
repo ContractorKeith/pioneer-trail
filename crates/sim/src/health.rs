@@ -1,3 +1,4 @@
+use crate::party::{Relationships, Skills, Trait};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -7,12 +8,33 @@ pub struct PartyMember {
     pub morale: i16,
     pub ailments: Vec<String>,
     pub alive: bool,
+    #[serde(default = "default_age")]
+    pub age: u8,
+    #[serde(default)]
+    pub traits: Vec<Trait>,
+    #[serde(default)]
+    pub skills: Skills,
+    #[serde(default)]
+    pub relationships: Relationships,
 }
 
 impl PartyMember {
     pub fn new(name: String) -> Self {
-        Self { name, health: 100, morale: 50, ailments: Vec::new(), alive: true }
+        Self {
+            name,
+            health: 100,
+            morale: 50,
+            ailments: Vec::new(),
+            alive: true,
+            age: default_age(),
+            traits: Vec::new(),
+            skills: Skills::default(),
+            relationships: Relationships::default(),
+        }
     }
+}
+const fn default_age() -> u8 {
+    30
 }
 
 pub fn advance(member: &mut PartyMember, daily_damage: u8) -> bool {
