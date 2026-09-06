@@ -116,17 +116,16 @@ impl App {
         crate::advice::trail_advice(&self.game)
     }
     fn auto_travel_pause_reason(&self) -> Option<String> {
-        if self.game.inventory.get("food") < self.game.daily_food_lbs() {
+        if self.game.inventory.get("food") < self.game.daily_food_lbs().saturating_mul(3) {
             return Some(format!("Auto travel paused: {}", self.trail_advice()));
         }
         if self.game.party.iter().any(|member| member.alive && !member.ailments.is_empty()) {
             return Some(
-                "Auto travel paused: someone is ill. Press I to treat or stop to rest.".into(),
+                "Auto travel paused: someone is ill. Stop to rest and check the party.".into(),
             );
         }
         self.game.party.iter().any(|member| member.alive && member.health < 40).then(|| {
-            "Auto travel paused: someone is in poor health. Press I to treat or stop to rest."
-                .into()
+            "Auto travel paused: someone is in poor health. Stop to rest before continuing.".into()
         })
     }
     fn advance_auto_travel(&mut self) {
@@ -1993,24 +1992,25 @@ mod tests {
     #[test]
     fn auto_travel_stops_before_food_shortage_and_can_restart_after_resupply() {
         let mut app = outfitted_app();
-        app.game.inventory.quantities.insert("food".into(), 0);
+        let three_days = app.game.daily_food_lbs() * 3;
+        app.game.inventory.quantities.insert("food".into(), three_days - 1);
         app.auto_travel = true;
         let day = app.game.day;
 
         app.advance_auto_travel();
         assert_eq!(app.game.day, day, "auto travel must not take a starvation day");
         assert!(!app.auto_travel);
-        assert!(app.log.last().unwrap().contains("food is short"));
+        assert!(app.log.last().unwrap().contains("Food is short"));
 
         app.auto_travel = true;
         app.advance_auto_travel();
         assert_eq!(app.game.day, day, "restarting without food must still be safe");
         assert!(!app.auto_travel);
 
-        app.game.inventory.quantities.insert("food".into(), 100);
+        app.game.inventory.quantities.insert("food".into(), three_days);
         app.auto_travel = true;
         app.advance_auto_travel();
-        assert_eq!(app.game.day, day + 1, "auto travel resumes after resupply");
+        assert_eq!(app.game.day, day + 1, "three full days permits auto travel to resume");
     }
     #[test]
     fn trail_advice_is_short_and_does_not_invent_a_cause_of_death() {
@@ -2019,8 +2019,19 @@ mod tests {
         app.game.status = pioneer_sim::RunStatus::Failed;
         let advice = app.trail_advice();
         assert!(advice.chars().count() <= 76);
-        assert!(advice.contains("No single cause is recorded"));
-        assert!(advice.contains("buy food before extra ammo"));
+        assert!(advice.contains("No single cause recorded"));
+        assert!(advice.contains("Buy food before extra ammo"));
+    }
+    #[test]
+    fn low_food_advice_only_offers_actions_available_at_camp() {
+        let mut app = outfitted_app();
+        app.game.inventory.quantities.insert("food".into(), 0);
+        app.game.cash_cents = 0;
+        assert!(app.trail_advice().contains("Press G to fish"));
+
+        app.game.inventory.quantities.insert("ammunition".into(), 0);
+        app.game.loose_bullets = 0;
+        assert!(app.trail_advice().contains("Press G to fish"));
     }
     #[test]
     fn live_hunt_keys_consume_exact_shots_and_commit_once_on_escape() {

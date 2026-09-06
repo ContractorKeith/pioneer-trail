@@ -188,13 +188,13 @@ The wagon is ready. Five travelers set out from Independence.
 === Supplies ===
 ┌PIONEER TRAIL─────────────────────────────────────────────────────────────────┐
 │ PIONEER TRAIL                                                                │
+│ At these rations, 1500 lb covers about 100 day(s) for the living party.      │
 │ ammunition: 10                                                               │
 │ clothing: 5                                                                  │
 │ food: 1500                                                                   │
 │ medicine: 2                                                                  │
 │ oxen: 3                                                                      │
 │ Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                 │
-│                                                                              │
 │                                                                              │
 │                                                                              │
 │                                                                              │
@@ -240,11 +240,11 @@ The wagon is ready. Five travelers set out from Independence.
 === Pace ===
 ┌PIONEER TRAIL─────────────────────────────────────────────────────────────────┐
 │ PIONEER TRAIL                                                                │
+│ Steady restores 1 health when the day's chosen ration is fully met.          │
 │ ► 1. Steady                                                                  │
 │   2. Strenuous                                                               │
 │   3. Grueling                                                                │
 │ Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                 │
-│                                                                              │
 │                                                                              │
 │                                                                              │
 │                                                                              │
@@ -266,11 +266,11 @@ The wagon is ready. Five travelers set out from Independence.
 === Rations ===
 ┌PIONEER TRAIL─────────────────────────────────────────────────────────────────┐
 │ PIONEER TRAIL                                                                │
+│ Filling: 3 lb/person/day and morale; meager: 2; bare bones: 1.               │
 │ ► 1. Filling                                                                 │
 │   2. Meager                                                                  │
 │   3. Bare Bones                                                              │
 │ Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                 │
-│                                                                              │
 │                                                                              │
 │                                                                              │
 │                                                                              │
@@ -292,11 +292,11 @@ The wagon is ready. Five travelers set out from Independence.
 === Rest ===
 ┌PIONEER TRAIL─────────────────────────────────────────────────────────────────┐
 │ PIONEER TRAIL                                                                │
+│ Rest uses rations and eases ox fatigue; with food, it can aid recovery.      │
 │ ► 1. Rest 1 day                                                              │
 │   2. Rest 2 days                                                             │
 │   3. Rest 3 days                                                             │
 │ Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                 │
-│                                                                              │
 │                                                                              │
 │                                                                              │
 │                                                                              │
@@ -501,6 +501,7 @@ The wagon is ready. Five travelers set out from Independence.
 ┌JOURNEY COMPLETE──────────────────────────────────────────────────────────────┐
 │ JOURNEY COMPLETE                                                             │
 │ Arrived! · Score 3264 · 155 days · 1885 miles                                │
+│ You arrived with 5 survivor(s). Supplies left over add to your score.        │
 │ Ada: survived, health 100                                                    │
 │ James: survived, health 100                                                  │
 │ Ruth: survived, health 100                                                   │
@@ -510,7 +511,6 @@ The wagon is ready. Five travelers set out from Independence.
 │ Share this world: pt-0000000000003hs                                         │
 │ [V] Full party · [E] Epitaph · Enter returns to title.                       │
 │ Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                 │
-│                                                                              │
 │                                                                              │
 │                                                                              │
 │                                                                              │

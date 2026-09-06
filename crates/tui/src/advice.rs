@@ -10,7 +10,7 @@ pub(crate) fn trail_advice(game: &GameState) -> String {
 
     if matches!(game.status, RunStatus::Failed) {
         return if food == 0 {
-            fit("Food was gone at journey's end. Next run: buy food before extra ammo.")
+            fit("Food gone. No single cause recorded. Buy food before extra ammo.")
         } else {
             fit("No single cause is recorded. Next run: check food, health, and pace often.")
         };
@@ -20,14 +20,14 @@ pub(crate) fn trail_advice(game: &GameState) -> String {
             "You arrived with {alive} survivor(s). Supplies left over add to your score."
         ));
     }
-    if food < daily_food {
+    if food < daily_food.saturating_mul(3) {
         return fit(food_recovery_tip(game));
     }
     if sick {
-        return fit("Someone is ill. Press I to treat; rest only when food covers camp days.");
+        return fit("Someone is ill. Stop to rest and check the party before continuing.");
     }
     if critical {
-        return fit("Someone is in poor health. Press I to treat, or rest before pushing onward.");
+        return fit("Someone is in poor health. Stop to rest before pushing onward.");
     }
 
     match game.pace {
@@ -61,10 +61,9 @@ pub(crate) fn screen_advice(game: &GameState, screen: crate::screens::Screen) ->
         crate::screens::Screen::Pace => {
             Some(fit("Steady restores 1 health when the day's chosen ration is fully met."))
         }
-        crate::screens::Screen::Rations => Some(fit(format!(
-            "Filling uses 3 lb per person daily; meager 2; bare bones 1. Today: {} lb.",
-            game.daily_food_lbs()
-        ))),
+        crate::screens::Screen::Rations => {
+            Some(fit("Filling: 3 lb/person/day and morale; meager: 2; bare bones: 1."))
+        }
         crate::screens::Screen::Rest => {
             Some(fit("Rest uses rations and eases ox fatigue; with food, it can aid recovery."))
         }
@@ -75,13 +74,13 @@ pub(crate) fn screen_advice(game: &GameState, screen: crate::screens::Screen) ->
 
 fn food_recovery_tip(game: &GameState) -> &'static str {
     if game.can_shop() && game.price_cents("food").is_some_and(|price| game.cash_cents >= price) {
-        "Food is short. Buy food here before travelling another day."
+        "Food is short. Press 9 to buy food here before travelling another day."
     } else if matches!(game.terrain(), Terrain::RiverValley) {
         "Food is short. Press G to fish, or F to forage before travelling."
     } else if game.inventory.get("ammunition") > 0 || game.loose_bullets > 0 {
-        "Food is short. Hunt, forage, or reach a fort before travelling."
+        "Food is short. Press 7 to hunt or F to forage before travelling."
     } else {
-        "Food is short. Press F to forage, or reach a fort before travelling."
+        "Food is short. Press F to forage before travelling."
     }
 }
 
