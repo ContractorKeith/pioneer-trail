@@ -2,9 +2,10 @@
 name = "pioneer-tools"
 version.workspace = true
 edition.workspace = true
-license.workspace = true
+license-file.workspace = true
 repository.workspace = true
 authors.workspace = true
+readme.workspace = true
 description = "Dev tools for Pioneer Trail: px-preview, balance-report, event-lint."
 
 [[bin]]
@@ -20,9 +21,9 @@ name = "balance-report"
 path = "src/balance_report.rs"
 
 [dependencies]
-pioneer-data = { path = "../data" }
-pioneer-sim = { path = "../sim" }
-pioneer-trail = { path = "../tui" }
+pioneer-data = { path = "../data", version = "0.1.0" }
+pioneer-sim = { path = "../sim", version = "0.1.0" }
+pioneer-trail = { path = "../tui", version = "0.1.0" }
 anyhow = { workspace = true }
 clap = { workspace = true }
 crossterm = { workspace = true }

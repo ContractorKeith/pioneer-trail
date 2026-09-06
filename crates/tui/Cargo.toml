@@ -2,9 +2,10 @@
 name = "pioneer-trail"
 version.workspace = true
 edition.workspace = true
-license.workspace = true
+license-file.workspace = true
 repository.workspace = true
 authors.workspace = true
+readme.workspace = true
 description = "Pioneer Trail: a terminal trail-survival game in the spirit of the Apple II classic."
 
 [[bin]]
@@ -12,8 +13,8 @@ name = "pioneer-trail"
 path = "src/main.rs"
 
 [dependencies]
-pioneer-sim = { path = "../sim" }
-pioneer-data = { path = "../data" }
+pioneer-sim = { path = "../sim", version = "0.1.0" }
+pioneer-data = { path = "../data", version = "0.1.0" }
 ratatui = { workspace = true }
 crossterm = { workspace = true }
 clap = { workspace = true }
@@ -23,8 +24,6 @@ toml = { workspace = true }
 ron = { workspace = true }
 directories = { workspace = true }
 anyhow = { workspace = true }
-tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
 rand = { workspace = true }
 
 [dev-dependencies]
