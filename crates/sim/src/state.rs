@@ -2469,6 +2469,7 @@ mod tests {
         assert_eq!(game.loose_bullets, 17);
         assert_eq!(game.day, day + 1);
         assert_eq!(game.inventory.get("food"), 135);
+        assert_eq!(game.weight(), 137);
         assert_rejected_without_mutation(&mut game, Command::HuntResult { food_lbs: 0, shots: 0 });
     }
 
@@ -2484,6 +2485,10 @@ mod tests {
         assert_rejected_without_mutation(&mut game, Command::HuntResult { food_lbs: 1, shots: 0 });
         let mut hunter = minigame_game(19, "hunter");
         hunter.apply(Command::BeginHunt);
+        assert_rejected_without_mutation(
+            &mut hunter,
+            Command::HuntResult { food_lbs: 101, shots: 1 },
+        );
         hunter.apply(Command::HuntResult { food_lbs: 200, shots: 2 });
         assert!(hunter.inventory.get("food") >= 285);
     }
@@ -2494,6 +2499,7 @@ mod tests {
         game.current_node_id = Some("the_dalles".into());
         game.status = RunStatus::AwaitingFork("the_dalles".into());
         game.miles = 1813;
+        game.inventory.quantities.insert("food".into(), 5);
         let day = game.day;
         game.apply(Command::ChooseRoute { route_id: "columbia".into() });
         assert!(matches!(
@@ -2501,10 +2507,11 @@ mod tests {
             Some(MinigameSession { kind: MinigameKind::Raft, .. })
         ));
         assert_rejected_without_mutation(&mut game, Command::Continue);
-        game.apply(Command::RaftResult { cargo_lost_lbs: 10, casualties: 1, completed: false });
+        game.apply(Command::RaftResult { cargo_lost_lbs: 120, casualties: 1, completed: false });
         assert!(game.active_minigame.is_none());
         assert_eq!(game.status, RunStatus::AwaitingFork("the_dalles".into()));
         assert_eq!(game.day, day + 1);
+        assert_eq!(game.inventory.get("food"), 0);
         assert!(!game.party[0].alive && game.party[0].health == 0);
         game.apply(Command::ChooseRoute { route_id: "columbia".into() });
         game.apply(Command::RaftResult { cargo_lost_lbs: 0, casualties: 0, completed: true });
