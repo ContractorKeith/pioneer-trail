@@ -286,6 +286,24 @@ impl App {
                 _ => self.quit = true,
             },
             Screen::SetupTrail => {
+                if self
+                    .game
+                    .content
+                    .trails
+                    .get(self.cursor)
+                    .is_some_and(|trail| trail.id == "mormon")
+                    && self
+                        .game
+                        .content
+                        .eras
+                        .get(self.draft.era)
+                        .is_some_and(|era| era.id == "1843")
+                {
+                    self.note(
+                        "The Mormon trail is available from 1848. Change era with Left/Right.",
+                    );
+                    return;
+                }
                 self.draft.trail =
                     self.cursor.min(self.game.content.trails.len().saturating_sub(1));
                 self.cursor = 0;
@@ -293,6 +311,17 @@ impl App {
                 self.cursor = self.draft.occupation;
             }
             Screen::SetupOccupation => {
+                if self
+                    .game
+                    .content
+                    .occupations
+                    .get(self.cursor)
+                    .is_some_and(|job| job.id == "soldier")
+                    && self.game.content.eras.get(self.draft.era).is_none_or(|era| era.id != "1866")
+                {
+                    self.note("Soldier is available in the 1866 era. Choose another occupation.");
+                    return;
+                }
                 self.draft.occupation =
                     self.cursor.min(self.game.content.occupations.len().saturating_sub(1));
                 self.cursor = 0;
@@ -581,6 +610,10 @@ impl App {
             }
             (Screen::Journey, 'b') if self.game.can_shop() => self.screen = Screen::Store,
             (Screen::Score, 'e') => self.screen = Screen::Epitaph,
+            (Screen::Score, 'v') => {
+                self.screen = Screen::Party;
+                self.cursor = 0;
+            }
             (Screen::Settings, 's') => {
                 use crate::persist::Speed;
                 self.settings.speed = match self.settings.speed {
@@ -612,6 +645,16 @@ impl App {
         }
     }
     fn back(&mut self) {
+        if self.screen == Screen::Party
+            && matches!(
+                self.game.status,
+                pioneer_sim::RunStatus::Arrived | pioneer_sim::RunStatus::Failed
+            )
+        {
+            self.screen = Screen::Score;
+            self.cursor = 0;
+            return;
+        }
         if matches!(self.screen, Screen::Fork | Screen::River | Screen::Event) {
             self.note("A decision is required before continuing.");
             return;
@@ -1358,7 +1401,7 @@ impl App {
                             "{} · width {} ft · depth {} ft · ferry {}",
                             node.name,
                             river.width_feet,
-                            river.depth_feet,
+                            self.game.effective_depth().unwrap_or(river.depth_feet),
                             river.ferry_cost_cents.map_or("unavailable".into(), |v| format!(
                                 "${:.2}",
                                 v as f64 / 100.
@@ -1376,6 +1419,12 @@ impl App {
                     ],
                     self.cursor,
                 ));
+                lines.push(Line::from(format!(
+                    "Cargo-loss risk: ford {}% · caulk {}% · guide {}%",
+                    self.game.crossing_risk(CrossMethod::Ford).unwrap_or(0),
+                    self.game.crossing_risk(CrossMethod::Caulk).unwrap_or(0),
+                    self.game.crossing_risk(CrossMethod::Guide).unwrap_or(0)
+                )));
             }
             Screen::Event => {
                 lines.push(Line::from("A decision is required:"));
@@ -1401,6 +1450,7 @@ impl App {
                 }
             }
             Screen::Score => {
+                let score = pioneer_sim::score::breakdown(&self.game);
                 lines.push(Line::from(format!(
                     "{} · Score {} · {} days · {} miles",
                     if matches!(self.game.status, pioneer_sim::RunStatus::Arrived) {
@@ -1412,7 +1462,7 @@ impl App {
                     self.game.day,
                     self.game.miles
                 )));
-                for member in &self.game.party {
+                for member in self.game.party.iter().take(5) {
                     lines.push(Line::from(format!(
                         "{}: {}",
                         member.name,
@@ -1423,6 +1473,14 @@ impl App {
                         }
                     )));
                 }
+                lines.push(Line::from(format!(
+                    "Base {} · early {} · no deaths {} · no ferry {} · rock {}",
+                    score.base,
+                    score.early_arrival,
+                    score.no_deaths,
+                    score.no_ferry,
+                    score.independence_rock
+                )));
                 if let (Some(trail), Some(era)) = (&self.game.trail_id, &self.game.era_id) {
                     if let Ok(code) = (WorldSeed {
                         seed: self.game.rng.seed(),
@@ -1434,7 +1492,7 @@ impl App {
                         lines.push(Line::from(format!("Share this world: {code}")));
                     }
                 }
-                lines.push(Line::from("[E] Write an epitaph · Enter returns to title."));
+                lines.push(Line::from("[V] Full party · [E] Epitaph · Enter returns to title."));
             }
             Screen::Epitaph => {
                 lines.push(Line::from("Write up to 80 characters. Enter saves; Esc cancels."));

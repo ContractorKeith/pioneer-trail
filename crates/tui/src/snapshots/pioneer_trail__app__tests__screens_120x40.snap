@@ -282,11 +282,11 @@ expression: "all_screens(120, 40)"
                                                                                                                         
                                                                                                                         
                     YOUR PARTY──────────────────────────────────────────────────────────────────────                    
-                    Ada · Health 100 · Morale 50 ·                                                                      
-                    James · Health 100 · Morale 50 ·                                                                    
-                    Ruth · Health 100 · Morale 50 ·                                                                     
-                    Thomas · Health 100 · Morale 50 ·                                                                   
-                    Clara · Health 100 · Morale 50 ·                                                                    
+                    Ada · Health 100 · Morale 52 ·                                                                      
+                    James · Health 100 · Morale 55 ·                                                                    
+                    Ruth · Health 100 · Morale 52 ·                                                                     
+                    Thomas · Health 100 · Morale 52 ·                                                                   
+                    Clara · Health 100 · Morale 52 ·                                                                    
                                                                                                                         
                                                                                                                         
                                                                                                                         
@@ -552,11 +552,11 @@ expression: "all_screens(120, 40)"
 === Treat ===
 ┌PIONEER TRAIL─────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │ PIONEER TRAIL                                                                                                        │
-│ ► Ada: health 100 morale 50 ·                                                                                        │
-│   James: health 68 morale 50 · fever                                                                                 │
-│   Ruth: health 100 morale 50 ·                                                                                       │
-│   Thomas: health 100 morale 50 ·                                                                                     │
-│   Clara: health 100 morale 50 ·                                                                                      │
+│ ► Ada: health 100 morale 52 ·                                                                                        │
+│   James: health 68 morale 55 · fever                                                                                 │
+│   Ruth: health 100 morale 52 ·                                                                                       │
+│   Thomas: health 100 morale 52 ·                                                                                     │
+│   Clara: health 100 morale 52 ·                                                                                      │
 │ Enter treats the selected traveler's first ailment.                                                                  │
 │ Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                                                         │
 │                                                                                                                      │
@@ -636,15 +636,15 @@ expression: "all_screens(120, 40)"
 === Party ===
 ┌PIONEER TRAIL─────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │ PIONEER TRAIL                                                                                                        │
-│ ► Ada · age 43 · health 100 · morale 50                                                                              │
-│   James · age 35 · health 100 · morale 50                                                                            │
-│   Ruth · age 54 · health 100 · morale 50                                                                             │
-│   Thomas · age 38 · health 100 · morale 50                                                                           │
-│   Clara · age 44 · health 100 · morale 50                                                                            │
-│ Traits: [Cheerful, Hardy]                                                                                            │
-│ Skills: hunt 0 · medicine 0 · repair 0 · animals 0                                                                   │
+│ ► Ada · age 31 · health 100 · morale 52                                                                              │
+│   James · age 26 · health 100 · morale 55                                                                            │
+│   Ruth · age 21 · health 100 · morale 52                                                                             │
+│   Thomas · age 65 · health 100 · morale 52                                                                           │
+│   Clara · age 41 · health 100 · morale 52                                                                            │
+│ Traits: [Practical, Adaptable]                                                                                       │
+│ Skills: hunt 1 · medicine 1 · repair 3 · animals 1                                                                   │
 │ Ailments: none                                                                                                       │
-│ Bonds:                                                                                                               │
+│ Bonds: Clara +3, James +11, Ruth +8, Thomas +0                                                                       │
 │ Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                                                         │
 │                                                                                                                      │
 │                                                                                                                      │
@@ -720,14 +720,14 @@ expression: "all_screens(120, 40)"
 === River ===
 ┌PIONEER TRAIL─────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │ PIONEER TRAIL                                                                                                        │
-│ Kansas River Crossing · width 620 ft · depth 4 ft · ferry $5.00                                                      │
+│ Kansas River Crossing · width 620 ft · depth 5 ft · ferry $5.00                                                      │
 │ ► 1. Ford (risk cargo and lives)                                                                                     │
 │   2. Caulk wagon and float                                                                                           │
 │   3. Ferry (if available)                                                                                            │
 │   4. Wait one day                                                                                                    │
 │   5. Hire guide (Snake River: 3 clothing sets)                                                                       │
+│ Cargo-loss risk: ford 62% · caulk 28% · guide 10%                                                                    │
 │ Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                                                         │
-│                                                                                                                      │
 │                                                                                                                      │
 │                                                                                                                      │
 │                                                                                                                      │
@@ -804,16 +804,16 @@ expression: "all_screens(120, 40)"
 === Score ===
 ┌JOURNEY COMPLETE──────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │ JOURNEY COMPLETE                                                                                                     │
-│ Arrived! · Score 2864 · 155 days · 1885 miles                                                                        │
+│ Arrived! · Score 3264 · 155 days · 1885 miles                                                                        │
 │ Ada: survived, health 100                                                                                            │
 │ James: survived, health 100                                                                                          │
 │ Ruth: survived, health 100                                                                                           │
 │ Thomas: survived, health 100                                                                                         │
 │ Clara: survived, health 100                                                                                          │
+│ Base 2864 · early 200 · no deaths 100 · no ferry 100 · rock 0                                                        │
 │ Share this world: pt-0000000000003hs                                                                                 │
-│ [E] Write an epitaph · Enter returns to title.                                                                       │
+│ [V] Full party · [E] Epitaph · Enter returns to title.                                                               │
 │ Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                                                         │
-│                                                                                                                      │
 │                                                                                                                      │
 │                                                                                                                      │
 │                                                                                                                      │
@@ -1024,23 +1024,23 @@ expression: "all_screens(120, 40)"
                                                                                                                         
                                                                                                                         
                                                                                                                         
-                                                        ▀▀▀▀                                                            
-                                                      ▀▀▀▀▀▀▀▀▀▀▀▀▀▀                                                    
-                                                      ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀                                                   
-                                                         ▀   ▀  ▀  ▀                                                    
-                                                                                                                        
-                                                                           ▀                                            
-                                                                         ▀▀▀                                            
-                                                            +   ▀▀▀▀▀▀▀▀▀▀▀▀▀                                           
-                                                               ▀▀▀▀▀▀▀▀▀▀▀▀                                             
-                                                                 ▀   ▀ ▀  ▀                                             
                                                                                                                         
                                                                                                                         
+                                                             ▀▀                                                         
+                                                            ▀▀▀▀▀▀  ▀                                                   
+                                                             ▀▀▀▀▀▀▀▀▀▀▀▀▀                                              
+                                                              ▀▀▀▀▀▀▀▀▀▀▀▀▀                                             
+                                                             ▀▀▀▀▀▀▀▀▀▀▀▀  ▀                                            
+                                                            + ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀                                       
+                                                                ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀                                      
+                                                                   ▀▀▀▀▀▀▀▀▀▀▀▀▀                                        
                                                                                                                         
                                                                                                                         
-                                                                                            ▀                           
-                                                                                          ▀▀▀                           
-                                                                                 ▀▀▀▀▀▀▀▀▀▀▀▀▀                          
-                                                                                ▀▀▀▀▀▀▀▀▀▀▀▀                            
-                    ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▀▄▄▄▀▄▀▄▄▀▄▄▄▄▄▄▄▄                    
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                    ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄                    
                      HUNT 30s FOOD 0/150 AMMO 20 · arrows: aim Space: fire Esc: return
