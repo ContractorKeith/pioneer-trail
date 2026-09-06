@@ -3,24 +3,24 @@ use std::collections::BTreeMap;
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct Market {
     pub stock: BTreeMap<String, u32>,
+    #[serde(default)]
+    pub normal_stock: BTreeMap<String, u32>,
     pub reputation: i16,
     pub last_restock_day: u32,
 }
 impl Market {
     pub fn price_for(&self, item_id: &str, base: i64, season_markup: i64) -> i64 {
-        (base
-            * (100
-                + season_markup
-                + i64::from(
-                    100u32.saturating_sub(*self.stock.get(item_id).unwrap_or(&100)).min(50),
-                ))
-            / 100)
-            .max(1)
+        let normal = self.normal_stock.get(item_id).copied().unwrap_or(100).max(1);
+        let stock = self.stock.get(item_id).copied().unwrap_or(normal);
+        let scarcity = u64::from(normal.saturating_sub(stock)) * 50 / u64::from(normal);
+        let multiplier = (100 + season_markup + scarcity as i64).max(1);
+        ((i128::from(base) * i128::from(multiplier) / 100).clamp(1, i128::from(i64::MAX))) as i64
     }
     pub fn replenish(&mut self, day: u32) {
         if day / 30 > self.last_restock_day / 30 {
-            for amount in self.stock.values_mut() {
-                *amount = amount.saturating_add(10);
+            for (id, amount) in &mut self.stock {
+                let normal = self.normal_stock.get(id).copied().unwrap_or(100);
+                *amount = amount.saturating_add((normal / 4).max(1)).min(normal);
             }
             self.last_restock_day = day;
         }

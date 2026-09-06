@@ -821,18 +821,16 @@ impl GameState {
             return Err(CommandError::InvalidChoice);
         }
         if !npc.accepts(offered_value, wanted_value, self.reputation) {
-            self.pending_counteroffer = self.make_counteroffer(
+            let counteroffer = self.make_counteroffer(
                 npc_id,
                 offered_item,
                 wanted_item,
                 wanted_quantity,
                 wanted_value,
             )?;
-            return if self.pending_counteroffer.is_some() {
-                Ok(vec![Outcome::Message("The emigrants make a counteroffer.".into())])
-            } else {
-                Err(CommandError::InvalidChoice)
-            };
+            let counteroffer = counteroffer.ok_or(CommandError::InvalidChoice)?;
+            self.pending_counteroffer = Some(counteroffer);
+            return Ok(vec![Outcome::Message("The emigrants make a counteroffer.".into())]);
         }
         self.execute_trade(npc_id, offered_item, offered_quantity, wanted_item, wanted_quantity)?;
         Ok(vec![Outcome::Message("Trade accepted.".into())])
@@ -844,7 +842,7 @@ impl GameState {
             .iter()
             .find(|npc| npc.id == npc_id)
             .ok_or_else(|| CommandError::UnknownId(npc_id.into()))?;
-        if npc.reputation + self.reputation < 0
+        if i32::from(npc.reputation) + i32::from(self.reputation) < 0
             || self.party.len() >= 12
             || !npc.recurring
             || self.party.iter().any(|member| member.npc_id.as_deref() == Some(npc_id))
@@ -1151,6 +1149,7 @@ impl GameState {
     }
     fn market_at(&self, market_id: &str) -> Market {
         self.markets.get(market_id).cloned().unwrap_or_else(|| Market {
+            normal_stock: self.content.items.iter().map(|item| (item.id.clone(), item.limit.max(20))).collect(),
             stock: self
                 .content
                 .items
