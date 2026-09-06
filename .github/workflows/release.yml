@@ -1,0 +1,88 @@
+name: release
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  binaries:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            executable: pioneer-trail
+          - runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            executable: pioneer-trail
+          - runner: macos-15
+            target: aarch64-apple-darwin
+            executable: pioneer-trail
+          - runner: macos-15-intel
+            target: x86_64-apple-darwin
+            executable: pioneer-trail
+          - runner: windows-2022
+            target: x86_64-pc-windows-msvc
+            executable: pioneer-trail.exe
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - run: cargo test --workspace --locked
+      - run: cargo run --locked -p pioneer-tools --bin event-lint
+      - run: cargo build --release --locked -p pioneer-trail
+      - name: Smoke test built binary
+        run: |
+          target/release/${{ matrix.executable }} --version
+          target/release/${{ matrix.executable }} --headless-sim 3 --seed 42
+      - name: Package binary
+        run: |
+          mkdir package
+          cp target/release/${{ matrix.executable }} README.md LICENSE package/
+          tar -czf pioneer-trail-${{ matrix.target }}.tar.gz -C package .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pioneer-trail-${{ matrix.target }}
+          path: pioneer-trail-${{ matrix.target }}.tar.gz
+          if-no-files-found: error
+
+  publish:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: binaries
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify tag matches workspace version
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          version=$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml)
+          test "$RELEASE_TAG" = "v$version"
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: pioneer-trail-*
+          path: release-assets
+          merge-multiple: true
+      - name: Checksums
+        working-directory: release-assets
+        run: sha256sum ./*.tar.gz > SHA256SUMS
+      - name: Publish verified artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: gh release create "$RELEASE_TAG" release-assets/* --verify-tag --title "Pioneer Trail $RELEASE_TAG" --generate-notes
