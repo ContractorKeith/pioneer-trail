@@ -813,7 +813,7 @@ impl App {
                     self.game.rng.seed(),
                     &trail.id,
                     self.game.date().0 as u16,
-                    trail.nodes.iter().map(|node| node.mile).max().unwrap_or(0),
+                    crate::legacy::trail_extent(trail),
                 )
             })
             .unwrap_or_default();
