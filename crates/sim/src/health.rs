@@ -2,6 +2,14 @@ use crate::party::{Relationships, Skills, Trait};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub enum Sex {
+    #[default]
+    Unspecified,
+    Female,
+    Male,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PartyMember {
     pub name: String,
@@ -14,6 +22,8 @@ pub struct PartyMember {
     pub alive: bool,
     #[serde(default = "default_age")]
     pub age: u8,
+    #[serde(default)]
+    pub sex: Sex,
     #[serde(default)]
     pub traits: Vec<Trait>,
     #[serde(default)]
@@ -52,6 +62,7 @@ impl PartyMember {
             ailments: Vec::new(),
             alive: true,
             age: default_age(),
+            sex: Sex::Unspecified,
             traits: Vec::new(),
             skills: Skills::default(),
             relationships: Relationships::default(),

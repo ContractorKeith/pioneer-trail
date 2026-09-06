@@ -335,6 +335,12 @@ fn validate_condition(condition: &Condition, refs: &ConditionRefs<'_>) -> Result
         Condition::MoraleBelow(morale) => {
             expect((0..=100).contains(morale), "morale condition is out of range")?
         }
+        Condition::RelationshipAtLeast(affinity) => {
+            expect((-100..=100).contains(affinity), "relationship condition is out of range")?
+        }
+        Condition::PartySizeBelow(size) => {
+            expect((1..=12).contains(size), "party-size condition is out of range")?
+        }
         Condition::Flag(flag) => expect(
             flags.contains(flag.as_str()),
             &format!("flag condition {flag} is never produced"),
@@ -370,6 +376,14 @@ fn validate_effects(
                 *morale != 0 && (-100..=100).contains(morale),
                 "morale effect is out of range",
             )?,
+            Effect::AdjustRelationship(affinity) => expect(
+                *affinity != 0 && (-100..=100).contains(affinity),
+                "relationship effect is out of range",
+            )?,
+            Effect::AddMember { name, age } => {
+                expect(valid_text(name, 24), "added member has an invalid name")?;
+                expect(*age <= 100, "added member age is out of range")?
+            }
             Effect::Schedule { event_id, days } => {
                 expect(
                     events.contains(event_id.as_str()),
@@ -532,6 +546,20 @@ mod tests {
     #[test]
     fn embedded_content_parses_and_validates() {
         assert!(load().is_ok());
+    }
+
+    #[test]
+    fn family_events_load_and_invalid_family_dsl_bounds_are_rejected() {
+        let content = load().unwrap();
+        for id in ["wedding_offer", "family_feud", "party_departure", "relative_joins"] {
+            assert!(content.events.iter().any(|event| event.id == id), "missing {id}");
+        }
+        let mut invalid = content.clone();
+        invalid.events[0].conditions = vec![Condition::RelationshipAtLeast(101)];
+        assert!(validate(&invalid).unwrap_err().to_string().contains("relationship condition"));
+        invalid.events[0].conditions = vec![Condition::Always];
+        invalid.events[0].effects = vec![Effect::AddMember { name: "A".into(), age: 101 }];
+        assert!(validate(&invalid).unwrap_err().to_string().contains("member age"));
     }
 
     #[test]

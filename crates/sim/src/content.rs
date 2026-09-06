@@ -184,6 +184,9 @@ pub enum Condition {
     InventoryAtLeast { item_id: String, quantity: u32 },
     CashAtLeast(i64),
     MoraleBelow(i16),
+    RelationshipAtLeast(i16),
+    PartySizeBelow(u8),
+    HasAdultPair,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum Effect {
@@ -198,6 +201,10 @@ pub enum Effect {
     SetFlag(String),
     ClearFlag(String),
     Schedule { event_id: String, days: u32 },
+    AdjustRelationship(i16),
+    CelebrateWedding,
+    MemberLeaves,
+    AddMember { name: String, age: u8 },
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]

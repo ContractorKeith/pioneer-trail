@@ -1,4 +1,7 @@
-use crate::{health::PartyMember, rng::SimRng};
+use crate::{
+    health::{PartyMember, Sex},
+    rng::SimRng,
+};
 use rand::{seq::SliceRandom, Rng};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -81,6 +84,7 @@ pub fn initialize(party: &mut [PartyMember], occupation: &str, rng: &mut SimRng)
 
     for (index, member) in party.iter_mut().enumerate() {
         member.age = rng.stream("party-profile").gen_range(18..=65);
+        member.sex = if rng.stream("family").gen_bool(0.5) { Sex::Female } else { Sex::Male };
         member.traits =
             if index == 0 { leader_traits.to_vec() } else { next_pair(&mut available, rng) };
         member.skills = Skills::default();
@@ -96,6 +100,43 @@ pub fn initialize(party: &mut [PartyMember], occupation: &str, rng: &mut SimRng)
     }
 
     initialize_relationships(party, rng);
+}
+
+/// Give a joining traveler (or newborn) a deterministic profile and reciprocal social ties.
+pub fn initialize_joiner(member: &mut PartyMember, party: &mut [PartyMember], rng: &mut SimRng) {
+    member.relationships = Relationships::default();
+    member.sex = if rng.stream("family").gen_bool(0.5) { Sex::Female } else { Sex::Male };
+    if member.age == 0 {
+        member.traits.clear();
+        member.skills = Skills::default();
+        member.morale = 50;
+    } else {
+        let mut traits = Trait::ALL.to_vec();
+        traits.shuffle(rng.stream("family-profile"));
+        member.traits = traits.into_iter().take(2).collect();
+        member.skills = Skills::default();
+        for trait_ in &member.traits {
+            add_skills(&mut member.skills, trait_skills(*trait_));
+        }
+        member.morale = (52
+            + member.traits.iter().map(|trait_| starting_morale(*trait_)).sum::<i16>())
+        .clamp(35, 70);
+    }
+    for other in party {
+        if other.name == member.name {
+            continue;
+        }
+        let affinity = if member.age == 0 || other.age == 0 {
+            0
+        } else {
+            (rng.stream("family-relationships").gen_range(-6..=12)
+                + social_weight(&member.traits)
+                + social_weight(&other.traits))
+            .clamp(-10, 30)
+        };
+        member.relationships.affinity.insert(other.name.clone(), affinity);
+        other.relationships.affinity.insert(member.name.clone(), affinity);
+    }
 }
 
 /// Apply daily morale and rare social consequences. Messages are emitted only for social events.
