@@ -50,9 +50,9 @@ fn main() -> anyhow::Result<()> {
     let image =
         PxImage::parse(&source).with_context(|| format!("parsing {}", args.path.display()))?;
     enable_raw_mode()?;
+    let _guard = TerminalGuard;
     let mut output = stdout();
     execute!(output, EnterAlternateScreen, Hide)?;
-    let _guard = TerminalGuard;
     let mut terminal = Terminal::new(CrosstermBackend::new(output))?;
     let draw = |terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>| -> anyhow::Result<()> {
         terminal.draw(|frame| {

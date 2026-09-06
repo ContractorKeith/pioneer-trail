@@ -333,6 +333,11 @@ mod tests {
 
     #[test]
     fn every_embedded_sprite_is_valid_and_has_its_expected_size() {
+        let manifest = pioneer_data::ART.get_file("manifest.ron").unwrap().contents_utf8().unwrap();
+        let _: ron::Value = ron::from_str(manifest).expect("valid art manifest");
+        for expected in ["fps: 4", "fps: 6", "fps: 30", "wagon_3.px", "rock_2.px", "layers:"] {
+            assert!(manifest.contains(expected), "manifest missing {expected}");
+        }
         for file in pioneer_data::ART.files() {
             let path = file.path().to_str().unwrap();
             if !path.ends_with(".px") {
