@@ -1,9 +1,0 @@
-// Oregon Trail, 1843 baseline. Schema defined in Phase 1; mileages verified in Phase 2.
-// See docs/PLAN.md §2.1.
-Trail(
-    id: "oregon",
-    name: "The Oregon Trail",
-    start: "Independence, Missouri",
-    end: "Willamette Valley, Oregon",
-    total_miles: 2040,
-)
