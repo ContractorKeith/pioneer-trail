@@ -1030,7 +1030,12 @@ impl App {
             );
             return;
         }
-        if !self.settings.no_art && matches!(self.screen, Screen::Title | Screen::Journey) {
+        if !self.settings.no_art
+            && matches!(
+                self.screen,
+                Screen::Title | Screen::Journey | Screen::River | Screen::Event | Screen::Score
+            )
+        {
             self.render_scene(frame);
             return;
         }
@@ -1052,16 +1057,16 @@ impl App {
         frame.render_widget(outer, area);
         let inner = area.inner(Margin { horizontal: 2, vertical: 1 });
         let chunks = Layout::vertical([Constraint::Min(5), Constraint::Length(5)]).split(inner);
-        let lines = self.body();
+        let lines = self
+            .body()
+            .into_iter()
+            .skip(usize::from(self.screen == Screen::Score))
+            .collect::<Vec<_>>();
         frame.render_widget(
             Paragraph::new(lines).wrap(ratatui::widgets::Wrap { trim: false }),
             chunks[0],
         );
-        let log = self.log.iter().rev().map(|line| ListItem::new(line.clone())).collect::<Vec<_>>();
-        frame.render_widget(
-            List::new(log).block(Block::default().borders(Borders::TOP).title("TRAIL LOG")),
-            chunks[1],
-        );
+        self.render_trail_log(frame, chunks[1]);
     }
     fn title(&self) -> &'static str {
         match self.screen {
@@ -1118,6 +1123,14 @@ impl App {
                     Rect::new(canvas.x + 2, canvas.y + 22, 76, 2),
                 );
             }
+            return;
+        }
+        if matches!(self.screen, Screen::River | Screen::Event | Screen::Score) {
+            self.render_scene_vignette(
+                frame,
+                Rect::new(canvas.x, area.y, canvas.width, area.height),
+                mode,
+            );
             return;
         }
         let node = self.game.current_landmark();
@@ -1218,6 +1231,111 @@ impl App {
                 Rect::new(canvas.x, canvas.y + 25, 80, area.height - 25),
             );
         }
+    }
+    fn render_scene_vignette(&self, frame: &mut Frame, canvas: Rect, mode: crate::art::ColorMode) {
+        use crate::art;
+        let body = self.body().into_iter().skip(1).collect::<Vec<_>>();
+        let body_rows = body.len() as u16;
+        let scene_height = if self.screen == Screen::Score {
+            if canvas.height > 24 {
+                8
+            } else {
+                5
+            }
+        } else if body_rows > 13 {
+            2
+        } else if body_rows > 11 {
+            4
+        } else {
+            6
+        };
+        let body_y = canvas.y + scene_height + 2;
+        let desired_body_height =
+            if self.screen == Screen::Score { 16 } else { body_rows.max(11).saturating_add(2) };
+        let log_height =
+            canvas.height.saturating_sub(body_y - canvas.y + desired_body_height).max(3);
+        let log_y = canvas.bottom().saturating_sub(log_height);
+        let body_height = log_y.saturating_sub(body_y);
+        let scene = Rect::new(canvas.x, canvas.y + 1, canvas.width, scene_height);
+        let (background, source_y) = match self.screen {
+            Screen::River => {
+                let file = self
+                    .game
+                    .current_landmark()
+                    .map(|node| format!("{}.px", node.id))
+                    .filter(|file| art::embedded(file).is_some())
+                    .unwrap_or_else(|| "terrain_river_valley.px".into());
+                (file, 4)
+            }
+            Screen::Score if matches!(self.game.status, pioneer_sim::RunStatus::Arrived) => (
+                self.game
+                    .current_landmark()
+                    .map(|node| format!("{}.px", node.id))
+                    .filter(|file| art::embedded(file).is_some())
+                    .unwrap_or_else(|| "terrain_forest.px".into()),
+                8,
+            ),
+            _ => ("terrain_plains.px".into(), 8),
+        };
+        art::render_section(
+            art::embedded(&background).expect("illustrated scene"),
+            frame.buffer_mut(),
+            scene,
+            source_y,
+            mode,
+        );
+        let survivors = self.game.party.iter().filter(|member| member.alive).count();
+        if self.screen == Screen::Score
+            && !matches!(self.game.status, pioneer_sim::RunStatus::Arrived)
+            && survivors == 0
+        {
+            art::render_at(
+                art::embedded("tombstone.px").expect("tombstone art"),
+                frame.buffer_mut(),
+                scene,
+                i32::from(scene.x + 36),
+                i32::from(scene.y),
+                mode,
+            );
+        } else if self.screen == Screen::Event
+            || (self.screen == Screen::Score
+                && !matches!(self.game.status, pioneer_sim::RunStatus::Arrived))
+        {
+            art::render_at(
+                art::embedded("wagon_0.px").expect("wagon art"),
+                frame.buffer_mut(),
+                scene,
+                i32::from(scene.x + 20),
+                i32::from(scene.y.saturating_sub(2)),
+                mode,
+            );
+        }
+        let label = match self.screen {
+            Screen::River => "RIVER CROSSING",
+            Screen::Event => "TRAIL EVENT",
+            Screen::Score if matches!(self.game.status, pioneer_sim::RunStatus::Arrived) => {
+                self.game.current_landmark().map_or("JOURNEY COMPLETE", |node| node.name.as_str())
+            }
+            Screen::Score if survivors == 0 => "THE TRAIL ENDS HERE",
+            Screen::Score => "WAGON STRANDED",
+            _ => unreachable!("vignette only renders illustrated screens"),
+        };
+        frame.render_widget(
+            Paragraph::new(label).style(Style::default().fg(Color::White).bg(Color::Black)),
+            Rect::new(canvas.x + 2, canvas.y, 76, 1),
+        );
+        frame.render_widget(
+            Paragraph::new(body).wrap(ratatui::widgets::Wrap { trim: false }),
+            Rect::new(canvas.x + 2, body_y, 76, body_height),
+        );
+        self.render_trail_log(frame, Rect::new(canvas.x, log_y, 80, log_height));
+    }
+    fn render_trail_log(&self, frame: &mut Frame, area: Rect) {
+        let log = self.log.iter().rev().map(|line| ListItem::new(line.clone())).collect::<Vec<_>>();
+        frame.render_widget(
+            List::new(log).block(Block::default().borders(Borders::TOP).title("TRAIL LOG")),
+            area,
+        );
     }
     fn body(&self) -> Vec<Line<'static>> {
         let mut lines = vec![Line::from(self.heading())];
@@ -1930,6 +2048,32 @@ mod tests {
     #[test]
     fn snapshots_at_120x40() {
         insta::assert_snapshot!("screens_120x40", all_screens(120, 40));
+    }
+    #[test]
+    fn outcome_vignettes_keep_the_summary_and_trail_log_visible() {
+        let mut app = App::new(pioneer_data::load().unwrap(), 7, Settings::default());
+        app.game.apply(Command::Configure {
+            trail_id: "oregon".into(),
+            era_id: "1848".into(),
+            occupation_id: "banker".into(),
+            party: ["Leader", "James", "Ruth", "Thomas", "Clara"].map(str::to_owned).to_vec(),
+            departure_month: 3,
+        });
+        app.game.status = pioneer_sim::RunStatus::Failed;
+        app.game.party[0].alive = false;
+        app.log = vec!["The river took the wagon.".into()];
+        app.screen = Screen::Score;
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|frame| app.render(frame)).unwrap();
+        let buffer = terminal.backend().buffer();
+        let view = (0..24)
+            .flat_map(|y| (0..80).map(move |x| buffer[(x, y)].symbol().to_owned()))
+            .collect::<String>();
+        assert!(view.contains("WAGON STRANDED"));
+        assert!(view.contains("Leader: died on the trail"));
+        assert!(view.contains("The river took the wagon."));
+        assert_eq!(view.matches("JOURNEY COMPLETE").count(), 0);
     }
     #[test]
     fn title_menu_starts_a_setup_flow() {

@@ -304,6 +304,25 @@ pub fn render(image: &PxImage, buffer: &mut Buffer, area: Rect, mode: ColorMode)
     }
 }
 
+/// Renders a vertical cell slice of an image. This keeps short scene vignettes
+/// focused on their ground-level action rather than an empty stretch of sky.
+pub fn render_section(
+    image: &PxImage,
+    buffer: &mut Buffer,
+    area: Rect,
+    source_y: u16,
+    mode: ColorMode,
+) {
+    render_at(
+        image,
+        buffer,
+        area,
+        i32::from(area.x),
+        i32::from(area.y) - i32::from(source_y),
+        mode,
+    );
+}
+
 /// Recovers the colors represented by the renderer's half-block cell. Unknown
 /// terminal glyphs are treated as a solid foreground color.
 fn cell_halves(symbol: &str, fg: Color, bg: Color) -> (Color, Color) {
@@ -393,6 +412,15 @@ mod tests {
         render(&image, &mut buffer, Rect::new(1, 0, 2, 1), ColorMode::Ansi256);
         let cell = buffer.cell((2, 0)).unwrap();
         assert_eq!((cell.fg, cell.bg), (Color::Indexed(202), Color::Indexed(40)));
+    }
+
+    #[test]
+    fn section_starts_at_the_requested_cell_row() {
+        let image = PxImage::parse("W\nW\nO\nO\n").unwrap();
+        let mut buffer = Buffer::empty(Rect::new(0, 0, 1, 1));
+        render_section(&image, &mut buffer, Rect::new(0, 0, 1, 1), 1, ColorMode::Ansi256);
+        let cell = buffer.cell((0, 0)).unwrap();
+        assert_eq!((cell.fg, cell.bg), (Color::Indexed(202), Color::Indexed(202)));
     }
 
     #[test]

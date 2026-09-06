@@ -446,82 +446,82 @@ The wagon is ready. Five travelers set out from Independence.
 └──────────────────────────────────────────────────────────────────────────────┘
 
 === River ===
-┌PIONEER TRAIL─────────────────────────────────────────────────────────────────┐
-│ PIONEER TRAIL                                                                │
-│ Kansas River Crossing · width 620 ft · depth 5 ft · ferry $5.00              │
-│ ► 1. Ford (risk cargo and lives)                                             │
-│   2. Caulk wagon and float                                                   │
-│   3. Ferry (if available)                                                    │
-│   4. Wait one day                                                            │
-│   5. Hire guide (Snake River: 3 clothing sets)                               │
-│ Cargo-loss risk: ford 62% · caulk 28% · guide 10%                            │
-│ Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                 │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│ TRAIL LOG─────────────────────────────────────────────────────────────────── │
-│ The wagon is ready. Five travelers set out from Independence.                │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-└──────────────────────────────────────────────────────────────────────────────┘
+  RIVER CROSSING                                                                
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+                                                                                
+  Kansas River Crossing · width 620 ft · depth 5 ft · ferry $5.00               
+  ► 1. Ford (risk cargo and lives)                                              
+    2. Caulk wagon and float                                                    
+    3. Ferry (if available)                                                     
+    4. Wait one day                                                             
+    5. Hire guide (Snake River: 3 clothing sets)                                
+  Cargo-loss risk: ford 62% · caulk 28% · guide 10%                             
+  Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                  
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+TRAIL LOG───────────────────────────────────────────────────────────────────────
+The wagon is ready. Five travelers set out from Independence.                   
+                                                                                
 
 === Event ===
-┌PIONEER TRAIL─────────────────────────────────────────────────────────────────┐
-│ PIONEER TRAIL                                                                │
-│ A decision is required:                                                      │
-│ A wheel splits on a hidden stone.                                            │
-│ ► 1. Fit the spare wheel [unavailable]                                       │
-│   2. Leave the wagon to limp                                                 │
-│ Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                 │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│ TRAIL LOG─────────────────────────────────────────────────────────────────── │
-│ The wagon is ready. Five travelers set out from Independence.                │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-└──────────────────────────────────────────────────────────────────────────────┘
+  TRAIL EVENT                                                                   
+                        ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀                        
+                       ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀                       
+                       ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀                       
+                     ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀                     
+     ▀▀▀        ▀▀▀  ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀ ▀▀▀        ▀▀▀      
+    ▀▀ ▀▀      ▀▀ ▀▀   ▀▀▀▀▀▀▀▀      ▀▀ ▀▀      ▀▀ ▀▀▀▀▀▀  ▀▀ ▀▀      ▀▀ ▀▀     
+                                                                                
+  A decision is required:                                                       
+  A wheel splits on a hidden stone.                                             
+  ► 1. Fit the spare wheel [unavailable]                                        
+    2. Leave the wagon to limp                                                  
+  Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                  
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+TRAIL LOG───────────────────────────────────────────────────────────────────────
+The wagon is ready. Five travelers set out from Independence.                   
+                                                                                
 
 === Score ===
-┌JOURNEY COMPLETE──────────────────────────────────────────────────────────────┐
-│ JOURNEY COMPLETE                                                             │
-│ Arrived! · Score 3264 · 155 days · 1885 miles                                │
-│ You arrived with 5 survivor(s). Supplies left over add to your score.        │
-│ Ada: survived, health 100                                                    │
-│ James: survived, health 100                                                  │
-│ Ruth: survived, health 100                                                   │
-│ Thomas: survived, health 100                                                 │
-│ Clara: survived, health 100                                                  │
-│ Base 2864 · early 200 · no deaths 100 · no ferry 100 · rock 0                │
-│ Share this world: pt-0000000000003hs                                         │
-│ [V] Full party · [E] Epitaph · Enter returns to title.                       │
-│ Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                 │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│ TRAIL LOG─────────────────────────────────────────────────────────────────── │
-│ The wagon is ready. Five travelers set out from Independence.                │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-└──────────────────────────────────────────────────────────────────────────────┘
+  Independence, Missouri                                                        
+    ▀▀▀               ▀▀▀▀▀                  ▀▀▀▀▀         ▀        ▀▀▀▀▀       
+   ▀▀▀▀▀      ▀       ▀▀▀▀▀        ▀▀▀        ▀▀▀         ▀▀▀       ▀▀▀▀▀     ▀ 
+    ▀▀▀     ▀▀▀▀▀     ▀▀▀▀▀       ▀▀▀▀▀      ▀▀▀▀▀       ▀▀▀▀▀     ▀▀▀▀▀▀▀  ▀▀▀▀
+   ▀▀▀▀▀    ▀▀▀▀▀    ▀▀▀▀▀▀▀      ▀▀▀▀▀     ▀▀▀▀▀▀▀      ▀▀▀▀▀      ▀▀▀▀▀   ▀▀▀▀
+  ▀▀▀▀▀▀▀   ▀▀▀▀▀    ▀▀▀▀▀▀▀      ▀▀▀▀▀      ▀▀▀▀▀       ▀▀▀▀▀     ▀▀▀▀▀▀▀  ▀▀▀▀
+                                                                                
+  Arrived! · Score 3264 · 155 days · 1885 miles                                 
+  You arrived with 5 survivor(s). Supplies left over add to your score.         
+  Ada: survived, health 100                                                     
+  James: survived, health 100                                                   
+  Ruth: survived, health 100                                                    
+  Thomas: survived, health 100                                                  
+  Clara: survived, health 100                                                   
+  Base 2864 · early 200 · no deaths 100 · no ferry 100 · rock 0                 
+  Share this world: pt-0000000000003hs                                          
+  [V] Full party · [E] Epitaph · Enter returns to title.                        
+  Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                  
+                                                                                
+                                                                                
+                                                                                
+TRAIL LOG───────────────────────────────────────────────────────────────────────
+The wagon is ready. Five travelers set out from Independence.                   
+                                                                                
 
 === Epitaph ===
 ┌PIONEER TRAIL─────────────────────────────────────────────────────────────────┐
