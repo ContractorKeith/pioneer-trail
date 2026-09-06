@@ -462,8 +462,10 @@ impl GameState {
         names: Vec<String>,
         month: u8,
     ) -> Result<Vec<Outcome>, CommandError> {
+        let names = names.into_iter().map(|name| name.trim().to_owned()).collect::<Vec<_>>();
         if self.status != RunStatus::Setup
             || names.len() != 5
+            || names.iter().collect::<BTreeSet<_>>().len() != names.len()
             || names.iter().any(|name| {
                 name.trim().is_empty()
                     || name.chars().count() > 24
@@ -1685,6 +1687,8 @@ impl GameState {
             return Err(CommandError::InvalidSetup);
         }
         if self.party.len() > 12
+            || self.party.iter().map(|member| &member.name).collect::<BTreeSet<_>>().len()
+                != self.party.len()
             || self.party.len().saturating_add(self.family.pregnancies.len()) > 12
             || !(3..=7).contains(&self.departure_month)
             || self.day > 3660
@@ -3162,6 +3166,27 @@ mod tests {
         assert!(game.pending_event.is_none());
         assert!(game.active_minigame.is_none());
     }
+    #[test]
+    fn duplicate_party_names_are_rejected_without_mutating_setup() {
+        let mut game = GameState::new(8);
+        assert_rejected_without_mutation(
+            &mut game,
+            Command::Configure {
+                trail_id: "oregon".into(),
+                era_id: "1848".into(),
+                occupation_id: "farmer".into(),
+                party: vec![
+                    "Ada".into(),
+                    " Ada ".into(),
+                    "Ben".into(),
+                    "Clara".into(),
+                    "Dora".into(),
+                ],
+                departure_month: 3,
+            },
+        );
+    }
+
     #[test]
     fn rejected_command_does_not_mutate_state() {
         let mut game = GameState::new(2);

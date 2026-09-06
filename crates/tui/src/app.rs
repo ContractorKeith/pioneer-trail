@@ -337,6 +337,16 @@ impl App {
                 }
             }
             Screen::SetupDeparture => {
+                let names = self
+                    .draft
+                    .names
+                    .iter()
+                    .map(|name| name.trim())
+                    .collect::<std::collections::BTreeSet<_>>();
+                if names.len() != self.draft.names.len() {
+                    self.note("Give each traveler a distinct name. Esc returns to the party.");
+                    return;
+                }
                 let Some(trail) = self.game.content.trails.get(self.draft.trail) else {
                     self.note("No trail content loaded.");
                     return;
