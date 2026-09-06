@@ -503,6 +503,7 @@ impl GameState {
                 out.push(Outcome::MemberDied { name: p.name.clone() })
             }
         }
+        self.progress_ailments(&mut out);
         if eaten_food < required_food {
             for member in &mut self.party {
                 if member.alive {
@@ -1244,6 +1245,69 @@ impl GameState {
             }
         }
     }
+    fn progress_ailments(&mut self, out: &mut Vec<Outcome>) {
+        let mut spread = Vec::new();
+        for index in 0..self.party.len() {
+            if !self.party[index].alive {
+                continue;
+            }
+            let ailments = self.party[index].ailments.clone();
+            for id in ailments {
+                let Some(definition) =
+                    self.content.ailments.iter().find(|ailment| ailment.id == id)
+                else {
+                    continue;
+                };
+                let days = {
+                    let entry = self.party[index].ailment_days.entry(id.clone()).or_default();
+                    *entry = entry.saturating_add(1);
+                    *entry
+                };
+                let trait_modifier =
+                    if self.party[index].traits.contains(&crate::party::Trait::Hardy) {
+                        2
+                    } else if self.party[index].traits.contains(&crate::party::Trait::Sickly) {
+                        -2
+                    } else {
+                        0
+                    };
+                if matches!(
+                    crate::health::stage(days, definition.severity),
+                    crate::health::AilmentStage::Acute
+                ) && self.rng.stream("health").gen_range(0..1000)
+                    < definition
+                        .mortality_per_mille
+                        .saturating_sub(trait_modifier.max(0) as u16)
+                        .saturating_add((-trait_modifier.min(0)) as u16)
+                {
+                    self.party[index].health = 0;
+                    self.party[index].alive = false;
+                    out.push(Outcome::MemberDied { name: self.party[index].name.clone() });
+                    continue;
+                }
+                if days >= u16::from(definition.severity.max(2)) * 3
+                    && self.party[index].health >= 35
+                {
+                    self.party[index].ailments.retain(|ailment| ailment != &id);
+                    self.party[index].ailment_days.remove(&id);
+                }
+                if crate::health::contagious(&id)
+                    && days <= u16::from(definition.severity.max(2)) * 2
+                    && self.rng.stream("health").gen_range(0..100) < 18
+                {
+                    spread.push(id);
+                }
+            }
+        }
+        for id in spread {
+            if let Some(target) =
+                self.party.iter_mut().find(|member| member.alive && !member.ailments.contains(&id))
+            {
+                target.ailments.push(id.clone());
+                target.ailment_days.insert(id, 0);
+            }
+        }
+    }
     fn pass_camp_day(&mut self, out: &mut Vec<Outcome>, resting: bool) {
         if self.status == RunStatus::Failed {
             return;
@@ -1301,6 +1365,7 @@ impl GameState {
                 }
             }
         }
+        self.progress_ailments(out);
         if !self.party.iter().any(|member| member.alive) {
             self.status = RunStatus::Failed;
         }
