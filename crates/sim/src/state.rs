@@ -1279,23 +1279,24 @@ impl GameState {
             .find(|npc| npc.id == npc_id)
             .ok_or_else(|| CommandError::UnknownId(npc_id.into()))?;
         if i32::from(npc.reputation) + i32::from(self.reputation) < 0
-            || self.party.len() >= 12
+            || self.available_party_slots() == 0
             || !npc.recurring
             || self.party.iter().any(|member| member.npc_id.as_deref() == Some(npc_id))
         {
             return Err(CommandError::InvalidChoice);
         }
-        let name = npc.name.clone();
+        let mut name = npc.name.clone();
+        let mut suffix = 2;
+        while self.party.iter().any(|member| member.name == name) {
+            name = format!("{} {suffix}", npc.name.chars().take(20).collect::<String>());
+            suffix += 1;
+        }
         let npc = self.npcs.iter_mut().find(|npc| npc.id == npc_id).expect("NPC was found above");
         npc.recurring = false;
         let mut member = PartyMember::new(name.clone());
         member.npc_id = Some(npc_id.into());
-        member.traits.push(crate::party::Trait::Sociable);
+        crate::party::initialize_joiner(&mut member, &mut self.party, &mut self.rng);
         member.skills.animals = 2;
-        for companion in self.party.iter_mut().filter(|companion| companion.alive) {
-            member.relationships.affinity.insert(companion.name.clone(), 5);
-            companion.relationships.affinity.insert(name.clone(), 5);
-        }
         self.party.push(member);
         Ok(vec![Outcome::Message(format!("{name} joins the party."))])
     }
@@ -1316,6 +1317,7 @@ impl GameState {
             .ok_or(CommandError::InvalidChoice)?;
         let name = self.party[index].name.clone();
         self.party.remove(index);
+        self.family.pregnancies.retain(|pregnancy| pregnancy.mother != name);
         let npc = self.npcs.iter_mut().find(|npc| npc.id == npc_id).expect("NPC was found above");
         npc.recurring = true;
         Ok(vec![Outcome::Message(format!("{name} leaves the party."))])
@@ -1803,8 +1805,8 @@ impl GameState {
             if left.is_empty()
                 || right.is_empty()
                 || left == right
-                || left.len() > 24
-                || right.len() > 24
+                || left.chars().count() > 24
+                || right.chars().count() > 24
                 || left.chars().any(char::is_control)
                 || right.chars().any(char::is_control)
             {
@@ -3029,6 +3031,10 @@ mod tests {
             game.party.push(PartyMember::new(format!("Extra {}", game.party.len())));
         }
         assert_eq!(game.available_party_slots(), 0);
+        assert_rejected_without_mutation(
+            &mut game,
+            Command::InviteNpc { npc_id: "emigrant_train".into() },
+        );
         game.effects(&[Effect::AddMember { name: "No Room".into(), age: 22 }], &mut Vec::new());
         assert!(!game.party.iter().any(|member| member.name == "No Room"));
 
@@ -3402,6 +3408,7 @@ mod tests {
         game.apply(Command::InviteNpc { npc_id: "emigrant_train".into() });
         assert_eq!(game.party.iter().filter(|member| member.npc_id.is_some()).count(), 1);
         let joined = game.party.iter().find(|member| member.npc_id.is_some()).unwrap();
+        assert_ne!(joined.name, game.party[0].name);
         assert!(!joined.traits.is_empty());
         assert!(!joined.relationships.affinity.is_empty());
         assert_rejected_without_mutation(

@@ -1383,6 +1383,14 @@ impl App {
                     )));
                 }
                 if let Some(member) = self.game.party.get(self.cursor) {
+                    if let Some(pregnancy) =
+                        self.game.family.pregnancies.iter().find(|p| p.mother == member.name)
+                    {
+                        lines.push(Line::from(format!(
+                            "Expecting a child in {} days",
+                            pregnancy.due_day.saturating_sub(self.game.day)
+                        )));
+                    }
                     lines.push(Line::from(format!("Traits: {:?}", member.traits)));
                     lines.push(Line::from(format!(
                         "Skills: hunt {} · medicine {} · repair {} · animals {}",
