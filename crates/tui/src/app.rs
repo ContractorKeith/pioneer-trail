@@ -69,6 +69,8 @@ pub struct App {
     epitaph: String,
     trade: TradeDraft,
     graves: Vec<crate::legacy::Grave>,
+    auto_travel: bool,
+    bell_pending: bool,
 }
 impl App {
     pub fn new(content: GameContent, seed: u64, settings: Settings) -> Self {
@@ -98,6 +100,8 @@ impl App {
                 ..TradeDraft::default()
             },
             graves: Vec::new(),
+            auto_travel: false,
+            bell_pending: false,
         }
     }
     pub fn with_storage(mut self, storage: Storage) -> Self {
@@ -140,7 +144,7 @@ impl App {
                 .find(|t| Some(&t.id) == self.game.trail_id.as_ref())
                 .map_or(1, |t| t.nodes.len() + self.graves.len()),
             Screen::Pace | Screen::Rations | Screen::Rest => 3,
-            Screen::Treat => self.game.party.len(),
+            Screen::Treat | Screen::Party => self.game.party.len(),
             Screen::Trade => 9,
             Screen::River => 5,
             Screen::Fork => self.game.current_landmark().map_or(0, |n| n.routes.len()),
@@ -170,6 +174,9 @@ impl App {
     pub fn handle_key(&mut self, key: KeyEvent) {
         if !matches!(key.kind, KeyEventKind::Press | KeyEventKind::Repeat) {
             return;
+        }
+        if key.code != KeyCode::Char('a') {
+            self.auto_travel = false;
         }
         if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('q') {
             self.quit = true;
@@ -477,6 +484,7 @@ impl App {
                 self.screen = Screen::Score;
             }
             Screen::Score
+            | Screen::Party
             | Screen::Hall
             | Screen::Settings
             | Screen::Supplies
@@ -540,8 +548,18 @@ impl App {
                 self.screen = Screen::Trade;
                 self.cursor = 0;
             }
+            (Screen::Journey, 'v') => {
+                self.screen = Screen::Party;
+                self.cursor = 0;
+            }
             (Screen::Journey, 'f') => self.apply(Command::Forage),
             (Screen::Journey, 'g') => self.apply(Command::Fish),
+            (Screen::Journey, 'a') => {
+                if matches!(self.game.status, pioneer_sim::RunStatus::AtLandmark(_)) {
+                    self.apply(Command::Continue);
+                }
+                self.auto_travel = !self.auto_travel;
+            }
             (Screen::SetupTrail, 'd') => {
                 use pioneer_sim::state::Difficulty;
                 let next = match self.game.difficulty {
@@ -617,6 +635,7 @@ impl App {
             | Screen::Talk
             | Screen::Treat
             | Screen::Trade
+            | Screen::Party
             | Screen::Minigame => Screen::Journey,
             Screen::Score => Screen::Title,
             Screen::Epitaph => Screen::Score,
@@ -676,6 +695,10 @@ impl App {
         if self.screen != previous_screen {
             self.cursor = 0;
         }
+        if self.screen != Screen::Journey || self.game.status != pioneer_sim::RunStatus::Travelling
+        {
+            self.auto_travel = false;
+        }
     }
     fn sync_screen(&mut self) {
         if self.game.active_minigame.is_some() {
@@ -710,6 +733,12 @@ impl App {
         }
     }
     fn outcome(&mut self, outcome: Outcome) {
+        if matches!(
+            &outcome,
+            Outcome::Event { .. } | Outcome::MemberDied { .. } | Outcome::Score { .. }
+        ) {
+            self.bell_pending = true;
+        }
         match outcome {
             Outcome::ForkAvailable { .. } => self.screen = Screen::Fork,
             Outcome::RiverCrossingRequired { .. } => self.screen = Screen::River,
@@ -1015,7 +1044,9 @@ impl App {
             );
         }
         frame.render_widget(
-            Paragraph::new("i treat · u trade · f forage · g fish · Esc title · Ctrl-Q save/quit"),
+            Paragraph::new(
+                "a travel · i treat · u trade · f forage · g fish · v party · Esc title",
+            ),
             Rect::new(canvas.x, canvas.y + 21, 80, 1),
         );
         if let Some(last) = self.log.last() {
@@ -1142,7 +1173,9 @@ impl App {
                     ],
                     self.cursor,
                 ));
-                lines.push(Line::from("I treat · U trade · F forage · G fish"));
+                lines.push(Line::from(
+                    "A auto travel · I treat · U trade · F forage · G fish · V party",
+                ));
             }
             Screen::Supplies => {
                 for (id, quantity) in &self.game.inventory.quantities {
@@ -1251,6 +1284,49 @@ impl App {
                         offer.offered_item,
                         offer.wanted_quantity,
                         offer.wanted_item
+                    )));
+                }
+            }
+            Screen::Party => {
+                for (index, member) in
+                    self.game.party.iter().enumerate().skip(self.cursor.saturating_sub(3)).take(7)
+                {
+                    lines.push(Line::from(format!(
+                        "{} {} · age {} · health {} · morale {}{}",
+                        marker(index == self.cursor),
+                        member.name,
+                        member.age,
+                        member.health,
+                        member.morale,
+                        if member.alive { "" } else { " · deceased" }
+                    )));
+                }
+                if let Some(member) = self.game.party.get(self.cursor) {
+                    lines.push(Line::from(format!("Traits: {:?}", member.traits)));
+                    lines.push(Line::from(format!(
+                        "Skills: hunt {} · medicine {} · repair {} · animals {}",
+                        member.skills.hunting,
+                        member.skills.medicine,
+                        member.skills.repair,
+                        member.skills.animals
+                    )));
+                    lines.push(Line::from(format!(
+                        "Ailments: {}",
+                        if member.ailments.is_empty() {
+                            "none".into()
+                        } else {
+                            member.ailments.join(", ")
+                        }
+                    )));
+                    lines.push(Line::from(format!(
+                        "Bonds: {}",
+                        member
+                            .relationships
+                            .affinity
+                            .iter()
+                            .map(|(name, value)| format!("{name} {value:+}"))
+                            .collect::<Vec<_>>()
+                            .join(", ")
                     )));
                 }
             }
@@ -1397,7 +1473,16 @@ pub fn run(mut app: App) -> anyhow::Result<()> {
     let started = std::time::Instant::now();
     let step = std::time::Duration::from_nanos(1_000_000_000 / 30);
     let mut next_tick = std::time::Instant::now() + step;
+    let mut next_day = std::time::Instant::now();
     while !app.should_quit() {
+        if app.bell_pending {
+            if app.settings.bell {
+                use std::io::Write;
+                std::io::stdout().write_all(b"\x07")?;
+                std::io::stdout().flush()?;
+            }
+            app.bell_pending = false;
+        }
         terminal.draw(|frame| app.render(frame))?;
         let timeout = if app.minigame.is_some() {
             next_tick.saturating_duration_since(std::time::Instant::now())
@@ -1416,6 +1501,11 @@ pub fn run(mut app: App) -> anyhow::Result<()> {
         }
         let now = std::time::Instant::now();
         let size = terminal.size()?;
+        if app.auto_travel && now >= next_day && size.width >= 80 && size.height >= 24 {
+            app.apply(Command::Continue);
+            next_day =
+                now + std::time::Duration::from_millis(app.settings.speed.milliseconds().max(30));
+        }
         if app.minigame.is_some() && size.width >= 80 && size.height >= 24 {
             // Bound catch-up after a stalled terminal; never fast-forward a whole hunt.
             for _ in 0..3 {
@@ -1566,6 +1656,7 @@ mod tests {
             Screen::Talk,
             Screen::Treat,
             Screen::Trade,
+            Screen::Party,
             Screen::Fork,
             Screen::River,
             Screen::Event,

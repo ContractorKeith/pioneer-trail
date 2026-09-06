@@ -277,7 +277,7 @@ expression: "all_screens(120, 40)"
                     ► 1 Continue                2 Supplies                3 Map                                         
                       4 Pace                    5 Rations                 6 Rest                                        
                       7 Hunt                    8 Talk                    9 Buy                                         
-                    i treat · u trade · f forage · g fish · Esc title · Ctrl-Q save/quit                                
+                    a travel · i treat · u trade · f forage · g fish · v party · Esc title                              
                     The wagon is ready. Five travelers set out from Independence.                                       
                                                                                                                         
                                                                                                                         
@@ -605,6 +605,48 @@ expression: "all_screens(120, 40)"
 │   Invite neighbor to party                                                                                           │
 │   Dismiss joined neighbor                                                                                            │
 │ Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                                                         │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│ TRAIL LOG─────────────────────────────────────────────────────────────────────────────────────────────────────────── │
+│ The wagon is ready. Five travelers set out from Independence.                                                        │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+=== Party ===
+┌PIONEER TRAIL─────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ PIONEER TRAIL                                                                                                        │
+│ ► Ada · age 43 · health 100 · morale 50                                                                              │
+│   James · age 35 · health 100 · morale 50                                                                            │
+│   Ruth · age 54 · health 100 · morale 50                                                                             │
+│   Thomas · age 38 · health 100 · morale 50                                                                           │
+│   Clara · age 44 · health 100 · morale 50                                                                            │
+│ Traits: [Cheerful, Hardy]                                                                                            │
+│ Skills: hunt 0 · medicine 0 · repair 0 · animals 0                                                                   │
+│ Ailments: none                                                                                                       │
+│ Bonds:                                                                                                               │
+│ Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                                                         │
+│                                                                                                                      │
 │                                                                                                                      │
 │                                                                                                                      │
 │                                                                                                                      │
