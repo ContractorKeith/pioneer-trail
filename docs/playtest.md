@@ -49,3 +49,9 @@ remain unverified. Automated coverage and hands-on play complement each other.
 The initial scaffold passed `cargo test --workspace` on September 6, 2026.
 Those three tests do not establish gameplay acceptance. Add verified results here
 as implementation is integrated, including commands, seed and tested dimensions.
+
+Simulation foundation: `cargo run -p pioneer-trail -- --headless-sim 1000 --seed 0`
+completed 1,000 Oregon banker/March journeys with 1,000 arrivals and at least
+three survivors each. Mean duration was 154.0 days with the 26-event baseline.
+The reference player resupplies at forts, treats illness and takes the first
+affordable event option. This is a baseline, not expanded-system or minigame acceptance.

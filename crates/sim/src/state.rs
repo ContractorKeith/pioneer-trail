@@ -939,7 +939,7 @@ impl GameState {
         }
         self.current_node_id = Some(n.id.clone());
         match n.kind {
-            LandmarkKind::Fork => {
+            LandmarkKind::Fork | LandmarkKind::Finale if n.routes.len() > 1 => {
                 self.status = RunStatus::AwaitingFork(n.id.clone());
                 out.push(Outcome::ForkAvailable { landmark_id: n.id })
             }
