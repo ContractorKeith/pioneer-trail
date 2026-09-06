@@ -24,12 +24,22 @@ impl LiveMinigame {
                     Terrain::RiverValley => Biome::RiverValley,
                     Terrain::Plains => Biome::Plains,
                 };
-                Self::Hunt(HuntingGame::new(
-                    session.seed,
-                    biome,
-                    game.occupation_id.as_deref() == Some("hunter"),
-                    session.ammo_available.min(20) as u16,
-                ))
+                Self::Hunt(
+                    HuntingGame::new(
+                        session.seed,
+                        biome,
+                        game.occupation_id.as_deref() == Some("hunter"),
+                        session.ammo_available.min(20) as u16,
+                    )
+                    .with_skill(
+                        game.party
+                            .iter()
+                            .filter(|member| member.alive)
+                            .map(|member| member.skills.hunting)
+                            .max()
+                            .unwrap_or(0),
+                    ),
+                )
             }
             MinigameKind::Raft => Self::Raft(RaftingGame::new(session.seed)),
         })

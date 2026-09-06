@@ -83,6 +83,7 @@ pub struct HuntingGame {
     ammo: u16,
     food: u16,
     capacity: u16,
+    aim_radius: i16,
     finished: bool,
 }
 impl HuntingGame {
@@ -97,10 +98,15 @@ impl HuntingGame {
             ammo: ammo_available.min(20),
             food: 0,
             capacity: if hunter { 200 } else { 150 },
+            aim_radius: if hunter { 1 } else { 0 },
             finished: false,
         };
         game.spawn();
         game
+    }
+    pub fn with_skill(mut self, skill: u8) -> Self {
+        self.aim_radius = self.aim_radius.max(i16::from((skill / 4).min(2)));
+        self
     }
     fn spawn(&mut self) {
         let stream = self.rng.stream("hunting-spawn");
@@ -263,14 +269,22 @@ impl HuntingGame {
         self.shots = self.shots.saturating_add(1);
         for target in &mut self.targets {
             let image = art::embedded(&target.kind.sprite(self.ticks / 5)).expect("animal sprite");
-            let x = self.crosshair.0 - (target.x - 8);
-            let y = self.crosshair.1 - (target.y - 2);
-            if target.alive
-                && x >= 0
-                && y >= 0
-                && (image.pixel(x as u16, y as u16 * 2).is_some()
-                    || image.pixel(x as u16, y as u16 * 2 + 1).is_some())
-            {
+            let hit = (-self.aim_radius..=self.aim_radius).any(|dy| {
+                (-self.aim_radius..=self.aim_radius).any(|dx| {
+                    let world_x = self.crosshair.0 + dx;
+                    let world_y = self.crosshair.1 + dy;
+                    let x = world_x - (target.x - 8);
+                    let y = world_y - (target.y - 2);
+                    dx.abs() + dy.abs() <= self.aim_radius
+                        && (0..WIDTH).contains(&world_x)
+                        && (0..HEIGHT).contains(&world_y)
+                        && x >= 0
+                        && y >= 0
+                        && (image.pixel(x as u16, y as u16 * 2).is_some()
+                            || image.pixel(x as u16, y as u16 * 2 + 1).is_some())
+                })
+            });
+            if target.alive && hit {
                 target.alive = false;
                 self.food = (self.food + target.kind.food()).min(self.capacity);
                 break;
@@ -414,5 +428,26 @@ mod tests {
         assert!(g.text_lines().iter().any(|line| line.contains("currently visible")));
         g.text_key(KeyCode::Char('1'));
         assert_eq!(g.result(), HuntingResult { food_lbs: 0, shots: 0 });
+    }
+    #[test]
+    fn practiced_hunters_can_hit_one_cell_near_a_visible_animal() {
+        let target = Target { kind: Animal::Rabbit, x: 40, y: 11, dx: 1, alive: true };
+        let image = art::embedded("rabbit_0.px").unwrap();
+        let (x, y) = (0..image.width())
+            .find_map(|x| {
+                (0..image.height()).find(|&y| image.pixel(x, y).is_some()).map(|y| (x, y))
+            })
+            .unwrap();
+        let aim = (target.x - 8 + x as i16 - 1, target.y - 2 + (y / 2) as i16);
+        let mut novice = HuntingGame::new(1, Biome::Desert, false, 20);
+        novice.targets = vec![target];
+        novice.crosshair = aim;
+        novice.shoot();
+        assert_eq!(novice.result().food_lbs, 0);
+        let mut practiced = HuntingGame::new(1, Biome::Desert, false, 20).with_skill(4);
+        practiced.targets = vec![target];
+        practiced.crosshair = aim;
+        practiced.shoot();
+        assert_eq!(practiced.result(), HuntingResult { food_lbs: 8, shots: 1 });
     }
 }

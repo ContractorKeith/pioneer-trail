@@ -29,6 +29,7 @@ pub struct RaftingGame {
     ticks: u16,
     cargo: u16,
     casualties: u8,
+    impacts: u16,
     finished: bool,
     aborted: bool,
 }
@@ -41,6 +42,7 @@ impl RaftingGame {
             ticks: 0,
             cargo: 0,
             casualties: 0,
+            impacts: 0,
             finished: false,
             aborted: false,
         };
@@ -73,7 +75,8 @@ impl RaftingGame {
             {
                 rock.charged = true;
                 self.cargo = (self.cargo + 15).min(120);
-                if self.cargo.is_multiple_of(45) {
+                self.impacts = self.impacts.saturating_add(1);
+                if self.impacts.is_multiple_of(3) {
                     self.casualties = (self.casualties + 1).min(4)
                 }
             }
@@ -299,5 +302,17 @@ mod tests {
         let lines = g.text_lines();
         assert!(lines.iter().any(|line| line.contains("left lane, row 21")));
         assert!(!lines.iter().any(|line| line.contains("center lane, row 21")));
+    }
+    #[test]
+    fn cargo_cap_does_not_make_later_rocks_harmless() {
+        let mut game = RaftingGame::new(1);
+        game.cargo = 120;
+        game.impacts = 8;
+        game.casualties = 2;
+        game.rocks = vec![Rock { x: 40, y: 18, charged: false }];
+        game.ticks = 2;
+        game.tick();
+        assert_eq!(game.result().cargo_lost_lbs, 120);
+        assert_eq!(game.result().casualties, 3);
     }
 }
