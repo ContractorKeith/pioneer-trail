@@ -1180,7 +1180,13 @@ impl App {
         use crate::art;
         let body = self.body().into_iter().skip(1).collect::<Vec<_>>();
         let body_rows = body.len() as u16;
-        let scene_height = if self.screen == Screen::Score || body_rows > 13 {
+        let scene_height = if self.screen == Screen::Score {
+            if canvas.height > 24 {
+                8
+            } else {
+                5
+            }
+        } else if body_rows > 13 {
             2
         } else if body_rows > 11 {
             4
