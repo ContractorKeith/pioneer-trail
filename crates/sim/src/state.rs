@@ -364,7 +364,22 @@ impl GameState {
             .find(|x| x.id == o)
             .ok_or_else(|| CommandError::UnknownId(o.clone()))?;
         self.cash_cents = job.starting_cash_cents;
-        self.party = names.into_iter().map(PartyMember::new).collect();
+        self.party = names
+            .into_iter()
+            .enumerate()
+            .map(|(index, name)| {
+                let mut member = PartyMember::new(name);
+                member.age =
+                    18 + ((self.rng.stream("party").gen_range(0..40) + index as u32) % 55) as u8;
+                member.traits = match o.as_str() {
+                    "doctor" => vec![crate::party::Trait::Herbalist, crate::party::Trait::Hardy],
+                    "hunter" => vec![crate::party::Trait::Sharpshooter, crate::party::Trait::Hardy],
+                    "preacher" => vec![crate::party::Trait::Devout, crate::party::Trait::Cheerful],
+                    _ => vec![crate::party::Trait::Cheerful, crate::party::Trait::Hardy],
+                };
+                member
+            })
+            .collect();
         self.departure_month = month;
         self.current_node_id = Some(trail.start_node_id.clone());
         self.trail_id = Some(t);
