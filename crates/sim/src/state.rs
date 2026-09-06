@@ -1149,7 +1149,12 @@ impl GameState {
     }
     fn market_at(&self, market_id: &str) -> Market {
         self.markets.get(market_id).cloned().unwrap_or_else(|| Market {
-            normal_stock: self.content.items.iter().map(|item| (item.id.clone(), item.limit.max(20))).collect(),
+            normal_stock: self
+                .content
+                .items
+                .iter()
+                .map(|item| (item.id.clone(), item.limit.max(20)))
+                .collect(),
             stock: self
                 .content
                 .items
