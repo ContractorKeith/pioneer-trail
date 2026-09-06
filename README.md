@@ -21,6 +21,10 @@ Or download a binary for macOS, Linux, or Windows from
 For your first journey, try Banker, March, Oregon, 1848. Crates.io publication is still pending;
 the Homebrew formula builds directly from the released source.
 
+First trip? Press `?` in the store for budget-aware buying advice. Check the selected item's unit
+and total price before buying. Trail tips explain food and health risks, and automatic travel
+pauses when your party needs attention. See [first-journey improvements](docs/features/first-journey/README.md).
+
 ## Play from source
 
 Install a current Rust toolchain, clone this repository, then run:

@@ -9,7 +9,7 @@ readme.workspace = true
 description = "Embedded RON content (trails, events, ailments, art) and loaders for Pioneer Trail."
 
 [dependencies]
-pioneer-sim = { path = "../sim", version = "0.1.0" }
+pioneer-sim = { path = "../sim", version = "0.1.1" }
 serde = { workspace = true }
 ron = { workspace = true }
 include_dir = { workspace = true }

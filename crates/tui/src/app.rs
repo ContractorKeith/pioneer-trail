@@ -1320,9 +1320,9 @@ impl App {
                     .map(|node| format!("{}.px", node.id))
                     .filter(|file| art::embedded(file).is_some())
                     .unwrap_or_else(|| "terrain_forest.px".into()),
-                8,
+                16 - scene_height,
             ),
-            _ => ("terrain_plains.px".into(), 8),
+            _ => ("terrain_plains.px".into(), 16 - scene_height),
         };
         art::render_section(
             art::embedded(&background).expect("illustrated scene"),
@@ -1341,7 +1341,7 @@ impl App {
                 frame.buffer_mut(),
                 scene,
                 i32::from(scene.x + 36),
-                i32::from(scene.y),
+                i32::from(scene.bottom()) - 5,
                 mode,
             );
         } else if self.screen == Screen::Event
@@ -1353,7 +1353,7 @@ impl App {
                 frame.buffer_mut(),
                 scene,
                 i32::from(scene.x + 20),
-                i32::from(scene.y.saturating_sub(2)),
+                i32::from(scene.bottom()) - 10,
                 mode,
             );
         }

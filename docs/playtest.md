@@ -1,7 +1,9 @@
-# Release acceptance
+# Manual playtest checklist
 
-This checklist is the acceptance record for GitHub issue #8. Unchecked items
-remain unverified. Automated coverage and hands-on play complement each other.
+Use this checklist for a fresh hands-on playthrough. These unchecked boxes are not the current
+release status. Verified build, scenario, and distribution evidence is in
+[release acceptance](RELEASE_ACCEPTANCE.md). The first player feedback and improvement scope are
+in [first-journey improvements](features/first-journey/README.md).
 
 ## Journey
 
@@ -44,14 +46,12 @@ remain unverified. Automated coverage and hands-on play complement each other.
 - [ ] Install through Homebrew and verify the resolved binary/version.
 - [ ] README commands and demonstration match the shipped behavior.
 
-## Evidence
+## First-journey checks
 
-The initial scaffold passed `cargo test --workspace` on September 6, 2026.
-Those three tests do not establish gameplay acceptance. Add verified results here
-as implementation is integrated, including commands, seed and tested dimensions.
-
-Simulation foundation: `cargo run -p pioneer-trail -- --headless-sim 1000 --seed 0`
-completed 1,000 Oregon banker/March journeys with 1,000 arrivals and at least
-three survivors each. Mean duration was 154.0 days with the 26-event baseline.
-The reference player resupplies at forts, treats illness and takes the first
-affordable event option. This is a baseline, not expanded-system or minigame acceptance.
+- [ ] Choose Carpenter and read the occupation and departure advice.
+- [ ] Open store advice with `?`; inspect item units, food-days, and the affordable target.
+- [ ] Confirm that advice does not buy, sell, spend time, or change the world.
+- [ ] Attempt a risky departure, then choose to repack or deliberately proceed.
+- [ ] Let food run low; check that automatic travel pauses and suggests an available action.
+- [ ] Read pace, rations, and rest explanations; verify rest is not presented as free food.
+- [ ] View the illustrated failure and arrival screens without losing the seed or exit controls.

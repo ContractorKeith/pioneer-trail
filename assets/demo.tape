@@ -30,16 +30,30 @@ Enter
 Enter
 Enter
 Sleep 1s
+Type "?"
+Sleep 3s
+Type "?"
 Right 2
 Enter
 Down
-Right 15
+Right 12
 Enter
 Down
 Right 4
 Enter
 Down
 Right 9
+Enter
+Down
+Enter
+Down
+Enter
+Down
+Enter
+Down
+Right
+Enter
+Down
 Enter
 Down 10
 Enter
