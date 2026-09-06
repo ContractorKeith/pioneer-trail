@@ -195,6 +195,8 @@ pub struct RunRecord {
     pub seed: u64,
     pub trail: String,
     pub era: u16,
+    #[serde(default)]
+    pub ended_on: String,
     pub occupation: String,
     pub score: u32,
     pub survivors: usize,
@@ -360,6 +362,7 @@ mod tests {
             seed: 42,
             trail: "oregon".into(),
             era: 1848,
+            ended_on: "1848-08-28".into(),
             occupation: "farmer".into(),
             score: 1200,
             survivors: 3,

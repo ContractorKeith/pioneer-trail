@@ -235,6 +235,7 @@ mod tests {
             seed: 9,
             trail: trail.into(),
             era: 1848,
+            ended_on: "1848-06-30".into(),
             occupation: "farmer".into(),
             score: 0,
             survivors,

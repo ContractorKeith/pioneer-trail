@@ -5,7 +5,6 @@ pub struct Market {
     pub stock: BTreeMap<String, u32>,
     #[serde(default)]
     pub normal_stock: BTreeMap<String, u32>,
-    pub reputation: i16,
     pub last_restock_day: u32,
 }
 impl Market {

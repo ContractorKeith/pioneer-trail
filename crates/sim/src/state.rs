@@ -1632,7 +1632,6 @@ impl GameState {
                 .iter()
                 .map(|item| (item.id.clone(), item.limit.max(20)))
                 .collect(),
-            reputation: self.reputation,
             last_restock_day: self.day,
         })
     }
@@ -1972,7 +1971,8 @@ impl GameState {
                 }
                 Effect::HealAilment(x) => {
                     for p in &mut self.party {
-                        p.ailments.retain(|a| a != x)
+                        p.ailments.retain(|a| a != x);
+                        p.ailment_days.remove(x);
                     }
                 }
                 Effect::LoseDays(x) => {

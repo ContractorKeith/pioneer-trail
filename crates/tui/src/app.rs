@@ -858,18 +858,27 @@ impl App {
         if let Some(storage) = &self.storage {
             match storage.load_history() {
                 Ok(history) => {
-                    self.hall =
-                        history
-                            .leaders()
-                            .iter()
-                            .map(|entry| {
-                                format!(
-                            "{} · {} pts · {} · {} · {} survivors\n  {} · seed {} · {} days",
-                            entry.leader, entry.score, entry.occupation, entry.era,
-                            entry.survivors, entry.trail, entry.seed, entry.days
-                        )
-                            })
-                            .collect()
+                    self.hall = history
+                        .leaders()
+                        .iter()
+                        .map(|entry| {
+                            format!(
+                                "{} · {} pts · {} · {} · {} survivors\n  {} · seed {} · {} days",
+                                entry.leader,
+                                entry.score,
+                                entry.occupation,
+                                if entry.ended_on.is_empty() {
+                                    entry.era.to_string()
+                                } else {
+                                    entry.ended_on.clone()
+                                },
+                                entry.survivors,
+                                entry.trail,
+                                entry.seed,
+                                entry.days
+                            )
+                        })
+                        .collect()
                 }
                 Err(error) => self.note(format!("Could not read hall: {error}")),
             }
@@ -910,6 +919,7 @@ impl App {
         }
         if let Some(storage) = &self.storage {
             let arrived = matches!(self.game.status, pioneer_sim::RunStatus::Arrived);
+            let (year, month, day) = self.game.date();
             let record = RunRecord {
                 run_id: self.run_id.clone(),
                 leader: self
@@ -926,6 +936,7 @@ impl App {
                     .and_then(|era| era.parse().ok())
                     .unwrap_or_default(),
                 occupation: self.game.occupation_id.clone().unwrap_or_default(),
+                ended_on: format!("{year:04}-{month:02}-{day:02}"),
                 score: self.game.score(),
                 survivors: self.game.party.iter().filter(|member| member.alive).count(),
                 days: self.game.day,
