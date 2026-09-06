@@ -52,6 +52,13 @@ impl Storage {
         }
         let save: Save =
             serde_json::from_value(value).context("The save contains invalid game data")?;
+        save.game.validate().context("The saved state failed validation; file preserved")?;
+        pioneer_data::validate(&save.game.content)
+            .context("The saved content failed validation; file preserved")?;
+        anyhow::ensure!(
+            !save.run_id.is_empty() && save.run_id.len() <= 100,
+            "Invalid saved run identity"
+        );
         Ok(Some((save.run_id, save.game)))
     }
 
@@ -81,6 +88,20 @@ impl Storage {
         history.runs.push(entry);
         self.write_json("hall_of_fame.json", &history)?;
         Ok(true)
+    }
+    pub fn set_epitaph(&self, run_id: &str, epitaph: &str) -> Result<()> {
+        anyhow::ensure!(
+            epitaph.chars().count() <= 80 && !epitaph.chars().any(char::is_control),
+            "Epitaph must be at most 80 printable characters"
+        );
+        let mut history = self.load_history()?;
+        let entry = history
+            .runs
+            .iter_mut()
+            .find(|entry| entry.run_id == run_id)
+            .context("Completed journey was not found")?;
+        entry.epitaph = epitaph.trim().to_owned();
+        self.write_json("hall_of_fame.json", &history)
     }
 
     pub fn load_settings(&self) -> Result<Settings> {
@@ -253,12 +274,40 @@ mod tests {
     fn save_preserves_random_stream_position() {
         let temp = Temp::new();
         let store = Storage::at(&temp.0);
-        let mut game = GameState::new(23);
-        game.apply(pioneer_sim::Command::Continue);
+        let mut captured = None;
+        crate::headless::journey(
+            &pioneer_data::load().unwrap(),
+            23,
+            &crate::headless::RunConfig::default(),
+            |game, _| {
+                if captured.is_none() && game.day >= 7 {
+                    captured = Some(game.clone());
+                }
+            },
+        )
+        .unwrap();
+        let mut game = captured.unwrap();
         store.save_game(&game).unwrap();
         let mut loaded = store.load_game().unwrap().unwrap();
-        game.apply(pioneer_sim::Command::Continue);
-        loaded.apply(pioneer_sim::Command::Continue);
+        use pioneer_sim::{Command, CrossMethod, RunStatus};
+        for _ in 0..20 {
+            let command = if let Some(id) = &game.pending_event {
+                let event = game.content.events.iter().find(|e| &e.id == id).unwrap();
+                let choice = event.choices.iter().find(|c| game.choice_available(c)).unwrap();
+                Command::Respond { event_id: id.clone(), choice_id: choice.id.clone() }
+            } else {
+                match game.status {
+                    RunStatus::AwaitingRiver(_) => {
+                        Command::CrossRiver { method: CrossMethod::Caulk }
+                    }
+                    RunStatus::AwaitingFork(_) => Command::ChooseRoute {
+                        route_id: game.current_landmark().unwrap().routes[0].id.clone(),
+                    },
+                    _ => Command::Continue,
+                }
+            };
+            assert_eq!(game.apply(command.clone()), loaded.apply(command));
+        }
         assert_eq!(serde_json::to_value(game).unwrap(), serde_json::to_value(loaded).unwrap());
     }
 
@@ -306,7 +355,7 @@ mod tests {
         store.save_session(&id, &GameState::new(42)).unwrap();
         assert_eq!(store.load_session().unwrap().unwrap().0, id);
         let run = RunRecord {
-            run_id: id,
+            run_id: id.clone(),
             leader: "Sarah".into(),
             seed: 42,
             trail: "oregon".into(),
@@ -322,6 +371,11 @@ mod tests {
         };
         assert!(store.record_run(run.clone()).unwrap());
         assert!(!store.record_run(run).unwrap());
+        store.set_epitaph(&id, "We kept the fire until morning.").unwrap();
+        assert_eq!(
+            store.load_history().unwrap().runs[0].epitaph,
+            "We kept the fire until morning."
+        );
         assert_eq!(store.load_history().unwrap().leaders().len(), 1);
         let second_id = new_run_id();
         assert_ne!(second_id, store.load_session().unwrap().unwrap().0);
