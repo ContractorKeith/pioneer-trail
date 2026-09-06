@@ -200,12 +200,16 @@ impl App {
                 _ => {}
             }
         }
+        let previous_cursor = self.cursor;
         match decode(key) {
             Input::Quit => self.quit = true,
             Input::Up => self.cursor = self.cursor.saturating_sub(1),
             Input::Down => self.cursor = (self.cursor + 1).min(self.menu_len().saturating_sub(1)),
             Input::Digit(n) if n > 0 => {
                 if usize::from(n) <= self.menu_len() {
+                    if self.screen == Screen::Store && self.cursor != usize::from(n - 1) {
+                        self.store_quantity = 1;
+                    }
                     self.cursor = usize::from(n - 1);
                     self.select();
                 }
@@ -216,6 +220,9 @@ impl App {
             Input::Right => self.adjust(1),
             Input::Character(c) => self.character(c),
             Input::None | Input::Digit(_) => {}
+        }
+        if self.screen == Screen::Store && self.cursor != previous_cursor {
+            self.store_quantity = 1;
         }
     }
     fn select(&mut self) {
