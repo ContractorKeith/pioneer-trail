@@ -109,6 +109,8 @@ pub struct EventDefinition {
 pub struct EventChoice {
     pub id: String,
     pub label: String,
+    #[serde(default)]
+    pub conditions: Vec<Condition>,
     pub effects: Vec<Effect>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -128,11 +130,15 @@ pub enum Condition {
     Occupation(String),
     Season(Season),
     Weather(WeatherKind),
+    InventoryAtLeast { item_id: String, quantity: u32 },
+    CashAtLeast(i64),
+    MoraleBelow(i16),
 }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum Effect {
     Message(String),
     AdjustFood(i32),
+    AdjustItem { item_id: String, quantity: i32 },
     AdjustCash(i64),
     AdjustMorale(i16),
     InflictAilment(String),

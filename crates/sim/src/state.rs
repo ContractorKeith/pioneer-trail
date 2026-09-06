@@ -51,7 +51,8 @@ impl Inventory {
         self.quantities.get(id).copied().unwrap_or(0)
     }
     fn add(&mut self, id: &str, n: u32) {
-        *self.quantities.entry(id.into()).or_default() += n
+        let quantity = self.quantities.entry(id.into()).or_default();
+        *quantity = quantity.saturating_add(n);
     }
     fn remove(&mut self, id: &str, n: u32) -> bool {
         let h = self.get(id);
@@ -211,6 +212,9 @@ impl GameState {
         self.try_apply(c).unwrap_or_else(|e| vec![Outcome::Rejected(e)])
     }
     pub fn try_apply(&mut self, c: Command) -> Result<Vec<Outcome>, CommandError> {
+        if matches!(self.status, RunStatus::Arrived | RunStatus::Failed) {
+            return Err(CommandError::InvalidPhase);
+        }
         if self.pending_event.is_some() && !matches!(c, Command::Respond { .. }) {
             return Err(CommandError::InvalidPhase);
         }
@@ -236,12 +240,12 @@ impl GameState {
                 }
             }
             Command::SetPace(v) => {
-                self.traveling()?;
+                self.at_camp()?;
                 self.pace = v;
                 Ok(vec![Outcome::Message("Pace changed".into())])
             }
             Command::SetRations(v) => {
-                self.traveling()?;
+                self.at_camp()?;
                 self.rations = v;
                 Ok(vec![Outcome::Message("Rations changed".into())])
             }
@@ -268,8 +272,12 @@ impl GameState {
         month: u8,
     ) -> Result<Vec<Outcome>, CommandError> {
         if self.status != RunStatus::Setup
-            || names.is_empty()
-            || names.len() > 5
+            || names.len() != 5
+            || names.iter().any(|name| {
+                name.trim().is_empty()
+                    || name.chars().count() > 24
+                    || name.chars().any(char::is_control)
+            })
             || !(3..=7).contains(&month)
         {
             return Err(CommandError::InvalidSetup);
@@ -300,7 +308,7 @@ impl GameState {
         Ok(vec![Outcome::Configured])
     }
     fn buy(&mut self, id: &str, n: u32) -> Result<Vec<Outcome>, CommandError> {
-        if !self.can_shop() {
+        if !self.can_shop() || n == 0 {
             return Err(CommandError::InvalidPhase);
         }
         let item = self
@@ -352,7 +360,7 @@ impl GameState {
                     .filter_map(|id| {
                         self.content.ailments.iter().find(|a| &a.id == id).map(|a| a.daily_damage)
                     })
-                    .sum()
+                    .fold(0u8, u8::saturating_add)
             })
             .collect();
         for (p, damage) in self.party.iter_mut().zip(damages) {
@@ -395,18 +403,29 @@ impl GameState {
         if self.pending_event.is_none() {
             self.event(&mut out)
         }
-        if self.pending_event.is_none() {
-            self.landmark(&mut out)
+        if !matches!(self.status, RunStatus::Failed) {
+            self.landmark(&mut out);
         }
         Ok(out)
     }
     fn rest(&mut self, days: u32) -> Result<Vec<Outcome>, CommandError> {
-        self.traveling()?;
-        let mut outcomes = Vec::new();
-        for _ in 0..days.min(30) {
-            self.pass_camp_day(&mut outcomes, true);
+        self.at_camp()?;
+        if !(1..=30).contains(&days) {
+            return Err(CommandError::InvalidChoice);
         }
-        outcomes.push(Outcome::Message(format!("Rested {} days", days.min(30))));
+        let mut outcomes = Vec::new();
+        let started = self.day;
+        for _ in 0..days {
+            self.pass_camp_day(&mut outcomes, true);
+            if self.status == RunStatus::Failed {
+                break;
+            }
+            self.due(&mut outcomes);
+            if self.pending_event.is_some() {
+                break;
+            }
+        }
+        outcomes.push(Outcome::Message(format!("Rested {} days", self.day - started)));
         Ok(outcomes)
     }
     fn route(&mut self, id: &str) -> Result<Vec<Outcome>, CommandError> {
@@ -432,11 +451,25 @@ impl GameState {
             return Err(CommandError::InvalidPhase);
         }
         let river = self.node()?.river.clone().ok_or(CommandError::InvalidPhase)?;
+        if self.node()?.routes.len() != 1 {
+            return Err(CommandError::InvalidPhase);
+        }
         if m == CrossMethod::Wait {
-            self.day = self.day.saturating_add(1);
-            let needed = self.party.iter().filter(|member| member.alive).count() as u32 * 3;
-            self.inventory.take("food", needed);
-            return Ok(vec![Outcome::Message("You wait one day for lower water.".into())]);
+            let mut out = Vec::new();
+            self.pass_camp_day(&mut out, false);
+            if self.status != RunStatus::Failed {
+                self.due(&mut out);
+            }
+            out.push(Outcome::Message("You wait one day for lower water.".into()));
+            return Ok(out);
+        }
+        if m == CrossMethod::Guide {
+            if self.current_node_id.as_deref() != Some("snake_river")
+                || self.inventory.get("clothing") < 3
+            {
+                return Err(CommandError::InvalidChoice);
+            }
+            self.inventory.remove("clothing", 3);
         }
         if m == CrossMethod::Ferry {
             let cost = river.ferry_cost_cents.ok_or(CommandError::InvalidChoice)?;
@@ -453,7 +486,7 @@ impl GameState {
             CrossMethod::Caulk => river.width_feet / 20,
         };
         if self.rng.stream("rivers").gen_range(0..100) < risk.min(90) {
-            self.inventory.remove("food", 50);
+            self.inventory.take("food", 50);
         }
         self.begin_only_route()?;
         Ok(vec![Outcome::Message("The crossing is behind you.".into())])
@@ -470,13 +503,16 @@ impl GameState {
             .ok_or_else(|| CommandError::UnknownId(event.into()))?
             .clone();
         let c = e.choices.iter().find(|c| c.id == choice).ok_or(CommandError::InvalidChoice)?;
+        if !self.choice_available(c) {
+            return Err(CommandError::InvalidChoice);
+        }
         let mut out = vec![];
         self.effects(&c.effects, &mut out);
         self.pending_event = None;
         Ok(out)
     }
     fn talk(&mut self) -> Result<Vec<Outcome>, CommandError> {
-        self.traveling()?;
+        self.at_camp()?;
         let candidates: Vec<_> = self
             .content
             .quotes
@@ -486,19 +522,20 @@ impl GameState {
                     || q.landmark_id.as_deref() == self.current_node_id.as_deref()
             })
             .collect();
-        let q = candidates
-            .choose(self.rng.stream("quotes"))
-            .ok_or_else(|| CommandError::UnknownId("quote".into()))?;
+        let q = candidates.choose(self.rng.stream("quotes"));
+        let Some(q) = q else {
+            return Ok(vec![Outcome::Message("The camp is quiet tonight.".into())]);
+        };
         Ok(vec![Outcome::Quote { quote_id: q.id.clone(), text: q.text.clone() }])
     }
     fn treat(&mut self, i: usize, a: &str) -> Result<Vec<Outcome>, CommandError> {
-        self.traveling()?;
+        self.at_camp()?;
         let p = self.party.get_mut(i).ok_or(CommandError::InvalidChoice)?;
         if !p.alive || !p.ailments.iter().any(|x| x == a) || !self.inventory.remove("medicine", 1) {
             return Err(CommandError::InvalidChoice);
         }
         p.ailments.retain(|x| x != a);
-        p.health = (p.health + 15).min(100);
+        p.health = p.health.saturating_add(15).min(100);
         Ok(vec![Outcome::Treated { member_index: i, ailment_id: a.into() }])
     }
     fn hunt(&mut self, food: u32, ammo: u32) -> Result<Vec<Outcome>, CommandError> {
@@ -545,6 +582,33 @@ impl GameState {
     pub fn current_landmark(&self) -> Option<&LandmarkDefinition> {
         self.node().ok()
     }
+    pub fn choice_available(&self, choice: &EventChoice) -> bool {
+        if !choice.conditions.iter().all(|condition| self.matches(condition)) {
+            return false;
+        }
+        let mut cash = self.cash_cents;
+        let mut supplies = self.inventory.clone();
+        for effect in &choice.effects {
+            match effect {
+                Effect::AdjustCash(change) => {
+                    cash = cash.saturating_add(*change);
+                    if cash < 0 {
+                        return false;
+                    }
+                }
+                Effect::AdjustItem { item_id, quantity } => {
+                    if *quantity < 0 && !supplies.remove(item_id, quantity.unsigned_abs()) {
+                        return false;
+                    }
+                    if *quantity > 0 {
+                        supplies.add(item_id, *quantity as u32);
+                    }
+                }
+                _ => {}
+            }
+        }
+        true
+    }
     pub fn wagon_weight(&self) -> u32 {
         self.weight()
     }
@@ -569,7 +633,25 @@ impl GameState {
     }
     /// Reject corrupted saves before a UI attempts to navigate their content IDs.
     pub fn validate(&self) -> Result<(), CommandError> {
-        if self.party.len() > 5 || !(3..=7).contains(&self.departure_month) {
+        if self.party.len() > 12
+            || !(3..=7).contains(&self.departure_month)
+            || self.day > 3660
+            || self.cash_cents < 0
+            || self.party.iter().any(|member| {
+                member.health > 100
+                    || !(0..=100).contains(&member.morale)
+                    || (member.alive && member.health == 0)
+            })
+        {
+            return Err(CommandError::InvalidSetup);
+        }
+        if self.status != RunStatus::Setup
+            && (self.trail_id.is_none()
+                || self.era_id.is_none()
+                || self.occupation_id.is_none()
+                || self.current_node_id.is_none()
+                || self.party.is_empty())
+        {
             return Err(CommandError::InvalidSetup);
         }
         if let Some(id) = &self.trail_id {
@@ -612,8 +694,36 @@ impl GameState {
         {
             return Err(CommandError::InvalidSetup);
         }
-        if !matches!(self.status, RunStatus::Travelling) && self.target_node_id.is_some() {
+        if !matches!(self.status, RunStatus::Travelling | RunStatus::Failed)
+            && self.target_node_id.is_some()
+        {
             return Err(CommandError::InvalidSetup);
+        }
+        match &self.status {
+            RunStatus::AtLandmark(id)
+            | RunStatus::AwaitingFork(id)
+            | RunStatus::AwaitingRiver(id)
+                if Some(id) != self.current_node_id.as_ref() =>
+            {
+                return Err(CommandError::InvalidSetup)
+            }
+            _ => {}
+        }
+        for id in self
+            .pending_event
+            .iter()
+            .chain(self.scheduled_events.iter().map(|event| &event.event_id))
+        {
+            if !self.content.events.iter().any(|event| &event.id == id) {
+                return Err(CommandError::UnknownId(id.clone()));
+            }
+        }
+        for member in &self.party {
+            for id in &member.ailments {
+                if !self.content.ailments.iter().any(|ailment| &ailment.id == id) {
+                    return Err(CommandError::UnknownId(id.clone()));
+                }
+            }
         }
         Ok(())
     }
@@ -626,6 +736,19 @@ impl GameState {
     }
     fn traveling(&self) -> Result<(), CommandError> {
         self.phase(RunStatus::Travelling)
+    }
+    fn at_camp(&self) -> Result<(), CommandError> {
+        if matches!(
+            self.status,
+            RunStatus::Travelling
+                | RunStatus::AtLandmark(_)
+                | RunStatus::AwaitingRiver(_)
+                | RunStatus::AwaitingFork(_)
+        ) {
+            Ok(())
+        } else {
+            Err(CommandError::InvalidPhase)
+        }
     }
     fn begin_only_route(&mut self) -> Result<(), CommandError> {
         let node = self.node()?;
@@ -644,9 +767,13 @@ impl GameState {
             .quantities
             .iter()
             .map(|(id, n)| {
-                self.content.items.iter().find(|i| &i.id == id).map_or(0, |i| i.weight_lbs * n)
+                self.content
+                    .items
+                    .iter()
+                    .find(|i| &i.id == id)
+                    .map_or(0, |i| i.weight_lbs.saturating_mul(*n))
             })
-            .sum()
+            .fold(0u32, u32::saturating_add)
     }
     fn node(&self) -> Result<&LandmarkDefinition, CommandError> {
         self.content
@@ -723,6 +850,13 @@ impl GameState {
             Condition::Occupation(x) => self.occupation_id.as_deref() == Some(x),
             Condition::Season(x) => self.season() == *x,
             Condition::Weather(x) => self.weather == *x,
+            Condition::InventoryAtLeast { item_id, quantity } => {
+                self.inventory.get(item_id) >= *quantity
+            }
+            Condition::CashAtLeast(cents) => self.cash_cents >= *cents,
+            Condition::MoraleBelow(morale) => {
+                self.party.iter().any(|member| member.alive && member.morale < *morale)
+            }
         }
     }
     fn effects(&mut self, es: &[Effect], out: &mut Vec<Outcome>) {
@@ -736,10 +870,21 @@ impl GameState {
                         self.inventory.take("food", x.unsigned_abs());
                     }
                 }
-                Effect::AdjustCash(x) => self.cash_cents = self.cash_cents.saturating_add(*x),
+                Effect::AdjustItem { item_id, quantity } => {
+                    if *quantity >= 0 {
+                        self.inventory.add(item_id, *quantity as u32);
+                    } else {
+                        self.inventory.take(item_id, quantity.unsigned_abs());
+                    }
+                }
+                Effect::AdjustCash(x) => {
+                    self.cash_cents = self.cash_cents.saturating_add(*x).max(0)
+                }
                 Effect::AdjustMorale(x) => {
                     for p in &mut self.party {
-                        p.morale = (p.morale + *x).clamp(0, 100)
+                        if p.alive {
+                            p.morale = p.morale.saturating_add(*x).clamp(0, 100);
+                        }
                     }
                 }
                 Effect::InflictAilment(x) => {
@@ -755,8 +900,11 @@ impl GameState {
                     }
                 }
                 Effect::LoseDays(x) => {
-                    for _ in 0..*x {
+                    for _ in 0..(*x).min(365) {
                         self.pass_camp_day(out, false);
+                        if self.status == RunStatus::Failed {
+                            break;
+                        }
                     }
                 }
                 Effect::SetFlag(x) => {
@@ -818,8 +966,17 @@ impl GameState {
         }
     }
     fn pass_camp_day(&mut self, out: &mut Vec<Outcome>, resting: bool) {
+        if self.status == RunStatus::Failed {
+            return;
+        }
         self.day = self.day.saturating_add(1);
-        let required = self.party.iter().filter(|member| member.alive).count() as u32 * 3;
+        self.weather = self.weather_roll();
+        let ration = match self.rations {
+            RationLevel::Filling => 3,
+            RationLevel::Meager => 2,
+            RationLevel::BareBones => 1,
+        };
+        let required = self.party.iter().filter(|member| member.alive).count() as u32 * ration;
         let eaten = self.inventory.take("food", required);
         let damages: Vec<u8> = self
             .party
@@ -835,7 +992,7 @@ impl GameState {
                             .find(|ailment| &ailment.id == id)
                             .map(|ailment| ailment.daily_damage)
                     })
-                    .sum()
+                    .fold(0u8, u8::saturating_add)
             })
             .collect();
         for (member, damage) in self.party.iter_mut().zip(damages) {
@@ -862,8 +1019,8 @@ impl GameState {
         }
     }
     fn season(&self) -> Season {
-        match u32::from(self.departure_month) + self.day / 30 {
-            0..=5 => Season::Spring,
+        match self.date().1 {
+            3..=5 => Season::Spring,
             6..=8 => Season::Summer,
             9..=11 => Season::Autumn,
             _ => Season::Winter,
@@ -962,11 +1119,13 @@ mod tests {
             trail_id: "oregon".into(),
             era_id: "1848".into(),
             occupation_id: "farmer".into(),
-            party: vec!["Ada".into()],
+            party: vec!["Ada".into(), "Ben".into(), "Clara".into(), "David".into(), "Eve".into()],
             departure_month: 4,
         });
         g.apply(Command::Buy { item_id: "food".into(), quantity: 500 });
+        g.apply(Command::Buy { item_id: "oxen".into(), quantity: 3 });
         g.apply(Command::Depart);
+        assert_eq!(g.status, RunStatus::Travelling);
         g
     }
     #[test]
@@ -990,7 +1149,7 @@ mod tests {
             trail_id: "oregon".into(),
             era_id: "1848".into(),
             occupation_id: "farmer".into(),
-            party: vec!["Ada".into()],
+            party: vec!["Ada".into(), "Ben".into(), "Clara".into(), "David".into(), "Eve".into()],
             departure_month: 4,
         });
         game.apply(Command::Buy { item_id: "oxen".into(), quantity: 1 });
@@ -1012,7 +1171,7 @@ mod tests {
             trail_id: "oregon".into(),
             era_id: "1848".into(),
             occupation_id: "farmer".into(),
-            party: vec!["Ada".into()],
+            party: vec!["Ada".into(), "Ben".into(), "Clara".into(), "David".into(), "Eve".into()],
             departure_month: 4,
         });
         game.apply(Command::Buy { item_id: "oxen".into(), quantity: 1 });
@@ -1071,5 +1230,67 @@ mod tests {
             }
         }
         assert!(common > rare * 20, "common={common}, rare={rare}");
+    }
+
+    #[test]
+    fn starvation_ends_a_party_and_terminal_commands_are_inert() {
+        let mut game = run(42);
+        game.inventory.quantities.insert("food".into(), 0);
+        for _ in 0..20 {
+            game.apply(Command::Continue);
+        }
+        assert_eq!(game.status, RunStatus::Failed);
+        assert!(game.party.iter().all(|member| !member.alive && member.health == 0));
+        let before = serde_json::to_value(&game).unwrap();
+        for command in [Command::Continue, Command::Rest { days: 10 }, Command::Talk] {
+            assert!(matches!(game.apply(command).as_slice(), [Outcome::Rejected(_)]));
+            assert_eq!(serde_json::to_value(&game).unwrap(), before);
+        }
+        game.validate().unwrap();
+    }
+
+    #[test]
+    fn river_wait_can_starve_and_rest_does_not_restore_dead_members() {
+        let mut game = run(3);
+        game.status = RunStatus::AwaitingRiver("river".into());
+        game.content = branch_content();
+        game.current_node_id = Some("river".into());
+        game.target_node_id = None;
+        game.route_miles_remaining = 0;
+        game.inventory.quantities.insert("food".into(), 0);
+        for member in &mut game.party {
+            member.health = 5;
+        }
+        game.apply(Command::CrossRiver { method: CrossMethod::Wait });
+        assert_eq!(game.status, RunStatus::Failed);
+        assert!(game.party.iter().all(|member| !member.alive));
+        let mut game = run(5);
+        game.party[0].alive = false;
+        game.party[0].health = 0;
+        game.apply(Command::Rest { days: 2 });
+        assert!(!game.party[0].alive);
+        assert_eq!(game.party[0].health, 0);
+        assert_eq!(game.inventory.get("food"), 476);
+    }
+
+    proptest::proptest! {
+        #[test]
+        fn travel_invariants_hold_for_seeded_journeys(seed in proptest::prelude::any::<u64>(), pace in 0u8..3) {
+            let mut game = run(seed);
+            game.apply(Command::SetPace([Pace::Steady, Pace::Strenuous, Pace::Grueling][pace as usize]));
+            let mut prior_miles = 0;
+            let mut prior_alive = 5;
+            for _ in 0..300 {
+                game.apply(Command::Continue);
+                proptest::prop_assert!(game.miles >= prior_miles && game.miles <= 2040);
+                let alive = game.party.iter().filter(|member| member.alive).count();
+                proptest::prop_assert!(alive <= prior_alive);
+                proptest::prop_assert!(game.party.iter().all(|member| member.health <= 100));
+                prior_miles = game.miles;
+                prior_alive = alive;
+                if matches!(game.status, RunStatus::Arrived | RunStatus::Failed) { break; }
+            }
+            proptest::prop_assert!(matches!(game.status, RunStatus::Arrived | RunStatus::Failed));
+        }
     }
 }
