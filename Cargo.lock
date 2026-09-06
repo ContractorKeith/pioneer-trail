@@ -638,7 +638,11 @@ name = "pioneer-tools"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "clap",
+ "crossterm",
  "pioneer-data",
+ "pioneer-trail",
+ "ratatui",
 ]
 
 [[package]]
