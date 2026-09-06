@@ -68,6 +68,9 @@ pub struct App {
     animation_tick: u64,
     epitaph: String,
     trade: TradeDraft,
+    graves: Vec<crate::legacy::Grave>,
+    auto_travel: bool,
+    bell_pending: bool,
 }
 impl App {
     pub fn new(content: GameContent, seed: u64, settings: Settings) -> Self {
@@ -96,6 +99,9 @@ impl App {
                 wanted_quantity: 1,
                 ..TradeDraft::default()
             },
+            graves: Vec::new(),
+            auto_travel: false,
+            bell_pending: false,
         }
     }
     pub fn with_storage(mut self, storage: Storage) -> Self {
@@ -136,9 +142,9 @@ impl App {
                 .trails
                 .iter()
                 .find(|t| Some(&t.id) == self.game.trail_id.as_ref())
-                .map_or(1, |t| t.nodes.len()),
+                .map_or(1, |t| t.nodes.len() + self.graves.len()),
             Screen::Pace | Screen::Rations | Screen::Rest => 3,
-            Screen::Treat => self.game.party.len(),
+            Screen::Treat | Screen::Party => self.game.party.len(),
             Screen::Trade => 9,
             Screen::River => 5,
             Screen::Fork => self.game.current_landmark().map_or(0, |n| n.routes.len()),
@@ -168,6 +174,9 @@ impl App {
     pub fn handle_key(&mut self, key: KeyEvent) {
         if !matches!(key.kind, KeyEventKind::Press | KeyEventKind::Repeat) {
             return;
+        }
+        if key.code != KeyCode::Char('a') {
+            self.auto_travel = false;
         }
         if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('q') {
             self.quit = true;
@@ -475,6 +484,7 @@ impl App {
                 self.screen = Screen::Score;
             }
             Screen::Score
+            | Screen::Party
             | Screen::Hall
             | Screen::Settings
             | Screen::Supplies
@@ -538,8 +548,18 @@ impl App {
                 self.screen = Screen::Trade;
                 self.cursor = 0;
             }
+            (Screen::Journey, 'v') => {
+                self.screen = Screen::Party;
+                self.cursor = 0;
+            }
             (Screen::Journey, 'f') => self.apply(Command::Forage),
             (Screen::Journey, 'g') => self.apply(Command::Fish),
+            (Screen::Journey, 'a') => {
+                if matches!(self.game.status, pioneer_sim::RunStatus::AtLandmark(_)) {
+                    self.apply(Command::Continue);
+                }
+                self.auto_travel = !self.auto_travel;
+            }
             (Screen::SetupTrail, 'd') => {
                 use pioneer_sim::state::Difficulty;
                 let next = match self.game.difficulty {
@@ -615,6 +635,7 @@ impl App {
             | Screen::Talk
             | Screen::Treat
             | Screen::Trade
+            | Screen::Party
             | Screen::Minigame => Screen::Journey,
             Screen::Score => Screen::Title,
             Screen::Epitaph => Screen::Score,
@@ -624,6 +645,8 @@ impl App {
     }
     fn apply(&mut self, command: Command) {
         let previous_screen = self.screen;
+        let previous_miles = self.game.miles;
+        let configuring = matches!(&command, Command::Configure { .. });
         let retain_screen = matches!(
             &command,
             Command::Buy { .. }
@@ -641,6 +664,20 @@ impl App {
         for outcome in outcomes {
             self.outcome(outcome);
         }
+        if configuring && !rejected {
+            self.load_graves();
+        }
+        let passed = self
+            .graves
+            .iter()
+            .filter(|grave| grave.mile > previous_miles && grave.mile <= self.game.miles)
+            .map(|grave| {
+                format!("Grave at mile {}: {} — {}", grave.mile, grave.leader, grave.epitaph)
+            })
+            .collect::<Vec<_>>();
+        for note in passed {
+            self.note(note);
+        }
         self.autosave();
         self.sync_screen();
         if rejected
@@ -657,6 +694,10 @@ impl App {
         }
         if self.screen != previous_screen {
             self.cursor = 0;
+        }
+        if self.screen != Screen::Journey || self.game.status != pioneer_sim::RunStatus::Travelling
+        {
+            self.auto_travel = false;
         }
     }
     fn sync_screen(&mut self) {
@@ -692,6 +733,12 @@ impl App {
         }
     }
     fn outcome(&mut self, outcome: Outcome) {
+        if matches!(
+            &outcome,
+            Outcome::Event { .. } | Outcome::MemberDied { .. } | Outcome::Score { .. }
+        ) {
+            self.bell_pending = true;
+        }
         match outcome {
             Outcome::ForkAvailable { .. } => self.screen = Screen::Fork,
             Outcome::RiverCrossingRequired { .. } => self.screen = Screen::River,
@@ -747,6 +794,8 @@ impl App {
                     self.run_id = run_id;
                     self.game = game;
                     self.recorded = false;
+                    self.minigame = None;
+                    self.load_graves();
                     self.sync_screen();
                 }
                 Err(error) => self.note(format!("Saved journey is invalid: {error}")),
@@ -772,6 +821,31 @@ impl App {
             self.note("No local storage is attached.");
         }
         self.screen = Screen::Hall;
+    }
+    fn load_graves(&mut self) {
+        let history = match self.storage.as_ref().map(Storage::load_history).transpose() {
+            Ok(history) => history.unwrap_or_default(),
+            Err(error) => {
+                self.note(format!("Could not read local graves: {error}"));
+                crate::persist::History::default()
+            }
+        };
+        self.graves = self
+            .game
+            .content
+            .trails
+            .iter()
+            .find(|trail| Some(&trail.id) == self.game.trail_id.as_ref())
+            .map(|trail| {
+                crate::legacy::graves(
+                    &history,
+                    self.game.rng.seed(),
+                    &trail.id,
+                    self.game.date().0 as u16,
+                    crate::legacy::trail_extent(trail),
+                )
+            })
+            .unwrap_or_default();
     }
     fn record_run(&mut self) {
         if self.recorded {
@@ -970,7 +1044,9 @@ impl App {
             );
         }
         frame.render_widget(
-            Paragraph::new("i treat · u trade · f forage · g fish · Esc title · Ctrl-Q save/quit"),
+            Paragraph::new(
+                "a travel · i treat · u trade · f forage · g fish · v party · Esc title",
+            ),
             Rect::new(canvas.x, canvas.y + 21, 80, 1),
         );
         if let Some(last) = self.log.last() {
@@ -1097,7 +1173,9 @@ impl App {
                     ],
                     self.cursor,
                 ));
-                lines.push(Line::from("I treat · U trade · F forage · G fish"));
+                lines.push(Line::from(
+                    "A auto travel · I treat · U trade · F forage · G fish · V party",
+                ));
             }
             Screen::Supplies => {
                 for (id, quantity) in &self.game.inventory.quantities {
@@ -1106,8 +1184,11 @@ impl App {
             }
             Screen::Map => {
                 lines.push(Line::from(format!(
-                    "Position: {} miles · destination {:?} · {} miles remaining",
-                    self.game.miles, self.game.target_node_id, self.game.route_miles_remaining
+                    "{} miles · {:?} · next {} ({} mi)",
+                    self.game.miles,
+                    self.game.weather,
+                    self.game.target_node_id.as_deref().unwrap_or("camp"),
+                    self.game.route_miles_remaining
                 )));
                 if let Some(trail) = self
                     .game
@@ -1116,19 +1197,40 @@ impl App {
                     .iter()
                     .find(|trail| Some(&trail.id) == self.game.trail_id.as_ref())
                 {
-                    for node in trail.nodes.iter().skip(self.cursor).take(12) {
-                        lines.push(Line::from(format!(
-                            "{} {}: {} miles",
-                            if Some(&node.id) == self.game.current_node_id.as_ref() {
-                                "►"
-                            } else {
-                                " "
-                            },
-                            node.name,
-                            node.mile
-                        )));
+                    let mut entries = trail
+                        .nodes
+                        .iter()
+                        .map(|node| {
+                            format!(
+                                "{} {}: {} miles",
+                                if Some(&node.id) == self.game.current_node_id.as_ref() {
+                                    "►"
+                                } else {
+                                    " "
+                                },
+                                node.name,
+                                node.mile
+                            )
+                        })
+                        .collect::<Vec<_>>();
+                    entries.extend(self.graves.iter().map(|grave| {
+                        format!(
+                            "† Mile {} · {} · {}{}",
+                            grave.mile,
+                            grave.leader,
+                            grave.date,
+                            if grave.local { " [local]" } else { "" }
+                        )
+                    }));
+                    lines.extend(entries.into_iter().skip(self.cursor).take(11).map(Line::from));
+                    if let Some(grave) = self
+                        .cursor
+                        .checked_sub(trail.nodes.len())
+                        .and_then(|index| self.graves.get(index))
+                    {
+                        lines.push(Line::from(format!("{}: {}", grave.cause, grave.epitaph)));
                     }
-                    lines.push(Line::from("↑↓ scroll trail landmarks"));
+                    lines.push(Line::from("↑↓ scroll landmarks and graves"));
                 }
             }
             Screen::Pace => lines.extend(menu(&["Steady", "Strenuous", "Grueling"], self.cursor)),
@@ -1182,6 +1284,49 @@ impl App {
                         offer.offered_item,
                         offer.wanted_quantity,
                         offer.wanted_item
+                    )));
+                }
+            }
+            Screen::Party => {
+                for (index, member) in
+                    self.game.party.iter().enumerate().skip(self.cursor.saturating_sub(3)).take(7)
+                {
+                    lines.push(Line::from(format!(
+                        "{} {} · age {} · health {} · morale {}{}",
+                        marker(index == self.cursor),
+                        member.name,
+                        member.age,
+                        member.health,
+                        member.morale,
+                        if member.alive { "" } else { " · deceased" }
+                    )));
+                }
+                if let Some(member) = self.game.party.get(self.cursor) {
+                    lines.push(Line::from(format!("Traits: {:?}", member.traits)));
+                    lines.push(Line::from(format!(
+                        "Skills: hunt {} · medicine {} · repair {} · animals {}",
+                        member.skills.hunting,
+                        member.skills.medicine,
+                        member.skills.repair,
+                        member.skills.animals
+                    )));
+                    lines.push(Line::from(format!(
+                        "Ailments: {}",
+                        if member.ailments.is_empty() {
+                            "none".into()
+                        } else {
+                            member.ailments.join(", ")
+                        }
+                    )));
+                    lines.push(Line::from(format!(
+                        "Bonds: {}",
+                        member
+                            .relationships
+                            .affinity
+                            .iter()
+                            .map(|(name, value)| format!("{name} {value:+}"))
+                            .collect::<Vec<_>>()
+                            .join(", ")
                     )));
                 }
             }
@@ -1328,7 +1473,16 @@ pub fn run(mut app: App) -> anyhow::Result<()> {
     let started = std::time::Instant::now();
     let step = std::time::Duration::from_nanos(1_000_000_000 / 30);
     let mut next_tick = std::time::Instant::now() + step;
+    let mut next_day = std::time::Instant::now();
     while !app.should_quit() {
+        if app.bell_pending {
+            if app.settings.bell {
+                use std::io::Write;
+                std::io::stdout().write_all(b"\x07")?;
+                std::io::stdout().flush()?;
+            }
+            app.bell_pending = false;
+        }
         terminal.draw(|frame| app.render(frame))?;
         let timeout = if app.minigame.is_some() {
             next_tick.saturating_duration_since(std::time::Instant::now())
@@ -1347,6 +1501,11 @@ pub fn run(mut app: App) -> anyhow::Result<()> {
         }
         let now = std::time::Instant::now();
         let size = terminal.size()?;
+        if app.auto_travel && now >= next_day && size.width >= 80 && size.height >= 24 {
+            app.apply(Command::Continue);
+            next_day =
+                now + std::time::Duration::from_millis(app.settings.speed.milliseconds().max(30));
+        }
         if app.minigame.is_some() && size.width >= 80 && size.height >= 24 {
             // Bound catch-up after a stalled terminal; never fast-forward a whole hunt.
             for _ in 0..3 {
@@ -1497,6 +1656,7 @@ mod tests {
             Screen::Talk,
             Screen::Treat,
             Screen::Trade,
+            Screen::Party,
             Screen::Fork,
             Screen::River,
             Screen::Event,
