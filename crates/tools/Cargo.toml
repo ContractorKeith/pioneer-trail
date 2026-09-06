@@ -15,8 +15,13 @@ path = "src/event_lint.rs"
 name = "px-preview"
 path = "src/px_preview.rs"
 
+[[bin]]
+name = "balance-report"
+path = "src/balance_report.rs"
+
 [dependencies]
 pioneer-data = { path = "../data" }
+pioneer-sim = { path = "../sim" }
 pioneer-trail = { path = "../tui" }
 anyhow = { workspace = true }
 clap = { workspace = true }
