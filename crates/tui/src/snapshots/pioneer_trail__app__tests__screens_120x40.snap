@@ -304,7 +304,7 @@ expression: "all_screens(120, 40)"
                         ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀                                                              
                         ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀                                                              
                       ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀                                                            
-                      ▀▀▀▀▀[=]▀▀[=]▀▀[=]▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀          ▀         ▀▀  ▀▀                                  
+                      ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀          ▀         ▀▀  ▀▀                                  
                         ▀▀▀▀▀▀                      ▀▀▀▀▀▀          ▀▀▀▀          ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀                     
                        ▀▀▀▀▀▀▀▀                    ▀▀▀▀▀▀▀▀       ▀▀▀▀▀▀▀         ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀                    
                        ▀▀▀▀▀▀▀▀                    ▀▀▀▀▀▀▀▀        ▀▀▀▀▀▀         ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀                    
@@ -312,9 +312,9 @@ expression: "all_screens(120, 40)"
                     ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀                    
                      CAMP  ·  Opening camp costs no time.                                                               
                      A fire beside the parked wagon. Weather: Clear.                                                    
-                     Wagon load: 1524 lb · Spares: 0 · Ox fatigue: 0%                                                   
+                     Wagon load: 1524 lb · no repair pending · 0 spares                                                 
+                     Oxen: 3 yoke · Fatigue 0% · Visiting costs no food.                                                
                      1500 lb: up to 100 ration days for 5, less after spoilage or losses.                               
-                                                                                                                        
                     ► 1. Rest                   2. Treat                  3. Supplies                                   
                       4. Forage                 5. Fish                   6. Hunt                                       
                       7. Party                  8. Talk                   9. Return to trail                            

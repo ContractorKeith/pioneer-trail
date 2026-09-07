@@ -840,6 +840,19 @@ impl App {
         }
     }
     fn sync_screen(&mut self) {
+        if self.game.pending_event.is_some()
+            || matches!(
+                self.game.status,
+                pioneer_sim::RunStatus::Setup
+                    | pioneer_sim::RunStatus::Outfitting
+                    | pioneer_sim::RunStatus::Arrived
+                    | pioneer_sim::RunStatus::Failed
+                    | pioneer_sim::RunStatus::AwaitingFork(_)
+                    | pioneer_sim::RunStatus::AwaitingRiver(_)
+            )
+        {
+            self.camp_return = false;
+        }
         if self.game.active_minigame.is_some() {
             if self.minigame.is_none() {
                 self.minigame = crate::minigame::host::LiveMinigame::from_session(&self.game);

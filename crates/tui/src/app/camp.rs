@@ -35,10 +35,11 @@ impl App {
         let scene = Rect::new(x, area.y, 80, 12);
         if !self.settings.no_art {
             let mode = self.color_mode();
-            art::render(
+            art::render_section(
                 art::embedded("camp_night.px").expect("camp art"),
                 frame.buffer_mut(),
                 scene,
+                4,
                 mode,
             );
             for (file, dx, dy) in [("wagon_0.px", 1, 1), ("ox_0.px", 60, 6)] {
@@ -67,10 +68,13 @@ impl App {
             // A load marker depicts actual cargo, rather than inventing a wagon health stat.
             let crates = (self.game.wagon_weight() / 500).min(4);
             for n in 0..crates {
-                frame.render_widget(
-                    Paragraph::new("[=]")
-                        .style(Style::default().fg(mode.color(art::Pixel::Orange))),
-                    Rect::new(x + 7 + n as u16 * 5, area.y + 6, 3, 1),
+                art::render_at(
+                    art::embedded("camp_crate.px").expect("cargo art"),
+                    frame.buffer_mut(),
+                    scene,
+                    i32::from(x + 7 + n as u16 * 7),
+                    i32::from(area.y + 5),
+                    mode,
                 );
             }
         }
@@ -84,13 +88,18 @@ impl App {
                 self.game.weather
             )),
             Line::from(format!(
-                "Wagon load: {} lb · Spares: {spare_count} · Ox fatigue: {}%",
+                "Wagon load: {} lb · {} · {spare_count} spares",
                 self.game.wagon_weight(),
+                if self.game.can_repair() { "repair needed" } else { "no repair pending" }
+            )),
+            Line::from(format!(
+                "Oxen: {} yoke · Fatigue {}% · Visiting costs no food.",
+                self.game.inventory.get("oxen"),
                 self.game.ox_fatigue
             )),
             Line::from(self.trail_advice()),
         ];
-        frame.render_widget(Paragraph::new(lines), Rect::new(x + 1, y, 78, 4));
+        frame.render_widget(Paragraph::new(lines), Rect::new(x + 1, y, 78, 5));
         for (i, label) in [
             "Rest",
             "Treat",
@@ -187,6 +196,8 @@ mod tests {
                 for label in [
                     "Opening camp costs no time",
                     "Wagon load",
+                    "Oxen: 3 yoke",
+                    "no repair pending",
                     "Rest",
                     "Treat",
                     "Forage",

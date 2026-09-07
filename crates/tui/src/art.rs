@@ -435,7 +435,9 @@ mod tests {
             let image = PxImage::parse(file.contents_utf8().unwrap())
                 .unwrap_or_else(|error| panic!("{path}: {error}"));
             let expected = if path == "camp_night.px" {
-                (80, 24)
+                (80, 32)
+            } else if path == "camp_crate.px" {
+                (6, 4)
             } else if path.ends_with("title.px")
                 || path.contains("terrain_")
                 || [
@@ -484,7 +486,7 @@ mod tests {
                 .files()
                 .filter(|file| file.path().extension().is_some_and(|ext| ext == "px"))
                 .count(),
-            52
+            53
         );
     }
 }
