@@ -276,7 +276,7 @@ expression: "all_screens(120, 40)"
                     ► 1 Continue                2 Supplies                3 Map                                         
                       4 Pace                    5 Rations                 6 Rest                                        
                       7 Hunt                    8 Talk                    9 Buy                                         
-                    a travel · i treat · u trade · f forage · g fish · v party · Esc title                              
+                    c camp · a travel · i treat · u trade · f forage · g fish · v party · Esc title                     
                     The wagon is ready. Five travelers set out from Independence.                                       
                                                                                                                         
                                                                                                                         
@@ -287,6 +287,48 @@ expression: "all_screens(120, 40)"
                     Ruth · Health 100 · Morale 52 ·                                                                     
                     Thomas · Health 100 · Morale 52 ·                                                                   
                     Clara · Health 100 · Morale 52 ·                                                                    
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+
+=== Camp ===
+                        ▀                             ▀                                      ▀                          
+                            ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀                  ▀                                               
+                         ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀                                                               
+                        ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀                                                              
+                        ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀                                                              
+                      ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀                                                            
+                      ▀▀▀▀▀[=]▀▀[=]▀▀[=]▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀          ▀         ▀▀  ▀▀                                  
+                        ▀▀▀▀▀▀                      ▀▀▀▀▀▀          ▀▀▀▀          ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀                     
+                       ▀▀▀▀▀▀▀▀                    ▀▀▀▀▀▀▀▀       ▀▀▀▀▀▀▀         ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀                    
+                       ▀▀▀▀▀▀▀▀                    ▀▀▀▀▀▀▀▀        ▀▀▀▀▀▀         ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀                    
+                        ▀▀▀▀▀▀                      ▀▀▀▀▀▀       ▀▀▀▀▀▀▀▀▀▀        ▀▀▀ ▀▀▀    ▀▀▀ ▀▀                    
+                    ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀                    
+                     CAMP  ·  Opening camp costs no time.                                                               
+                     A fire beside the parked wagon. Weather: Clear.                                                    
+                     Wagon load: 1524 lb · Spares: 0 · Ox fatigue: 0%                                                   
+                     1500 lb: up to 100 ration days for 5, less after spoilage or losses.                               
+                                                                                                                        
+                    ► 1. Rest                   2. Treat                  3. Supplies                                   
+                      4. Forage                 5. Fish                   6. Hunt                                       
+                      7. Party                  8. Talk                   9. Return to trail                            
+                     1-9 select · arrows move · Enter choose · Esc trail                                                
+                     The wagon is ready. Five travelers set out from Independence.                                      
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
                                                                                                                         
                                                                                                                         
                                                                                                                         

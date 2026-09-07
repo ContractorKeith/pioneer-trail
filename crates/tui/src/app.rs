@@ -13,6 +13,8 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem, Paragraph},
 };
 
+mod camp;
+
 /// UI-only draft; all rules are submitted to the simulation as commands.
 #[derive(Debug, Clone)]
 struct SetupDraft {
@@ -74,6 +76,7 @@ pub struct App {
     bell_pending: bool,
     outfitting_advice_visible: bool,
     departure_warning_armed: bool,
+    camp_return: bool,
 }
 impl App {
     pub fn new(content: GameContent, seed: u64, settings: Settings) -> Self {
@@ -107,6 +110,7 @@ impl App {
             bell_pending: false,
             outfitting_advice_visible: false,
             departure_warning_armed: false,
+            camp_return: false,
         }
     }
     pub fn with_storage(mut self, storage: Storage) -> Self {
@@ -165,7 +169,7 @@ impl App {
             Screen::SetupTrail => self.game.content.trails.len(),
             Screen::SetupOccupation => self.game.content.occupations.len(),
             Screen::Store => self.game.content.items.len() + 1,
-            Screen::Journey => 9,
+            Screen::Journey | Screen::Camp => 9,
             Screen::Map => self
                 .game
                 .content
@@ -315,6 +319,7 @@ impl App {
                     self.epitaph.clear();
                     self.outfitting_advice_visible = false;
                     self.departure_warning_armed = false;
+                    self.camp_return = false;
                     self.screen = Screen::SetupTrail;
                     self.cursor = self.draft.trail;
                 }
@@ -428,6 +433,7 @@ impl App {
                     }
                 }
             }
+            Screen::Camp => self.select_camp(),
             Screen::Journey => match self.cursor % 9 {
                 0 => self.apply(Command::Continue),
                 1 => self.screen = Screen::Supplies,
@@ -629,6 +635,7 @@ impl App {
     }
     fn character(&mut self, character: char) {
         match (self.screen, character) {
+            (Screen::Journey, 'c') => self.open_camp(),
             (Screen::Event, 'r') => self.apply(Command::Repair),
             (Screen::Journey, 's') => self.screen = Screen::Supplies,
             (Screen::Journey, 'm') => self.screen = Screen::Map,
@@ -709,6 +716,19 @@ impl App {
         }
     }
     fn back(&mut self) {
+        if self.camp_return
+            && matches!(
+                self.screen,
+                Screen::Rest | Screen::Treat | Screen::Supplies | Screen::Party | Screen::Talk
+            )
+        {
+            self.screen = Screen::Camp;
+            self.cursor = 0;
+            return;
+        }
+        if self.screen == Screen::Camp {
+            self.camp_return = false;
+        }
         if self.screen == Screen::Store && self.outfitting_advice_visible {
             self.outfitting_advice_visible = false;
             return;
@@ -742,6 +762,7 @@ impl App {
             Screen::SetupParty => Screen::SetupOccupation,
             Screen::SetupDeparture => Screen::SetupParty,
             Screen::Store
+            | Screen::Camp
             | Screen::Supplies
             | Screen::Map
             | Screen::Pace
@@ -809,6 +830,9 @@ impl App {
         }
         if self.screen != previous_screen {
             self.cursor = 0;
+        }
+        if self.camp_return && self.screen == Screen::Journey {
+            self.screen = Screen::Camp;
         }
         if self.screen != Screen::Journey || self.game.status != pioneer_sim::RunStatus::Travelling
         {
@@ -1030,6 +1054,10 @@ impl App {
             );
             return;
         }
+        if self.screen == Screen::Camp {
+            self.render_camp(frame);
+            return;
+        }
         if !self.settings.no_art
             && matches!(
                 self.screen,
@@ -1094,6 +1122,7 @@ impl App {
         match self.screen {
             Screen::Title => "PIONEER TRAIL",
             Screen::Journey => "ON THE TRAIL",
+            Screen::Camp => "CAMP",
             Screen::Store => "GENERAL STORE",
             Screen::Score => "JOURNEY COMPLETE",
             _ => "PIONEER TRAIL",
@@ -1227,7 +1256,7 @@ impl App {
         }
         frame.render_widget(
             Paragraph::new(
-                "a travel · i treat · u trade · f forage · g fish · v party · Esc title",
+                "c camp · a travel · i treat · u trade · f forage · g fish · v party · Esc title",
             ),
             Rect::new(canvas.x, canvas.y + 20, 80, 1),
         );
@@ -1533,6 +1562,9 @@ impl App {
                     ));
                 }
             }
+            Screen::Camp => lines.push(Line::from(
+                "A fire burns beside the parked wagon. Visiting camp costs no time.",
+            )),
             Screen::Journey => {
                 lines.push(Line::from(format!(
                     "Day {} · {} miles · Food {} lb · Cash ${:.2}",
@@ -1550,7 +1582,7 @@ impl App {
                     self.cursor,
                 ));
                 lines.push(Line::from(
-                    "A auto travel · I treat · U trade · F forage · G fish · V party",
+                    "C camp · A auto travel · I treat · U trade · F forage · G fish · V party",
                 ));
             }
             Screen::Supplies => {
@@ -2084,6 +2116,7 @@ mod tests {
             Screen::SetupDeparture,
             Screen::Store,
             Screen::Journey,
+            Screen::Camp,
             Screen::Supplies,
             Screen::Map,
             Screen::Pace,

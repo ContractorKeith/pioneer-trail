@@ -7,6 +7,7 @@ pub enum Screen {
     SetupDeparture,
     Store,
     Journey,
+    Camp,
     Supplies,
     Map,
     Pace,
