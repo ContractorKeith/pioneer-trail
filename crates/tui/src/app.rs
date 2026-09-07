@@ -2554,4 +2554,72 @@ mod tests {
         assert_eq!(app.game.status, pioneer_sim::RunStatus::Arrived);
         assert_eq!(app.game.miles, 1885);
     }
+    #[test]
+    fn talk_topic_stage_shows_a_cursor_marker_on_the_selected_topic() {
+        let mut app = outfitted_app();
+        app.game.current_node_id = Some("fort_kearney".into());
+        app.game.status = pioneer_sim::RunStatus::AtLandmark("fort_kearney".into());
+        app.handle_key(KeyEvent::from(KeyCode::Char('t')));
+        assert_eq!(app.screen, Screen::Talk);
+        app.handle_key(KeyEvent::from(KeyCode::Enter)); // Choose the first speaker.
+        app.handle_key(KeyEvent::from(KeyCode::Down));
+        let view = render_screen(&mut app, 80, 24);
+        assert!(
+            view.contains("► 2. Ask about supplies"),
+            "cursor should mark the selected topic:\n{view}"
+        );
+        assert!(view.contains("1. Ask about the route"));
+        assert!(view.contains("3. Ask for news"));
+    }
+    /// The longest realistic reply (a multi-route fork, each with a long label and
+    /// target name) must still leave the menu, controls line, and trail log legible
+    /// at the minimum 80×24 terminal — nothing should be crowded off screen.
+    #[test]
+    fn talk_screen_wraps_the_longest_route_answer_without_losing_controls_or_log() {
+        let mut app = outfitted_app();
+        app.game.current_node_id = Some("fort_kearney".into());
+        app.game.target_node_id = Some("chimney_rock".into());
+        app.game.route_miles_remaining = 0;
+        app.game.status = pioneer_sim::RunStatus::AtLandmark("fort_kearney".into());
+        if let Some(node) = app
+            .game
+            .content
+            .trails
+            .iter_mut()
+            .find(|t| t.id == "oregon")
+            .and_then(|t| t.nodes.iter_mut().find(|n| n.id == "fort_kearney"))
+        {
+            node.routes = vec![
+                pioneer_sim::RouteDefinition {
+                    id: "main".into(),
+                    label: "Follow the well-worn emigrant road along the North Platte".into(),
+                    target_id: "chimney_rock".into(),
+                    distance_miles: 250,
+                },
+                pioneer_sim::RouteDefinition {
+                    id: "alt".into(),
+                    label: "Risk the longer southern bluffs route past the sandhills".into(),
+                    target_id: "independence_rock".into(),
+                    distance_miles: 610,
+                },
+            ];
+        }
+        app.handle_key(KeyEvent::from(KeyCode::Char('t')));
+        app.handle_key(KeyEvent::from(KeyCode::Enter)); // Choose the first speaker.
+        app.handle_key(KeyEvent::from(KeyCode::Enter)); // Ask about the route.
+        let view = render_screen(&mut app, 80, 24);
+        assert!(view.contains("Esc: Back"), "controls must stay visible:\n{view}");
+        assert!(view.contains("TRAIL LOG"), "the trail log must stay visible:\n{view}");
+        assert_eq!(view.lines().count(), 24, "the frame must still be exactly 24 rows:\n{view}");
+    }
+    fn render_screen(app: &mut App, width: u16, height: u16) -> String {
+        let backend = TestBackend::new(width, height);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|frame| app.render(frame)).unwrap();
+        let buffer = terminal.backend().buffer();
+        (0..height)
+            .map(|y| (0..width).map(|x| buffer[(x, y)].symbol().to_owned()).collect::<String>())
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
 }

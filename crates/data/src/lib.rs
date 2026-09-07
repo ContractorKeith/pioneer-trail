@@ -312,6 +312,10 @@ pub fn validate(content: &GameContent) -> Result<(), ContentError> {
                 && speaker.greeting != speaker.returning_greeting,
             &format!("speaker {} needs distinct first-meeting and returning greetings", speaker.id),
         )?;
+        expect(
+            speaker.favor_food_lbs > 0 && speaker.favor_food_lbs <= 50,
+            &format!("speaker {} favor_food_lbs must stay a small, bounded amount", speaker.id),
+        )?;
     }
     Ok(())
 }
@@ -618,6 +622,18 @@ mod tests {
         let mut invalid = content;
         invalid.speakers[0].landmark_id = "independence".into();
         assert!(validate(&invalid).unwrap_err().to_string().contains("non-fort landmark"));
+    }
+
+    #[test]
+    fn speaker_favor_food_must_stay_small_and_bounded() {
+        let content = load().unwrap();
+        let mut too_much = content.clone();
+        too_much.speakers[0].favor_food_lbs = 5_000;
+        assert!(validate(&too_much).unwrap_err().to_string().contains("bounded amount"));
+
+        let mut zero = content;
+        zero.speakers[0].favor_food_lbs = 0;
+        assert!(validate(&zero).unwrap_err().to_string().contains("bounded amount"));
     }
 
     #[test]

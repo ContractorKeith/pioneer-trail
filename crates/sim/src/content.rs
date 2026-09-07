@@ -116,7 +116,15 @@ pub struct SpeakerDefinition {
     pub landmark_id: String,
     pub greeting: String,
     pub returning_greeting: String,
+    /// Sentence describing the small favor offered on a recognized return visit.
     pub favor_text: String,
+    /// Pounds of food the favor offers; capped at wagon capacity when granted.
+    #[serde(default = "default_favor_food_lbs")]
+    pub favor_food_lbs: u32,
+}
+
+fn default_favor_food_lbs() -> u32 {
+    15
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

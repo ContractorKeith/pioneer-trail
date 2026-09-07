@@ -1690,7 +1690,7 @@ impl GameState {
     fn apply_percent(amount: i64, percent: u16) -> i64 {
         (i128::from(amount) * i128::from(percent) / 100).clamp(1, i128::from(i64::MAX)) as i64
     }
-    fn era_rules(&self) -> EraRules {
+    pub(crate) fn era_rules(&self) -> EraRules {
         self.era_id
             .as_ref()
             .and_then(|id| self.content.era_rules.get(id))
@@ -1721,7 +1721,7 @@ impl GameState {
             last_restock_day: self.day,
         })
     }
-    fn max_addable(&self, item_id: &str) -> Option<u32> {
+    pub(crate) fn max_addable(&self, item_id: &str) -> Option<u32> {
         let item = self.content.items.iter().find(|item| item.id == item_id)?;
         let item_limit = item.limit.checked_sub(self.inventory.get(item_id))?;
         let weight_limit =
