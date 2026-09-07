@@ -1080,7 +1080,8 @@ impl App {
             }
         }
     }
-    pub fn render(&mut self, frame: &mut Frame) {
+    pub fn tick_presentation(&mut self, tick: u64) {
+        self.animation_tick = tick;
         if self.travel_moment.is_some()
             && self
                 .travel_moment_started_tick
@@ -1088,6 +1089,8 @@ impl App {
         {
             self.dismiss_travel_moment();
         }
+    }
+    pub fn render(&mut self, frame: &mut Frame) {
         let area = frame.area();
         if area.width < 80 || area.height < 24 {
             frame.render_widget(
@@ -1099,6 +1102,12 @@ impl App {
                 area,
             );
             return;
+        }
+        if self.settings.no_art {
+            if let Some(moment) = &self.travel_moment {
+                frame.render_widget(Paragraph::new(format!("TRAIL MOMENT\n\n{}\n\n{}\n\nWeather: {:?}\n\nSpace/Enter Continue · Esc dismiss · Ctrl-Q quit", moment.title, moment.text, self.game.weather)).block(Block::default().borders(Borders::ALL)).wrap(ratatui::widgets::Wrap { trim: true }), area);
+                return;
+            }
         }
         if !self.settings.no_art
             && matches!(
@@ -1250,6 +1259,13 @@ impl App {
             art::embedded(file).expect("terrain art")
         });
         art::render_section(background, frame.buffer_mut(), canvas, 2, mode);
+        crate::art::render_weather_overlay(
+            frame.buffer_mut(),
+            canvas,
+            self.game.weather,
+            if self.settings.reduced_motion { 0 } else { self.animation_tick },
+            mode,
+        );
         let moving = matches!(self.game.status, pioneer_sim::RunStatus::Travelling);
         let phase =
             if moving && !self.settings.reduced_motion { self.animation_tick % 4 } else { 0 };
@@ -1263,20 +1279,20 @@ impl App {
                 mode,
             );
         }
-        crate::art::render_weather_overlay(
-            frame.buffer_mut(),
-            canvas,
-            self.game.weather,
-            if self.settings.reduced_motion { 0 } else { self.animation_tick },
-            mode,
-        );
         if let Some(moment) = &self.travel_moment {
             if let Some(sprite) = moment.wildlife_sprite.and_then(art::embedded) {
                 art::render_at(
                     sprite,
                     frame.buffer_mut(),
                     canvas,
-                    i32::from(canvas.x) + 60,
+                    i32::from(canvas.x) + 60
+                        - (self
+                            .animation_tick
+                            .saturating_sub(
+                                self.travel_moment_started_tick.unwrap_or(self.animation_tick),
+                            )
+                            .min(6) as i32
+                            * 2),
                     i32::from(canvas.y) + 9,
                     mode,
                 );
@@ -1640,13 +1656,6 @@ impl App {
                     self.game.cash_cents as f64 / 100.0
                 )));
                 lines.push(Line::from(self.trail_advice()));
-                lines.push(Line::from(format!(
-                    "Weather: {}",
-                    crate::travel_moment::weather_label(self.game.weather)
-                )));
-                if let Some(moment) = &self.travel_moment {
-                    lines.push(Line::from(format!("Moment: {} [Space continues]", moment.title)));
-                }
                 lines.extend(menu(
                     &[
                         "Continue", "Supplies", "Map", "Pace", "Rations", "Rest", "Hunt", "Talk",
@@ -2043,6 +2052,7 @@ pub fn run(mut app: App) -> anyhow::Result<()> {
         }
         let now = std::time::Instant::now();
         let size = terminal.size()?;
+        app.tick_presentation((started.elapsed().as_millis() / 250) as u64);
         if app.auto_travel && now >= next_day && size.width >= 80 && size.height >= 24 {
             app.advance_auto_travel();
             next_day =
@@ -2063,7 +2073,6 @@ pub fn run(mut app: App) -> anyhow::Result<()> {
         } else {
             next_tick = now + step;
         }
-        app.animation_tick = (started.elapsed().as_millis() / 250) as u64;
     }
     drop(terminal);
     drop(guard);
@@ -2561,7 +2570,7 @@ mod tests {
         assert!(text.contains("RAIN ON THE CANVAS"));
     }
     #[test]
-    fn travel_moment_blocks_commands_and_auto_dismisses_to_safe_auto_travel() {
+    fn rendering_a_moment_is_observational_and_presentation_ticks_expire_it() {
         let mut app = outfitted_app();
         app.travel_moment = Some(crate::travel_moment::TravelMoment {
             title: "MEADOWLARK",
@@ -2579,8 +2588,46 @@ mod tests {
         app.animation_tick = 6;
         let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
         terminal.draw(|frame| app.render(frame)).unwrap();
+        assert!(app.travel_moment.is_some(), "render must not expire or resume a moment");
+        assert!(!app.auto_travel);
+
+        app.tick_presentation(6);
         assert!(app.travel_moment.is_none());
         assert!(app.auto_travel);
+    }
+
+    #[test]
+    fn weather_renders_behind_the_wagon_and_oxen() {
+        fn journey_buffer(app: &mut App) -> ratatui::buffer::Buffer {
+            let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+            terminal.draw(|frame| app.render(frame)).unwrap();
+            terminal.backend().buffer().clone()
+        }
+
+        let mut clear = outfitted_app();
+        clear.settings.reduced_motion = true;
+        let clear_buffer = journey_buffer(&mut clear);
+
+        let mut rain = outfitted_app();
+        rain.settings.reduced_motion = true;
+        rain.game.weather = pioneer_sim::WeatherKind::Rain;
+        let rain_buffer = journey_buffer(&mut rain);
+
+        for (file, origin) in [("ox_0.px", (10, 8)), ("wagon_0.px", (32, 3))] {
+            let sprite = crate::art::embedded(file).unwrap();
+            for y in 0..sprite.cell_height() {
+                for x in 0..sprite.width() {
+                    if sprite.pixel(x, y * 2).is_none() && sprite.pixel(x, y * 2 + 1).is_none() {
+                        continue;
+                    }
+                    assert_eq!(
+                        rain_buffer[(origin.0 + x, origin.1 + y)],
+                        clear_buffer[(origin.0 + x, origin.1 + y)],
+                        "weather covered {file} at ({x}, {y})"
+                    );
+                }
+            }
+        }
     }
     #[test]
     fn starting_a_new_journey_clears_old_travel_moment_spacing() {

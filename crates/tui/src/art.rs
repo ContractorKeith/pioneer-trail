@@ -81,10 +81,10 @@ pub fn render_weather_overlay(
     phase: u64,
     mode: ColorMode,
 ) {
-    let (pixel, glyph, cadence) = match weather {
-        WeatherKind::Rain | WeatherKind::Storm => (Pixel::Blue, "╲", 7),
-        WeatherKind::Snow | WeatherKind::Cold => (Pixel::White, "·", 11),
-        WeatherKind::Hot => (Pixel::Orange, "░", 13),
+    let (pixel, cadence) = match weather {
+        WeatherKind::Rain | WeatherKind::Storm => (Pixel::Blue, 17),
+        WeatherKind::Snow | WeatherKind::Cold => (Pixel::White, 23),
+        WeatherKind::Hot => (Pixel::Orange, 29),
         WeatherKind::Clear | WeatherKind::Warm => return,
     };
     let bounds = area.intersection(buffer.area);
@@ -95,9 +95,12 @@ pub fn render_weather_overlay(
             }
             let cell = &mut buffer[(bounds.x + x, bounds.y + y)];
             if mode == ColorMode::Mono {
-                cell.set_symbol("░").set_fg(Color::White).set_bg(Color::Black);
+                if cell.symbol() == " " {
+                    cell.set_symbol("·").set_fg(Color::White);
+                }
             } else {
-                cell.set_symbol(glyph).set_fg(mode.color(pixel));
+                let (_, bottom) = cell_halves(cell.symbol(), cell.fg, cell.bg);
+                cell.set_symbol("▀").set_fg(mode.color(pixel)).set_bg(bottom);
             }
         }
     }
@@ -435,7 +438,7 @@ mod tests {
         assert!(rain
             .content
             .iter()
-            .any(|cell| cell.symbol() == "╲" && cell.fg == Color::Indexed(33)));
+            .any(|cell| cell.symbol() == "▀" && cell.fg == Color::Indexed(33)));
 
         let mut snow = Buffer::empty(Rect::new(0, 0, 22, 2));
         render_weather_overlay(
@@ -445,7 +448,7 @@ mod tests {
             0,
             ColorMode::Mono,
         );
-        assert!(snow.content.iter().any(|cell| cell.symbol() == "░" && cell.fg == Color::White));
+        assert!(snow.content.iter().any(|cell| cell.symbol() == "·" && cell.fg == Color::White));
     }
 
     #[test]
