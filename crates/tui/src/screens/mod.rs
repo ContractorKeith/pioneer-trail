@@ -8,6 +8,7 @@ pub enum Screen {
     Store,
     Journey,
     Camp,
+    Gathering,
     Supplies,
     Map,
     Pace,
@@ -27,3 +28,4 @@ pub enum Screen {
     Seed,
     Minigame,
 }
+pub mod gathering;

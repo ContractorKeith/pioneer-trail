@@ -452,6 +452,7 @@ mod tests {
                 .iter()
                 .any(|name| path.contains(name))
                 || [
+                    "gathering_",
                     "the_dalles",
                     "willamette",
                     "soda_springs",
@@ -486,7 +487,7 @@ mod tests {
                 .files()
                 .filter(|file| file.path().extension().is_some_and(|ext| ext == "px"))
                 .count(),
-            53
+            55
         );
     }
 }
