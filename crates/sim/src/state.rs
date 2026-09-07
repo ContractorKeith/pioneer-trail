@@ -5,6 +5,7 @@ use crate::{
     economy::{Counteroffer, Market, NpcTrain},
     family::{FamilyState, Pregnancy},
     health::{advance, PartyMember, Sex},
+    journal::{DeathCause, Journal, JournalKind},
     minigame::{MinigameKind, MinigameSession},
     rng::SimRng,
     score,
@@ -131,6 +132,8 @@ pub struct GameState {
     pub loose_bullets: u8,
     #[serde(default)]
     pub last_fresh_food_day: Option<u32>,
+    #[serde(default)]
+    pub journal: Journal,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum Command {
@@ -220,7 +223,7 @@ pub enum Outcome {
     Quote { quote_id: String, text: String },
     Treated { member_index: usize, ailment_id: String },
     Score { points: u32 },
-    MemberDied { name: String },
+    MemberDied { name: String, cause: DeathCause },
     Message(String),
     Rejected(CommandError),
 }
@@ -317,6 +320,7 @@ impl GameState {
             active_minigame: None,
             loose_bullets: 0,
             last_fresh_food_day: None,
+            journal: Journal::default(),
         }
     }
     pub fn npc_present(&self, npc_id: &str) -> bool {
@@ -339,6 +343,16 @@ impl GameState {
         }
     }
     pub fn apply(&mut self, c: Command) -> Vec<Outcome> {
+        let before_ailments = self
+            .party
+            .iter()
+            .map(|member| (member.name.clone(), member.ailments.clone()))
+            .collect::<BTreeMap<_, _>>();
+        let before_relationships = self
+            .party
+            .iter()
+            .map(|member| (member.name.clone(), member.relationships.affinity.clone()))
+            .collect::<BTreeMap<_, _>>();
         let mut outcomes = self.try_apply(c).unwrap_or_else(|e| vec![Outcome::Rejected(e)]);
         if matches!(self.status, RunStatus::Arrived | RunStatus::Failed) {
             self.pending_event = None;
@@ -347,7 +361,7 @@ impl GameState {
         let deaths = outcomes
             .iter()
             .filter_map(|outcome| match outcome {
-                Outcome::MemberDied { name } => Some(name.clone()),
+                Outcome::MemberDied { name, .. } => Some(name.clone()),
                 _ => None,
             })
             .collect::<Vec<_>>();
@@ -356,7 +370,76 @@ impl GameState {
                 crate::party::mourn(&mut self.party, &deaths).into_iter().map(Outcome::Message),
             );
         }
+        self.journal_outcomes(&outcomes);
+        if !outcomes.iter().any(|outcome| matches!(outcome, Outcome::Rejected(_))) {
+            self.journal_state_changes(&before_ailments, &before_relationships);
+        }
         outcomes
+    }
+    fn journal_state_changes(
+        &mut self,
+        before_ailments: &BTreeMap<String, Vec<String>>,
+        before_relationships: &BTreeMap<String, BTreeMap<String, i16>>,
+    ) {
+        let mut entries = Vec::new();
+        for member in &self.party {
+            if let Some(before) = before_ailments.get(&member.name) {
+                for ailment in before.iter().filter(|ailment| !member.ailments.contains(ailment)) {
+                    entries.push(JournalKind::Recovered {
+                        name: member.name.clone(),
+                        ailment: ailment.clone(),
+                    });
+                }
+            }
+            if let Some(before) = before_relationships.get(&member.name) {
+                for (other, affinity) in &member.relationships.affinity {
+                    if member.name < *other && before.get(other) != Some(affinity) {
+                        entries.push(JournalKind::Relationship {
+                            left: member.name.clone(),
+                            right: other.clone(),
+                            affinity: *affinity,
+                        });
+                    }
+                }
+            }
+        }
+        for entry in entries {
+            self.journal.record(self.day, self.miles, entry);
+        }
+    }
+    fn journal_outcomes(&mut self, outcomes: &[Outcome]) {
+        for outcome in outcomes {
+            match outcome {
+                Outcome::Departed => {
+                    self.journal.record(self.day, self.miles, JournalKind::Departed)
+                }
+                Outcome::ArrivedAt { landmark_id } => {
+                    let name = self
+                        .current_landmark()
+                        .map(|node| node.name.clone())
+                        .unwrap_or_else(|| landmark_id.clone());
+                    self.journal.record(
+                        self.day,
+                        self.miles,
+                        JournalKind::Landmark { landmark_id: landmark_id.clone(), name },
+                    );
+                }
+                Outcome::MemberDied { name, cause } => self.journal.record(
+                    self.day,
+                    self.miles,
+                    JournalKind::Death { name: name.clone(), cause: cause.clone() },
+                ),
+                Outcome::Score { .. } if self.status == RunStatus::Arrived => {
+                    self.journal.record(self.day, self.miles, JournalKind::Arrived)
+                }
+                _ => {}
+            }
+        }
+        if self.status == RunStatus::Failed
+            && !self.journal.entries.iter().any(|entry| matches!(entry.kind, JournalKind::Failed))
+        {
+            self.journal.record(self.day, self.miles, JournalKind::Failed);
+        }
     }
     fn try_apply(&mut self, c: Command) -> Result<Vec<Outcome>, CommandError> {
         if matches!(self.status, RunStatus::Arrived | RunStatus::Failed) {
@@ -581,7 +664,10 @@ impl GameState {
             self.party.iter().map(|member| self.ailment_damage(member)).collect();
         for (p, damage) in self.party.iter_mut().zip(damages) {
             if advance(p, damage) {
-                out.push(Outcome::MemberDied { name: p.name.clone() })
+                out.push(Outcome::MemberDied {
+                    name: p.name.clone(),
+                    cause: DeathCause::Ailments(p.ailments.clone()),
+                })
             }
         }
         self.progress_ailments(&mut out);
@@ -600,7 +686,10 @@ impl GameState {
         for member in &mut self.party {
             if member.alive && member.health == 0 {
                 member.alive = false;
-                out.push(Outcome::MemberDied { name: member.name.clone() });
+                out.push(Outcome::MemberDied {
+                    name: member.name.clone(),
+                    cause: DeathCause::Starvation,
+                });
             }
         }
         self.party_daily(&mut out, false, eaten_food == required_food);
@@ -660,7 +749,10 @@ impl GameState {
         for member in &mut self.party {
             if member.alive && member.health == 0 {
                 member.alive = false;
-                out.push(Outcome::MemberDied { name: member.name.clone() });
+                out.push(Outcome::MemberDied {
+                    name: member.name.clone(),
+                    cause: DeathCause::Exhaustion,
+                });
             }
         }
         if !self.party.iter().any(|member| member.alive) {
@@ -789,7 +881,10 @@ impl GameState {
                     let member = &mut self.party[index];
                     member.health = 0;
                     member.alive = false;
-                    out.push(Outcome::MemberDied { name: member.name.clone() });
+                    out.push(Outcome::MemberDied {
+                        name: member.name.clone(),
+                        cause: DeathCause::RiverCrossing,
+                    });
                 }
             }
         }
@@ -1129,7 +1224,10 @@ impl GameState {
             let member = &mut self.party[*index];
             member.health = 0;
             member.alive = false;
-            outcomes.push(Outcome::MemberDied { name: member.name.clone() });
+            outcomes.push(Outcome::MemberDied {
+                name: member.name.clone(),
+                cause: DeathCause::Rafting,
+            });
         }
         self.active_minigame = None;
         self.pass_camp_day(&mut outcomes, false);
@@ -2217,7 +2315,10 @@ impl GameState {
                 {
                     self.party[index].health = 0;
                     self.party[index].alive = false;
-                    out.push(Outcome::MemberDied { name: self.party[index].name.clone() });
+                    out.push(Outcome::MemberDied {
+                        name: self.party[index].name.clone(),
+                        cause: DeathCause::Ailments(vec![id.clone()]),
+                    });
                     // A person can die only once per day, even if several ailments are present.
                     break;
                 }
@@ -2267,7 +2368,10 @@ impl GameState {
                 continue;
             }
             if advance(member, damage) {
-                out.push(Outcome::MemberDied { name: member.name.clone() });
+                out.push(Outcome::MemberDied {
+                    name: member.name.clone(),
+                    cause: DeathCause::Ailments(member.ailments.clone()),
+                });
                 continue;
             }
             if eaten < required {
@@ -2278,7 +2382,10 @@ impl GameState {
             }
             if member.health == 0 {
                 member.alive = false;
-                out.push(Outcome::MemberDied { name: member.name.clone() });
+                out.push(Outcome::MemberDied {
+                    name: member.name.clone(),
+                    cause: DeathCause::Starvation,
+                });
             }
         }
         self.progress_ailments(out);
@@ -3716,9 +3823,14 @@ mod tests {
         let deaths = game
             .apply(Command::TravelDay)
             .into_iter()
-            .filter(|outcome| matches!(outcome, Outcome::MemberDied { name } if name == "Ada"))
+            .filter(|outcome| matches!(outcome, Outcome::MemberDied { name, .. } if name == "Ada"))
             .count();
         assert_eq!(deaths, 1);
+        assert!(matches!(
+            game.journal.entries.iter().map(|entry| &entry.kind).find(|kind| matches!(kind, JournalKind::Death { .. })),
+            Some(JournalKind::Death { name, cause: DeathCause::Ailments(ailments) })
+                if name == "Ada" && ailments == &vec!["measles".to_owned()]
+        ));
     }
 
     #[test]

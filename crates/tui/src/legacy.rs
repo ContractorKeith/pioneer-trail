@@ -244,6 +244,7 @@ mod tests {
             arrived: false,
             epitaph: epitaph.into(),
             cause: "Fever".into(),
+            journal: Vec::new(),
         }
     }
 

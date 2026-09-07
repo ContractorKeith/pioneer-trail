@@ -166,6 +166,7 @@ impl App {
             Screen::SetupOccupation => self.game.content.occupations.len(),
             Screen::Store => self.game.content.items.len() + 1,
             Screen::Journey => 9,
+            Screen::Journal => self.game.journal.entries.len().max(1),
             Screen::Map => self
                 .game
                 .content
@@ -274,6 +275,11 @@ impl App {
             if matches!(key.code, KeyCode::Char('?') | KeyCode::Esc) {
                 self.outfitting_advice_visible = false;
             }
+            return;
+        }
+        if key.code == KeyCode::Char('j') && matches!(self.screen, Screen::Journey | Screen::Score)
+        {
+            self.character('j');
             return;
         }
         let previous_cursor = self.cursor;
@@ -576,6 +582,7 @@ impl App {
                 self.screen = Screen::Score;
             }
             Screen::Score
+            | Screen::Journal
             | Screen::Party
             | Screen::Hall
             | Screen::Settings
@@ -644,6 +651,10 @@ impl App {
             (Screen::Journey, 'v') => {
                 self.screen = Screen::Party;
                 self.cursor = 0;
+            }
+            (Screen::Journey, 'j') | (Screen::Score, 'j') => {
+                self.screen = Screen::Journal;
+                self.cursor = self.game.journal.entries.len().saturating_sub(1);
             }
             (Screen::Journey, 'f') => self.apply(Command::Forage),
             (Screen::Journey, 'g') => self.apply(Command::Fish),
@@ -754,6 +765,15 @@ impl App {
             | Screen::Minigame => Screen::Journey,
             Screen::Score => Screen::Title,
             Screen::Epitaph => Screen::Score,
+            Screen::Journal
+                if matches!(
+                    self.game.status,
+                    pioneer_sim::RunStatus::Arrived | pioneer_sim::RunStatus::Failed
+                ) =>
+            {
+                Screen::Score
+            }
+            Screen::Journal => Screen::Journey,
             Screen::Fork | Screen::River | Screen::Event => Screen::Journey,
             Screen::Journey => Screen::Title,
         }
@@ -874,7 +894,7 @@ impl App {
                     self.note(format!("Reached {}.", node.name));
                 }
             }
-            Outcome::MemberDied { name } => self.note(format!("{name} has died.")),
+            Outcome::MemberDied { name, .. } => self.note(format!("{name} has died.")),
             _ => {}
         }
     }
@@ -1010,6 +1030,7 @@ impl App {
                 arrived,
                 epitaph: String::new(),
                 cause: if arrived { "Arrived".into() } else { "Trail ended".into() },
+                journal: self.game.journal.entries.clone(),
             };
             match storage.record_run(record) {
                 Ok(_) => self.recorded = true,
@@ -1094,6 +1115,7 @@ impl App {
         match self.screen {
             Screen::Title => "PIONEER TRAIL",
             Screen::Journey => "ON THE TRAIL",
+            Screen::Journal => "PARTY JOURNAL",
             Screen::Store => "GENERAL STORE",
             Screen::Score => "JOURNEY COMPLETE",
             _ => "PIONEER TRAIL",
@@ -1847,7 +1869,38 @@ impl App {
                         lines.push(Line::from(format!("Share this world: {code}")));
                     }
                 }
-                lines.push(Line::from("[V] Full party · [E] Epitaph · Enter returns to title."));
+                for member in self.game.party.iter().filter(|member| !member.alive) {
+                    if let Some(entry) = self.game.journal.entries.iter().find(|entry| matches!(&entry.kind, pioneer_sim::JournalKind::Death { name, .. } if name == &member.name)) {
+                        lines.push(Line::from(format!("In memory of {} — {}", member.name, entry.kind.text())));
+                    }
+                }
+                lines.push(Line::from(
+                    "[J] Journal · [V] Full party · [E] Epitaph · Enter returns to title.",
+                ));
+            }
+            Screen::Journal => {
+                if self.game.journal.entries.is_empty() {
+                    lines.push(Line::from("No notable moments have been recorded yet."));
+                } else {
+                    for (index, entry) in self
+                        .game
+                        .journal
+                        .entries
+                        .iter()
+                        .enumerate()
+                        .skip(self.cursor.saturating_sub(3))
+                        .take(7)
+                    {
+                        lines.push(Line::from(format!(
+                            "{} Day {} · {} mi · {}",
+                            marker(index == self.cursor),
+                            entry.day,
+                            entry.miles,
+                            entry.kind.text()
+                        )));
+                    }
+                }
+                lines.push(Line::from("↑↓ browse · Esc returns"));
             }
             Screen::Epitaph => {
                 lines.push(Line::from("Write up to 80 characters. Enter saves; Esc cancels."));
@@ -2121,6 +2174,39 @@ mod tests {
         assert!(view.contains("Food 1500 lb · $1080.00 · Steady/Filling · 5 alive"));
         assert!(view.contains("1500 lb: up to 100 ration days"));
         assert!(view.contains("The wagon is ready. Five travelers set out from Independence."));
+    }
+    #[test]
+    fn journal_is_reachable_and_renders_in_text_mode_at_both_sizes() {
+        let mut app = App::new(
+            pioneer_data::load().unwrap(),
+            7,
+            Settings { no_art: true, ..Settings::default() },
+        );
+        app.game.apply(Command::Configure {
+            trail_id: "oregon".into(),
+            era_id: "1848".into(),
+            occupation_id: "banker".into(),
+            party: ["Ada", "Ben", "Clara", "Dora", "Eli"].map(str::to_owned).to_vec(),
+            departure_month: 3,
+        });
+        app.game.apply(Command::Buy { item_id: "oxen".into(), quantity: 3 });
+        app.game.apply(Command::Depart);
+        app.screen = Screen::Journey;
+        app.handle_key(KeyEvent::from(KeyCode::Char('j')));
+        assert_eq!(app.screen, Screen::Journal);
+        for (width, height) in [(80, 24), (120, 40)] {
+            let backend = TestBackend::new(width, height);
+            let mut terminal = Terminal::new(backend).unwrap();
+            terminal.draw(|frame| app.render(frame)).unwrap();
+            let mut output = String::new();
+            for y in 0..height {
+                for x in 0..width {
+                    output.push_str(terminal.backend().buffer()[(x, y)].symbol());
+                }
+            }
+            assert!(output.contains("PARTY JOURNAL"));
+            assert!(output.contains("The party departed."));
+        }
     }
     #[test]
     fn store_vignette_uses_only_wide_terminals() {

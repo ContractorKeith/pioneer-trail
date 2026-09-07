@@ -2,7 +2,7 @@
 
 use anyhow::{bail, Context, Result};
 use directories::ProjectDirs;
-use pioneer_sim::GameState;
+use pioneer_sim::{GameState, JournalEntry};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
@@ -205,6 +205,9 @@ pub struct RunRecord {
     pub arrived: bool,
     pub epitaph: String,
     pub cause: String,
+    /// A completed journey keeps its factual record after `save.json` is replaced.
+    #[serde(default)]
+    pub journal: Vec<JournalEntry>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -371,6 +374,18 @@ mod tests {
     }
 
     #[test]
+    fn old_save_and_history_default_the_journal() {
+        let mut game = serde_json::to_value(GameState::new(7)).unwrap();
+        game.as_object_mut().unwrap().remove("journal");
+        let restored: GameState = serde_json::from_value(game).unwrap();
+        assert!(restored.journal.entries.is_empty());
+
+        let legacy = r#"{"runs":[{"run_id":"old","leader":"Ada","seed":7,"trail":"oregon","era":1848,"occupation":"farmer","score":0,"survivors":0,"days":10,"miles":100,"arrived":false,"epitaph":"","cause":"Unknown"}]}"#;
+        let history: History = serde_json::from_str(legacy).unwrap();
+        assert!(history.runs[0].journal.is_empty());
+    }
+
+    #[test]
     fn resume_keeps_identity_and_records_completion_once() {
         let temp = Temp::new();
         let store = Storage::at(&temp.0);
@@ -392,6 +407,7 @@ mod tests {
             arrived: true,
             epitaph: String::new(),
             cause: String::new(),
+            journal: Vec::new(),
         };
         assert!(store.record_run(run.clone()).unwrap());
         assert!(!store.record_run(run).unwrap());

@@ -37,7 +37,7 @@ struct Observation {
 impl Observation {
     fn observe(&mut self, game: &GameState, outcomes: &[Outcome]) {
         for outcome in outcomes {
-            if let Outcome::MemberDied { name } = outcome {
+            if let Outcome::MemberDied { name, .. } = outcome {
                 *self.death_causes.entry(death_cause(game, name)).or_default() += 1;
             }
         }
