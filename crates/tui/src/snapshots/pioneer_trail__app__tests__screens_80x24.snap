@@ -578,9 +578,9 @@ The wagon is ready. Five travelers set out from Independence.
 === Settings ===
 ┌PIONEER TRAIL─────────────────────────────────────────────────────────────────┐
 │ PIONEER TRAIL                                                                │
-│ [C]olor Truecolor  [B]ell false  [A]rt text-only false  [S]peed Normal       │
+│ [C]olor Truecolor  [B]ell false  [A]rt text-only false  [M]otion reduced     │
+│ false  [S]peed Normal                                                        │
 │ Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                 │
-│                                                                              │
 │                                                                              │
 │                                                                              │
 │                                                                              │

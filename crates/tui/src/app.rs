@@ -74,6 +74,10 @@ pub struct App {
     bell_pending: bool,
     outfitting_advice_visible: bool,
     departure_warning_armed: bool,
+    travel_moment: Option<crate::travel_moment::TravelMoment>,
+    last_travel_moment_day: Option<u32>,
+    travel_moment_started_tick: Option<u64>,
+    resume_auto_travel: bool,
 }
 impl App {
     pub fn new(content: GameContent, seed: u64, settings: Settings) -> Self {
@@ -107,6 +111,10 @@ impl App {
             bell_pending: false,
             outfitting_advice_visible: false,
             departure_warning_armed: false,
+            travel_moment: None,
+            last_travel_moment_day: None,
+            travel_moment_started_tick: None,
+            resume_auto_travel: false,
         }
     }
     pub fn with_storage(mut self, storage: Storage) -> Self {
@@ -134,6 +142,11 @@ impl App {
         })
     }
     fn advance_auto_travel(&mut self) {
+        if self.travel_moment.is_some() {
+            self.auto_travel = false;
+            self.note("Auto travel paused for a trail moment. Press Space to continue.");
+            return;
+        }
         if let Some(reason) = self.auto_travel_pause_reason() {
             self.auto_travel = false;
             self.note(reason);
@@ -211,6 +224,12 @@ impl App {
         }
         if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('q') {
             self.quit = true;
+            return;
+        }
+        if self.screen == Screen::Journey && self.travel_moment.is_some() {
+            if matches!(key.code, KeyCode::Char(' ') | KeyCode::Enter | KeyCode::Esc) {
+                self.dismiss_travel_moment();
+            }
             return;
         }
         if let Some(game) = &mut self.minigame {
@@ -315,6 +334,7 @@ impl App {
                     self.epitaph.clear();
                     self.outfitting_advice_visible = false;
                     self.departure_warning_armed = false;
+                    self.clear_travel_moment_history();
                     self.screen = Screen::SetupTrail;
                     self.cursor = self.draft.trail;
                 }
@@ -546,6 +566,7 @@ impl App {
                     self.run_id = new_run_id();
                     self.recorded = false;
                     self.pending_event = None;
+                    self.clear_travel_moment_history();
                     if let Some(index) =
                         self.game.content.trails.iter().position(|trail| trail.id == world.trail)
                     {
@@ -648,10 +669,11 @@ impl App {
             (Screen::Journey, 'f') => self.apply(Command::Forage),
             (Screen::Journey, 'g') => self.apply(Command::Fish),
             (Screen::Journey, 'a') => {
-                if matches!(self.game.status, pioneer_sim::RunStatus::AtLandmark(_)) {
+                let enable = !self.auto_travel;
+                self.auto_travel = enable;
+                if enable && matches!(self.game.status, pioneer_sim::RunStatus::AtLandmark(_)) {
                     self.apply(Command::Continue);
                 }
-                self.auto_travel = !self.auto_travel;
             }
             (Screen::SetupTrail, 'd') => {
                 use pioneer_sim::state::Difficulty;
@@ -703,6 +725,10 @@ impl App {
             }
             (Screen::Settings, 'a') => {
                 self.settings.no_art = !self.settings.no_art;
+                self.save_settings();
+            }
+            (Screen::Settings, 'm') => {
+                self.settings.reduced_motion = !self.settings.reduced_motion;
                 self.save_settings();
             }
             _ => {}
@@ -773,7 +799,10 @@ impl App {
                 | Command::Talk
                 | Command::Treat { .. }
         );
+        let travel_command = matches!(&command, Command::Continue | Command::TravelDay);
         let outcomes = self.game.apply(command);
+        let advanced_day =
+            outcomes.iter().any(|outcome| matches!(outcome, Outcome::DayAdvanced { .. }));
         let rejected = !outcomes.is_empty()
             && outcomes.iter().all(|outcome| matches!(outcome, Outcome::Rejected(_)));
         for outcome in outcomes {
@@ -795,6 +824,24 @@ impl App {
         }
         self.autosave();
         self.sync_screen();
+        if travel_command
+            && advanced_day
+            && self.screen == Screen::Journey
+            && !self.settings.reduced_motion
+        {
+            self.travel_moment = crate::travel_moment::after_travel_day(
+                self.game.day,
+                self.game.weather,
+                self.game.terrain(),
+                self.last_travel_moment_day,
+            );
+            if self.travel_moment.is_some() {
+                self.last_travel_moment_day = Some(self.game.day);
+                self.travel_moment_started_tick = Some(self.animation_tick);
+                self.resume_auto_travel = self.auto_travel;
+                self.auto_travel = false;
+            }
+        }
         if rejected
             || (retain_screen
                 && self.game.pending_event.is_none()
@@ -813,7 +860,22 @@ impl App {
         if self.screen != Screen::Journey || self.game.status != pioneer_sim::RunStatus::Travelling
         {
             self.auto_travel = false;
+            self.travel_moment = None;
+            self.travel_moment_started_tick = None;
+            self.resume_auto_travel = false;
         }
+    }
+    fn dismiss_travel_moment(&mut self) {
+        self.travel_moment = None;
+        self.travel_moment_started_tick = None;
+        let resume = std::mem::take(&mut self.resume_auto_travel);
+        if resume && self.screen == Screen::Journey && self.auto_travel_pause_reason().is_none() {
+            self.auto_travel = true;
+        }
+    }
+    fn clear_travel_moment_history(&mut self) {
+        self.dismiss_travel_moment();
+        self.last_travel_moment_day = None;
     }
     fn sync_screen(&mut self) {
         if self.game.active_minigame.is_some() {
@@ -910,6 +972,7 @@ impl App {
                     self.game = game;
                     self.recorded = false;
                     self.minigame = None;
+                    self.clear_travel_moment_history();
                     self.load_graves();
                     self.sync_screen();
                 }
@@ -1018,6 +1081,13 @@ impl App {
         }
     }
     pub fn render(&mut self, frame: &mut Frame) {
+        if self.travel_moment.is_some()
+            && self
+                .travel_moment_started_tick
+                .is_some_and(|started| self.animation_tick.saturating_sub(started) >= 6)
+        {
+            self.dismiss_travel_moment();
+        }
         let area = frame.area();
         if area.width < 80 || area.height < 24 {
             frame.render_widget(
@@ -1181,7 +1251,8 @@ impl App {
         });
         art::render_section(background, frame.buffer_mut(), canvas, 2, mode);
         let moving = matches!(self.game.status, pioneer_sim::RunStatus::Travelling);
-        let phase = if moving { self.animation_tick % 4 } else { 0 };
+        let phase =
+            if moving && !self.settings.reduced_motion { self.animation_tick % 4 } else { 0 };
         for (file, x, y) in
             [(format!("ox_{}.px", phase % 2), 10, 8), (format!("wagon_{phase}.px"), 32, 3)]
         {
@@ -1190,6 +1261,33 @@ impl App {
                 frame.buffer_mut(),
                 Rect::new(canvas.x + x, canvas.y + y, 80 - x, 14 - y),
                 mode,
+            );
+        }
+        crate::art::render_weather_overlay(
+            frame.buffer_mut(),
+            canvas,
+            self.game.weather,
+            if self.settings.reduced_motion { 0 } else { self.animation_tick },
+            mode,
+        );
+        if let Some(moment) = &self.travel_moment {
+            if let Some(sprite) = moment.wildlife_sprite.and_then(art::embedded) {
+                art::render_at(
+                    sprite,
+                    frame.buffer_mut(),
+                    canvas,
+                    i32::from(canvas.x) + 60,
+                    i32::from(canvas.y) + 9,
+                    mode,
+                );
+            }
+            let moment_area = Rect::new(canvas.x + 8, canvas.y + 2, 64, 7);
+            frame.render_widget(
+                Paragraph::new(format!("{}\n\n{}\n\nSpace · continue", moment.title, moment.text))
+                    .block(Block::default().borders(Borders::ALL).title("TRAIL MOMENT"))
+                    .style(Style::default().fg(Color::White).bg(Color::Black))
+                    .wrap(ratatui::widgets::Wrap { trim: true }),
+                moment_area,
             );
         }
         let (year, month, day) = self.game.date();
@@ -1542,6 +1640,13 @@ impl App {
                     self.game.cash_cents as f64 / 100.0
                 )));
                 lines.push(Line::from(self.trail_advice()));
+                lines.push(Line::from(format!(
+                    "Weather: {}",
+                    crate::travel_moment::weather_label(self.game.weather)
+                )));
+                if let Some(moment) = &self.travel_moment {
+                    lines.push(Line::from(format!("Moment: {} [Space continues]", moment.title)));
+                }
                 lines.extend(menu(
                     &[
                         "Continue", "Supplies", "Map", "Pace", "Rations", "Rest", "Hunt", "Talk",
@@ -1871,8 +1976,12 @@ impl App {
                 }
             }
             Screen::Settings => lines.push(Line::from(format!(
-                "[C]olor {:?}  [B]ell {}  [A]rt text-only {}  [S]peed {:?}",
-                self.settings.color, self.settings.bell, self.settings.no_art, self.settings.speed
+                "[C]olor {:?}  [B]ell {}  [A]rt text-only {}  [M]otion reduced {}  [S]peed {:?}",
+                self.settings.color,
+                self.settings.bell,
+                self.settings.no_art,
+                self.settings.reduced_motion,
+                self.settings.speed
             ))),
             Screen::Seed => lines.push(Line::from(format!("Enter world code: {}", self.seed_text))),
             Screen::Treat => {
@@ -2380,6 +2489,115 @@ mod tests {
         app.auto_travel = true;
         app.advance_auto_travel();
         assert_eq!(app.game.day, day + 1, "three full days permits auto travel to resume");
+    }
+    #[test]
+    fn skipping_a_travel_moment_preserves_the_simulation_state() {
+        let mut app = outfitted_app();
+        app.travel_moment = Some(crate::travel_moment::TravelMoment {
+            title: "MEADOWLARK",
+            text: "A meadowlark rises from the grass.",
+            wildlife_sprite: None,
+        });
+        let before = serde_json::to_value(&app.game).unwrap();
+
+        app.handle_key(KeyEvent::from(KeyCode::Char(' ')));
+
+        assert!(app.travel_moment.is_none());
+        assert_eq!(serde_json::to_value(&app.game).unwrap(), before);
+    }
+
+    #[test]
+    fn auto_travel_pauses_for_a_travel_moment_without_another_day() {
+        let mut app = outfitted_app();
+        app.travel_moment = Some(crate::travel_moment::TravelMoment {
+            title: "HIGH GROUND",
+            text: "Loose stone clicks beneath the wheels.",
+            wildlife_sprite: None,
+        });
+        app.auto_travel = true;
+        let day = app.game.day;
+
+        app.advance_auto_travel();
+
+        assert_eq!(app.game.day, day);
+        assert!(!app.auto_travel);
+    }
+
+    #[test]
+    fn travel_moments_remain_readable_without_art_or_color() {
+        let mut app = outfitted_app();
+        app.game.weather = pioneer_sim::WeatherKind::Rain;
+        app.travel_moment = Some(crate::travel_moment::TravelMoment {
+            title: "RAIN ON THE CANVAS",
+            text: "Rain beads on the wagon cover.",
+            wildlife_sprite: None,
+        });
+        app.settings.no_art = true;
+        let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+        terminal.draw(|frame| app.render(frame)).unwrap();
+        let text = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect::<String>();
+        assert!(text.contains("Weather: Rain"));
+        assert!(text.contains("RAIN ON THE CANVAS"));
+        assert!(text.contains("Continue"));
+
+        app.settings.no_art = false;
+        app.settings.color = crate::persist::ColorMode::Mono;
+        let mut terminal = Terminal::new(TestBackend::new(120, 40)).unwrap();
+        terminal.draw(|frame| app.render(frame)).unwrap();
+        let text = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect::<String>();
+        assert!(text.contains("Rain"));
+        assert!(text.contains("RAIN ON THE CANVAS"));
+    }
+    #[test]
+    fn travel_moment_blocks_commands_and_auto_dismisses_to_safe_auto_travel() {
+        let mut app = outfitted_app();
+        app.travel_moment = Some(crate::travel_moment::TravelMoment {
+            title: "MEADOWLARK",
+            text: "A meadowlark rises from the grass.",
+            wildlife_sprite: Some("squirrel_0.px"),
+        });
+        app.travel_moment_started_tick = Some(0);
+        app.resume_auto_travel = true;
+        let before = serde_json::to_value(&app.game).unwrap();
+
+        app.handle_key(KeyEvent::from(KeyCode::Char('7')));
+        assert_eq!(serde_json::to_value(&app.game).unwrap(), before);
+        assert_eq!(app.screen, Screen::Journey);
+
+        app.animation_tick = 6;
+        let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+        terminal.draw(|frame| app.render(frame)).unwrap();
+        assert!(app.travel_moment.is_none());
+        assert!(app.auto_travel);
+    }
+    #[test]
+    fn starting_a_new_journey_clears_old_travel_moment_spacing() {
+        let mut app = outfitted_app();
+        app.travel_moment = Some(crate::travel_moment::TravelMoment {
+            title: "MEADOWLARK",
+            text: "A meadowlark rises from the grass.",
+            wildlife_sprite: None,
+        });
+        app.last_travel_moment_day = Some(99);
+        app.screen = Screen::Title;
+        app.cursor = 0;
+
+        app.select();
+
+        assert!(app.travel_moment.is_none());
+        assert!(app.last_travel_moment_day.is_none());
     }
     #[test]
     fn trail_advice_is_short_and_does_not_invent_a_cause_of_death() {

@@ -5,6 +5,7 @@
 
 use std::{fmt, str::FromStr};
 
+use pioneer_sim::WeatherKind;
 use ratatui::{buffer::Buffer, layout::Rect, style::Color};
 use std::{collections::BTreeMap, sync::OnceLock};
 
@@ -66,6 +67,37 @@ pub fn render_at(
                 cell.set_symbol("▀")
                     .set_fg(top.map_or(a, |p| mode.color(p)))
                     .set_bg(bottom.map_or(b, |p| mode.color(p)));
+            }
+        }
+    }
+}
+
+/// Draw a small weather layer over a travel scene. It is derived only from the
+/// current simulated weather, never from a random stream.
+pub fn render_weather_overlay(
+    buffer: &mut Buffer,
+    area: Rect,
+    weather: WeatherKind,
+    phase: u64,
+    mode: ColorMode,
+) {
+    let (pixel, glyph, cadence) = match weather {
+        WeatherKind::Rain | WeatherKind::Storm => (Pixel::Blue, "╲", 7),
+        WeatherKind::Snow | WeatherKind::Cold => (Pixel::White, "·", 11),
+        WeatherKind::Hot => (Pixel::Orange, "░", 13),
+        WeatherKind::Clear | WeatherKind::Warm => return,
+    };
+    let bounds = area.intersection(buffer.area);
+    for y in 0..bounds.height {
+        for x in 0..bounds.width {
+            if !(u64::from(x) + u64::from(y) * 3 + phase).is_multiple_of(cadence) {
+                continue;
+            }
+            let cell = &mut buffer[(bounds.x + x, bounds.y + y)];
+            if mode == ColorMode::Mono {
+                cell.set_symbol("░").set_fg(Color::White).set_bg(Color::Black);
+            } else {
+                cell.set_symbol(glyph).set_fg(mode.color(pixel));
             }
         }
     }
@@ -388,6 +420,32 @@ mod tests {
         let mut buffer = Buffer::empty(Rect::new(0, 0, 1, 1));
         render(&image, &mut buffer, Rect::new(0, 0, 1, 1), ColorMode::Mono);
         assert_eq!(buffer.cell((0, 0)).unwrap().symbol(), "░");
+    }
+
+    #[test]
+    fn weather_overlays_use_the_selected_palette_without_rng() {
+        let mut rain = Buffer::empty(Rect::new(0, 0, 14, 2));
+        render_weather_overlay(
+            &mut rain,
+            Rect::new(0, 0, 14, 2),
+            WeatherKind::Rain,
+            0,
+            ColorMode::Ansi256,
+        );
+        assert!(rain
+            .content
+            .iter()
+            .any(|cell| cell.symbol() == "╲" && cell.fg == Color::Indexed(33)));
+
+        let mut snow = Buffer::empty(Rect::new(0, 0, 22, 2));
+        render_weather_overlay(
+            &mut snow,
+            Rect::new(0, 0, 22, 2),
+            WeatherKind::Snow,
+            0,
+            ColorMode::Mono,
+        );
+        assert!(snow.content.iter().any(|cell| cell.symbol() == "░" && cell.fg == Color::White));
     }
 
     #[test]
