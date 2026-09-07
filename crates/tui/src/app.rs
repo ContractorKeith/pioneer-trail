@@ -2500,6 +2500,59 @@ mod tests {
     fn snapshots_at_120x40() {
         insta::assert_snapshot!("screens_120x40", all_screens(120, 40));
     }
+    fn app_view(app: &mut App, width: u16, height: u16) -> String {
+        let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+        terminal.draw(|frame| app.render(frame)).unwrap();
+        terminal.backend().buffer().content.iter().map(|cell| cell.symbol()).collect()
+    }
+    #[test]
+    fn travel_moment_and_weathered_event_snapshots_cover_modes_and_sizes() {
+        for (no_art, width, height) in
+            [(false, 80, 24), (false, 120, 40), (true, 80, 24), (true, 120, 40)]
+        {
+            let mut moment = outfitted_app();
+            moment.settings.no_art = no_art;
+            moment.game.weather = pioneer_sim::WeatherKind::Rain;
+            moment.travel_moment = Some(crate::travel_moment::TravelMoment {
+                title: "RAIN ON THE CANVAS",
+                text: "Rain beads on the wagon cover.",
+                wildlife_sprite: None,
+            });
+            insta::assert_snapshot!(
+                format!("travel_moment_{width}x{height}_{}", if no_art { "text" } else { "art" }),
+                app_view(&mut moment, width, height)
+            );
+
+            let mut event = outfitted_app();
+            event.settings.no_art = no_art;
+            event.game.weather = pioneer_sim::WeatherKind::Rain;
+            event.pending_event = Some("wheel".into());
+            event.game.pending_event = event.pending_event.clone();
+            event.screen = Screen::Event;
+            insta::assert_snapshot!(
+                format!("weathered_event_{width}x{height}_{}", if no_art { "text" } else { "art" }),
+                app_view(&mut event, width, height)
+            );
+        }
+    }
+    #[test]
+    fn event_skip_and_reduced_motion_camp_fire_are_presentation_safe() {
+        let mut event = outfitted_app();
+        event.pending_event = Some("wheel".into());
+        event.game.pending_event = event.pending_event.clone();
+        event.screen = Screen::Event;
+        event.handle_key(KeyEvent::from(KeyCode::Esc));
+        assert_eq!(event.screen, Screen::Event);
+        assert_eq!(event.game.pending_event.as_deref(), Some("wheel"));
+
+        let mut camp = outfitted_app();
+        camp.handle_key(KeyEvent::from(KeyCode::Char('c')));
+        camp.settings.reduced_motion = true;
+        camp.tick_presentation(1);
+        let first = app_view(&mut camp, 80, 24);
+        camp.tick_presentation(9);
+        assert_eq!(first, app_view(&mut camp, 80, 24));
+    }
     #[test]
     fn journey_tip_keeps_status_and_latest_log_at_80x24() {
         let view = render(Screen::Journey, 80, 24);
