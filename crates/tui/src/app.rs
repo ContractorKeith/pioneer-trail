@@ -329,6 +329,7 @@ impl App {
                     self.epitaph.clear();
                     self.outfitting_advice_visible = false;
                     self.departure_warning_armed = false;
+                    self.gathering_result = None;
                     self.screen = Screen::SetupTrail;
                     self.cursor = self.draft.trail;
                 }
@@ -850,6 +851,15 @@ impl App {
         }
     }
     fn sync_screen(&mut self) {
+        if matches!(
+            self.game.status,
+            pioneer_sim::RunStatus::Setup
+                | pioneer_sim::RunStatus::Outfitting
+                | pioneer_sim::RunStatus::Arrived
+                | pioneer_sim::RunStatus::Failed
+        ) {
+            self.gathering_result = None;
+        }
         if self.game.active_minigame.is_some() {
             if self.minigame.is_none() {
                 self.minigame = crate::minigame::host::LiveMinigame::from_session(&self.game);
@@ -919,6 +929,7 @@ impl App {
             }
             Outcome::MemberDied { name } => self.note(format!("{name} has died.")),
             Outcome::Gathered { activity, food_lbs, net_food_lbs, days } => {
+                self.gathering_activity = activity;
                 self.gathering_result =
                     Some(GatheringResult { activity, food_lbs, net_food_lbs, days });
                 self.note(format!(
@@ -1387,10 +1398,7 @@ impl App {
             Rect::new(canvas.x, canvas.y + 16, 80, 1),
         );
         frame.render_widget(
-            Paragraph::new(format!(
-                "{} Weather and illness still press on the camp.",
-                gathering::availability(self.gathering_activity)
-            )),
+            Paragraph::new("Haul varies. Weather and illness still affect the camp."),
             Rect::new(canvas.x, canvas.y + 17, 80, 1),
         );
         for (index, option) in options.iter().enumerate() {
