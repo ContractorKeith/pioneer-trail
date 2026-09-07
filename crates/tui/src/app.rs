@@ -987,6 +987,7 @@ impl App {
     }
     pub fn open_gathering(&mut self, activity: GatheringActivity) {
         if self.game.pending_event.is_some()
+            || self.game.active_minigame.is_some()
             || !matches!(
                 self.game.status,
                 pioneer_sim::RunStatus::Travelling | pioneer_sim::RunStatus::AtLandmark(_)
@@ -1002,6 +1003,7 @@ impl App {
             return;
         }
         self.gathering_activity = activity;
+        self.auto_travel = false;
         self.gathering_result = None;
         self.cursor = 0;
         self.screen = Screen::Gathering;
