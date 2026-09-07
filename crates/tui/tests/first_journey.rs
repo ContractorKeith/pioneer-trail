@@ -24,7 +24,9 @@ fn render(app: &mut App, width: u16, height: u16) -> String {
     terminal.draw(|frame| app.render(frame)).unwrap();
     let buffer = terminal.backend().buffer();
     (0..height)
-        .map(|y| (0..width).map(|x| buffer[(x, y)].symbol()).collect::<String>())
+        .map(|y| {
+            (0..width).map(|x| buffer[(x, y)].symbol()).collect::<String>().trim_end().to_owned()
+        })
         .collect::<Vec<_>>()
         .join("\n")
 }
@@ -87,6 +89,101 @@ fn journey_advice_and_illustrations_never_advance_the_simulation() {
             }
         }
     }
+}
+
+#[test]
+fn gathering_preview_is_cancel_free_and_long_search_reports_simulated_result() {
+    for no_art in [false, true] {
+        let mut app = carpenter(no_art);
+        app.settings.color = pioneer_trail::persist::ColorMode::Mono;
+        app.game.apply(Command::Buy { item_id: "oxen".into(), quantity: 3 });
+        app.game.apply(Command::Buy { item_id: "food".into(), quantity: 500 });
+        app.game.apply(Command::Depart);
+        app.screen = Screen::Journey;
+        let before = serde_json::to_string(&app.game).unwrap();
+
+        app.handle_key(KeyEvent::from(KeyCode::Char('f')));
+        assert_eq!(app.screen, Screen::Gathering);
+        for (width, height) in [(80, 24), (120, 40)] {
+            let view = render(&mut app, width, height);
+            assert!(view.contains("WOODLAND FORAGE"), "gathering header missing: {view}");
+            assert!(view.contains("up to 3 days"), "long cost missing: {view}");
+            assert!(view.contains("Esc return"), "cancel control missing: {view}");
+            assert_eq!(serde_json::to_string(&app.game).unwrap(), before);
+        }
+        app.handle_key(KeyEvent::from(KeyCode::Esc));
+        assert_eq!(app.screen, Screen::Journey);
+        assert_eq!(serde_json::to_string(&app.game).unwrap(), before);
+
+        app.handle_key(KeyEvent::from(KeyCode::Char('f')));
+        app.handle_key(KeyEvent::from(KeyCode::Down));
+        app.handle_key(KeyEvent::from(KeyCode::Enter));
+        assert_eq!(app.screen, Screen::Gathering);
+        assert_eq!(app.game.day, 3);
+        let after = serde_json::to_string(&app.game).unwrap();
+        let result = render(&mut app, 80, 24);
+        assert!(
+            result.contains("GATHERING RESULT")
+                && result.contains("Foraged")
+                && result.contains("3 days")
+                && result.contains("Camp food changed"),
+            "result missing: {result}"
+        );
+        let _ = render(&mut app, 120, 40);
+        assert_eq!(serde_json::to_string(&app.game).unwrap(), after, "render repeated a reward");
+        app.handle_key(KeyEvent::from(KeyCode::Esc));
+        assert_eq!(app.screen, Screen::Journey);
+        assert_eq!(
+            serde_json::to_string(&app.game).unwrap(),
+            after,
+            "dismissing repeated a reward"
+        );
+    }
+}
+
+#[test]
+fn gathering_quick_result_is_dismissible_and_mandatory_event_cannot_be_bypassed() {
+    let mut app = carpenter(true);
+    app.game.apply(Command::Buy { item_id: "oxen".into(), quantity: 3 });
+    app.game.apply(Command::Buy { item_id: "food".into(), quantity: 500 });
+    app.game.apply(Command::Depart);
+    app.screen = Screen::Journey;
+    app.handle_key(KeyEvent::from(KeyCode::Char('f')));
+    app.handle_key(KeyEvent::from(KeyCode::Enter));
+    assert_eq!(app.screen, Screen::Gathering);
+    assert_eq!(app.game.day, 1);
+    let result = render(&mut app, 80, 24);
+    assert!(result.contains("GATHERING RESULT") && result.contains("over 1 day"));
+    let after = serde_json::to_string(&app.game).unwrap();
+    app.handle_key(KeyEvent::from(KeyCode::Enter));
+    assert_eq!(app.screen, Screen::Journey);
+    assert_eq!(serde_json::to_string(&app.game).unwrap(), after);
+
+    app.game.pending_event = Some("wheel".into());
+    app.screen = Screen::Event;
+    app.open_gathering(pioneer_sim::GatheringActivity::Forage);
+    assert_eq!(app.screen, Screen::Event);
+}
+
+#[test]
+fn gathering_preview_and_result_snapshots_cover_art_text_and_terminal_sizes() {
+    let mut snapshots = String::new();
+    for no_art in [false, true] {
+        for (width, height) in [(80, 24), (120, 40)] {
+            let mut app = carpenter(no_art);
+            app.game.apply(Command::Buy { item_id: "oxen".into(), quantity: 3 });
+            app.game.apply(Command::Buy { item_id: "food".into(), quantity: 500 });
+            app.game.apply(Command::Depart);
+            app.screen = Screen::Journey;
+            app.handle_key(KeyEvent::from(KeyCode::Char('f')));
+            snapshots.push_str(&format!("\n=== preview art={} {width}x{height} ===\n", !no_art));
+            snapshots.push_str(&render(&mut app, width, height));
+            app.handle_key(KeyEvent::from(KeyCode::Enter));
+            snapshots.push_str(&format!("\n=== result art={} {width}x{height} ===\n", !no_art));
+            snapshots.push_str(&render(&mut app, width, height));
+        }
+    }
+    insta::assert_snapshot!("gathering_preview_and_result", snapshots);
 }
 
 #[test]

@@ -41,6 +41,8 @@ pub struct Manifest {
     pub hunting: Hunting,
     pub rafting: Rafting,
     pub map: String,
+    #[serde(default)]
+    pub gathering: Vec<String>,
 }
 impl Manifest {
     pub fn parse(text: &str) -> anyhow::Result<Self> {
@@ -62,6 +64,7 @@ impl Manifest {
             &manifest.hunting.animals,
             &manifest.hunting.crosshair,
             &manifest.rafting.rocks,
+            &manifest.gathering,
         ] {
             anyhow::ensure!(!group.is_empty(), "empty asset group");
             for name in group {

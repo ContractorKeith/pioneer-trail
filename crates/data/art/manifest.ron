@@ -9,4 +9,5 @@
   hunting: (animals: ["buffalo_0.px", "buffalo_1.px", "bear_0.px", "bear_1.px", "deer_0.px", "deer_1.px", "rabbit_0.px", "rabbit_1.px", "squirrel_0.px", "squirrel_1.px"], crosshair: ["crosshair_0.px", "crosshair_1.px"], fps: 6),
   rafting: (raft: "raft.px", rocks: ["rock_0.px", "rock_1.px", "rock_2.px"], fps: 30),
   map: "map_oregon.px",
+  gathering: ["gathering_woodland.px", "gathering_riverbank.px"],
 )

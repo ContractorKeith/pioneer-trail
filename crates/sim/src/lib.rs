@@ -24,6 +24,7 @@ pub use health::{AilmentStage, Sex};
 pub use minigame::{MinigameKind, MinigameSession};
 pub use party::{Relationships, Skills, Trait};
 pub use state::{
-    Command, CommandError, CrossMethod, GameState, Outcome, Pace, RationLevel, RunStatus,
+    Command, CommandError, CrossMethod, GameState, GatheringActivity, Outcome, Pace, RationLevel,
+    RunStatus,
 };
 pub use weather::{Terrain, WeatherState};

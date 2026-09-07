@@ -434,7 +434,11 @@ mod tests {
             }
             let image = PxImage::parse(file.contents_utf8().unwrap())
                 .unwrap_or_else(|error| panic!("{path}: {error}"));
-            let expected = if path.ends_with("title.px")
+            let expected = if path == "camp_night.px" {
+                (80, 32)
+            } else if path == "camp_crate.px" {
+                (6, 4)
+            } else if path.ends_with("title.px")
                 || path.contains("terrain_")
                 || [
                     "kansas_river",
@@ -448,6 +452,7 @@ mod tests {
                 .iter()
                 .any(|name| path.contains(name))
                 || [
+                    "gathering_",
                     "the_dalles",
                     "willamette",
                     "soda_springs",
@@ -482,7 +487,7 @@ mod tests {
                 .files()
                 .filter(|file| file.path().extension().is_some_and(|ext| ext == "px"))
                 .count(),
-            49
+            55
         );
     }
 }
