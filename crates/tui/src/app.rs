@@ -13,6 +13,8 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem, Paragraph},
 };
 
+mod journal_view;
+
 /// UI-only draft; all rules are submitted to the simulation as commands.
 #[derive(Debug, Clone)]
 struct SetupDraft {
@@ -74,7 +76,7 @@ pub struct App {
     bell_pending: bool,
     outfitting_advice_visible: bool,
     departure_warning_armed: bool,
-    journal_history: Option<Vec<pioneer_sim::JournalEntry>>,
+    journal_history: Option<RunRecord>,
 }
 impl App {
     pub fn new(content: GameContent, seed: u64, settings: Settings) -> Self {
@@ -168,9 +170,7 @@ impl App {
             Screen::SetupOccupation => self.game.content.occupations.len(),
             Screen::Store => self.game.content.items.len() + 1,
             Screen::Journey => 9,
-            Screen::Journal => {
-                self.journal_history.as_ref().unwrap_or(&self.game.journal.entries).len().max(1)
-            }
+            Screen::Journal => self.journal_entries().len().max(1),
             Screen::Map => self
                 .game
                 .content
@@ -666,7 +666,7 @@ impl App {
                     match storage.load_history() {
                         Ok(history) => {
                             if let Some(run) = history.leaders().get(self.cursor) {
-                                self.journal_history = Some(run.journal.clone());
+                                self.journal_history = Some((*run).clone());
                                 self.cursor = run.journal.len().saturating_sub(1);
                                 self.screen = Screen::Journal;
                             }
@@ -1085,6 +1085,10 @@ impl App {
             );
             return;
         }
+        if self.screen == Screen::Journal {
+            self.render_journal(frame);
+            return;
+        }
         if !self.settings.no_art
             && matches!(
                 self.screen,
@@ -1283,7 +1287,7 @@ impl App {
         }
         frame.render_widget(
             Paragraph::new(
-                "a travel · i treat · u trade · f forage · g fish · v party · Esc title",
+                "Shift-J Journal · a travel · i treat · u trade · f forage · g fish · Esc title",
             ),
             Rect::new(canvas.x, canvas.y + 20, 80, 1),
         );
@@ -1606,7 +1610,7 @@ impl App {
                     self.cursor,
                 ));
                 lines.push(Line::from(
-                    "A auto travel · I treat · U trade · F forage · G fish · V party",
+                    "Shift-J Journal · A auto travel · I treat · U trade · F forage · G fish",
                 ));
             }
             Screen::Supplies => {
@@ -1903,38 +1907,11 @@ impl App {
                         lines.push(Line::from(format!("Share this world: {code}")));
                     }
                 }
-                for member in self.game.party.iter().filter(|member| !member.alive) {
-                    if let Some(entry) = self.game.journal.entries.iter().find(|entry| matches!(&entry.kind, pioneer_sim::JournalKind::Death { name, .. } if name == &member.name)) {
-                        lines.push(Line::from(format!("In memory of {} — {}", member.name, entry.kind.text())));
-                    }
-                }
                 lines.push(Line::from(
-                    "[J] Journal · [V] Full party · [E] Epitaph · Enter returns to title.",
+                    "Shift-J Journal · [V] Full party · [E] Epitaph · Enter returns to title.",
                 ));
             }
-            Screen::Journal => {
-                let entries = self.journal_history.as_ref().unwrap_or(&self.game.journal.entries);
-                if entries.is_empty() {
-                    lines.push(Line::from(if self.journal_history.is_some() {
-                        "Journal unavailable for this legacy journey."
-                    } else {
-                        "No notable moments have been recorded yet."
-                    }));
-                } else {
-                    for (index, entry) in
-                        entries.iter().enumerate().skip(self.cursor.saturating_sub(3)).take(7)
-                    {
-                        lines.push(Line::from(format!(
-                            "{} Day {} · {} mi · {}",
-                            marker(index == self.cursor),
-                            entry.day,
-                            entry.miles,
-                            entry.kind.text()
-                        )));
-                    }
-                }
-                lines.push(Line::from("↑↓ browse · Esc returns"));
-            }
+            Screen::Journal => {}
             Screen::Epitaph => {
                 lines.push(Line::from("Write up to 80 characters. Enter saves; Esc cancels."));
                 lines.push(Line::from(format!("{}▏", self.epitaph)));

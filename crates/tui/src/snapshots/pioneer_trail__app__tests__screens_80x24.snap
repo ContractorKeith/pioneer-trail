@@ -180,7 +180,7 @@ Food 1500 lb · $1080.00 · Steady/Filling · 5 alive
 ► 1 Continue                2 Supplies                3 Map                     
   4 Pace                    5 Rations                 6 Rest                    
   7 Hunt                    8 Talk                    9 Buy                     
-a travel · i treat · u trade · f forage · g fish · v party · Esc title          
+Shift-J Journal · a travel · i treat · u trade · f forage · g fish · Esc title  
 The wagon is ready. Five travelers set out from Independence.                   
                                                                                 
                                                                                 
@@ -514,7 +514,7 @@ The wagon is ready. Five travelers set out from Independence.
   Clara: survived, health 100                                                   
   Base 2864 · early 200 · no deaths 100 · no ferry 100 · rock 0                 
   Share this world: pt-0000000000003hs                                          
-  [J] Journal · [V] Full party · [E] Epitaph · Enter returns to title.          
+  Shift-J Journal · [V] Full party · [E] Epitaph · Enter returns to title.      
   Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                  
                                                                                 
                                                                                 

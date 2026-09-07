@@ -343,17 +343,10 @@ impl GameState {
         }
     }
     pub fn apply(&mut self, c: Command) -> Vec<Outcome> {
-        let before_ailments = self
-            .party
-            .iter()
-            .map(|member| (member.name.clone(), member.ailments.clone()))
-            .collect::<BTreeMap<_, _>>();
-        let before_relationships = self
-            .party
-            .iter()
-            .map(|member| (member.name.clone(), member.relationships.affinity.clone()))
-            .collect::<BTreeMap<_, _>>();
         let mut outcomes = self.try_apply(c).unwrap_or_else(|e| vec![Outcome::Rejected(e)]);
+        if outcomes.iter().any(|outcome| matches!(outcome, Outcome::Rejected(_))) {
+            return outcomes;
+        }
         if matches!(self.status, RunStatus::Arrived | RunStatus::Failed) {
             self.pending_event = None;
             self.active_minigame = None;
@@ -371,26 +364,21 @@ impl GameState {
             );
         }
         self.journal_outcomes(&outcomes);
-        if !outcomes.iter().any(|outcome| matches!(outcome, Outcome::Rejected(_))) {
-            self.journal_state_changes(&before_ailments, &before_relationships);
-        }
         outcomes
     }
-    fn journal_state_changes(
+    fn relationship_snapshot(&self) -> BTreeMap<String, BTreeMap<String, i16>> {
+        self.party
+            .iter()
+            .filter(|m| m.alive)
+            .map(|m| (m.name.clone(), m.relationships.affinity.clone()))
+            .collect()
+    }
+    fn journal_relationship_changes(
         &mut self,
-        before_ailments: &BTreeMap<String, Vec<String>>,
         before_relationships: &BTreeMap<String, BTreeMap<String, i16>>,
     ) {
         let mut entries = Vec::new();
-        for member in &self.party {
-            if let Some(before) = before_ailments.get(&member.name) {
-                for ailment in before.iter().filter(|ailment| !member.ailments.contains(ailment)) {
-                    entries.push(JournalKind::Recovered {
-                        name: member.name.clone(),
-                        ailment: ailment.clone(),
-                    });
-                }
-            }
+        for member in self.party.iter().filter(|m| m.alive) {
             if let Some(before) = before_relationships.get(&member.name) {
                 for (other, affinity) in &member.relationships.affinity {
                     let previous = before.get(other).copied().unwrap_or_default();
@@ -749,6 +737,7 @@ impl GameState {
                 member.health = member.health.saturating_sub(fatigue_damage);
             }
         }
+        let fatigue_outcome_start = out.len();
         for member in &mut self.party {
             if member.alive && member.health == 0 {
                 member.alive = false;
@@ -758,6 +747,7 @@ impl GameState {
                 });
             }
         }
+        self.journal_deaths(&out[fatigue_outcome_start..]);
         if !self.party.iter().any(|member| member.alive) {
             self.status = RunStatus::Failed;
             return Ok(out);
@@ -1100,6 +1090,8 @@ impl GameState {
         p.ailment_days.remove(a);
         p.skills.medicine = p.skills.medicine.saturating_add(1);
         p.health = p.health.saturating_add(15).min(100);
+        let name = p.name.clone();
+        self.journal_now(JournalKind::Recovered { name, ailment: a.into() });
         Ok(vec![Outcome::Treated { member_index: i, ailment_id: a.into() }])
     }
     fn begin_hunt(&mut self) -> Result<Vec<Outcome>, CommandError> {
@@ -1420,6 +1412,7 @@ impl GameState {
         self.family.pregnancies.retain(|pregnancy| pregnancy.mother != name);
         let npc = self.npcs.iter_mut().find(|npc| npc.id == npc_id).expect("NPC was found above");
         npc.recurring = true;
+        self.journal_now(JournalKind::LeftParty { name: name.clone() });
         Ok(vec![Outcome::Message(format!("{name} leaves the party."))])
     }
     fn accept_counteroffer(
@@ -2165,9 +2158,18 @@ impl GameState {
                     }
                 }
                 Effect::HealAilment(x) => {
+                    let recovered = self
+                        .party
+                        .iter()
+                        .filter(|p| p.alive && p.ailments.contains(x))
+                        .map(|p| p.name.clone())
+                        .collect::<Vec<_>>();
                     for p in &mut self.party {
                         p.ailments.retain(|a| a != x);
                         p.ailment_days.remove(x);
+                    }
+                    for name in recovered {
+                        self.journal_now(JournalKind::Recovered { name, ailment: x.clone() });
                     }
                 }
                 Effect::LoseDays(x) => {
@@ -2188,6 +2190,7 @@ impl GameState {
                     .scheduled_events
                     .push(PendingEvent { event_id: event_id.clone(), due_day: self.day + days }),
                 Effect::AdjustRelationship(change) => {
+                    let before = self.relationship_snapshot();
                     if let Some((left, right, _)) = self.adjust_live_relationship(*change) {
                         out.push(Outcome::Message(format!(
                             "{} and {} grow {}.",
@@ -2196,6 +2199,7 @@ impl GameState {
                             if *change > 0 { "closer" } else { "more distant" }
                         )));
                     }
+                    self.journal_relationship_changes(&before);
                 }
                 Effect::CelebrateWedding => self.celebrate_wedding(out),
                 Effect::MemberLeaves => self.member_leaves(out),
@@ -2423,6 +2427,7 @@ impl GameState {
         }
     }
     fn party_daily(&mut self, out: &mut Vec<Outcome>, resting: bool, filling: bool) {
+        let before = self.relationship_snapshot();
         let varied_food = self.has_fresh_food();
         out.extend(
             crate::party::daily(
@@ -2435,6 +2440,7 @@ impl GameState {
             .into_iter()
             .map(Outcome::Message),
         );
+        self.journal_relationship_changes(&before);
     }
     /// Resolve pregnancies after each completed game day. A due pregnancy is consumed even when
     /// the mother has died or the wagon is full, so old saves cannot repeatedly retry a birth.
