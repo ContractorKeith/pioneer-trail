@@ -9,6 +9,7 @@ use crossterm::event::{self, Event};
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use pioneer_sim::{
     Command, CrossMethod, GameContent, GameState, GatheringActivity, Outcome, Pace, RationLevel,
+    SpeakerSetting, SpeakerView,
 };
 use ratatui::{
     prelude::*,
@@ -40,7 +41,14 @@ struct TradeDraft {
 enum TalkStage {
     #[default]
     Choose,
-    Topic(usize),
+    Topic,
+    Response,
+}
+#[derive(Debug, Clone)]
+struct TalkResponse {
+    speaker_name: String,
+    setting: SpeakerSetting,
+    lines: Vec<String>,
 }
 #[derive(Debug, Clone, Copy)]
 struct GatheringResult {
@@ -96,6 +104,8 @@ pub struct App {
     camp_return: bool,
     gathering_activity: GatheringActivity,
     gathering_result: Option<GatheringResult>,
+    talk_speaker: Option<SpeakerView>,
+    talk_response: Option<TalkResponse>,
 }
 impl App {
     pub fn new(content: GameContent, seed: u64, settings: Settings) -> Self {
@@ -133,6 +143,8 @@ impl App {
             camp_return: false,
             gathering_activity: GatheringActivity::Forage,
             gathering_result: None,
+            talk_speaker: None,
+            talk_response: None,
         }
     }
     pub fn with_storage(mut self, storage: Storage) -> Self {
@@ -205,7 +217,8 @@ impl App {
             Screen::Trade => 9,
             Screen::Talk => match self.talk_stage {
                 TalkStage::Choose => self.game.available_speakers().len() + 1,
-                TalkStage::Topic(_) => crate::conversation::TOPICS.len(),
+                TalkStage::Topic => crate::conversation::TOPICS.len(),
+                TalkStage::Response => 1,
             },
             Screen::Hall => self.hall.len(),
             Screen::River => 5,
@@ -471,8 +484,7 @@ impl App {
                 5 => self.screen = Screen::Rest,
                 6 => self.apply(Command::BeginHunt),
                 7 => {
-                    self.talk_stage = TalkStage::Choose;
-                    self.screen = Screen::Talk;
+                    self.open_talk();
                 }
                 _ => {
                     if self.game.can_shop() {
@@ -513,24 +525,29 @@ impl App {
                 TalkStage::Choose => {
                     let speakers = self.game.available_speakers();
                     if self.cursor < speakers.len() {
-                        self.talk_stage = TalkStage::Topic(self.cursor);
+                        self.talk_speaker = speakers.get(self.cursor).cloned();
+                        self.talk_stage = TalkStage::Topic;
                         self.cursor = 0;
                     } else {
                         self.apply(Command::Talk);
                     }
                 }
-                TalkStage::Topic(speaker_index) => {
-                    let speakers = self.game.available_speakers();
-                    if let Some(speaker) = speakers.get(speaker_index) {
+                TalkStage::Topic => {
+                    if let Some(speaker) = &self.talk_speaker {
                         let topic = crate::conversation::TOPICS
                             [self.cursor % crate::conversation::TOPICS.len()]
                         .0;
                         let speaker_id = speaker.id.clone();
                         self.apply(Command::Converse { speaker_id, topic });
                     }
-                    self.talk_stage = TalkStage::Choose;
+                    self.talk_stage = if self.talk_response.is_some() {
+                        TalkStage::Response
+                    } else {
+                        TalkStage::Choose
+                    };
                     self.cursor = 0;
                 }
+                TalkStage::Response => self.clear_talk_response(),
             },
             Screen::Treat => {
                 if let Some(ailment_id) = self
@@ -709,8 +726,7 @@ impl App {
             (Screen::Journey, 'r') => self.screen = Screen::Rations,
             (Screen::Journey, 'x') => self.screen = Screen::Rest,
             (Screen::Journey, 't') => {
-                self.talk_stage = TalkStage::Choose;
-                self.screen = Screen::Talk;
+                self.open_talk();
             }
             (Screen::Journey, 'i') => self.screen = Screen::Treat,
             (Screen::Journey, 'u') => {
@@ -786,8 +802,7 @@ impl App {
     }
     fn back(&mut self) {
         if self.screen == Screen::Talk && self.talk_stage != TalkStage::Choose {
-            self.talk_stage = TalkStage::Choose;
-            self.cursor = 0;
+            self.clear_talk_response();
             return;
         }
         if self.screen == Screen::Gathering && self.gathering_result.is_some() {
@@ -862,6 +877,23 @@ impl App {
             Screen::Fork | Screen::River | Screen::Event => Screen::Journey,
             Screen::Journey => Screen::Title,
         }
+    }
+    fn open_talk(&mut self) {
+        self.clear_talk_response();
+        self.screen = Screen::Talk;
+    }
+    fn clear_talk_response(&mut self) {
+        self.talk_stage = TalkStage::Choose;
+        self.talk_speaker = None;
+        self.talk_response = None;
+        self.cursor = 0;
+    }
+    fn talk_setting(&self) -> Option<SpeakerSetting> {
+        self.talk_response
+            .as_ref()
+            .map(|response| response.setting)
+            .or_else(|| self.talk_speaker.as_ref().map(|speaker| speaker.setting))
+            .or_else(|| self.game.available_speakers().first().map(|speaker| speaker.setting))
     }
     fn apply(&mut self, command: Command) {
         let previous_screen = self.screen;
@@ -1009,10 +1041,11 @@ impl App {
             Outcome::Message(text) => self.note(text),
             Outcome::Rejected(error) => self.note(error.to_string()),
             Outcome::Quote { text, .. } => self.note(text),
-            Outcome::Conversation { lines, .. } => {
-                for line in lines {
-                    self.note(line);
+            Outcome::Conversation { speaker_name, setting, lines, .. } => {
+                for line in &lines {
+                    self.note(line.clone());
                 }
+                self.talk_response = Some(TalkResponse { speaker_name, setting, lines });
             }
             Outcome::ArrivedAt { .. } => {
                 if let Some(node) = self.game.current_landmark() {
@@ -1582,8 +1615,9 @@ impl App {
                 16 - scene_height,
             ),
             Screen::Talk => {
-                let (file, _) = crate::conversation::setting(&self.game);
-                let file = if art::embedded(&file).is_some() { file } else { "wagon_0.px".into() };
+                let (file, _) = crate::conversation::setting(&self.game, self.talk_setting());
+                let file =
+                    if art::embedded(&file).is_some() { file } else { "terrain_plains.px".into() };
                 (file, 16 - scene_height)
             }
             _ => ("terrain_plains.px".into(), 16 - scene_height),
@@ -1595,6 +1629,16 @@ impl App {
             source_y,
             mode,
         );
+        if self.screen == Screen::Talk && self.talk_setting() == Some(SpeakerSetting::Wagon) {
+            art::render_at(
+                art::embedded("wagon_0.px").expect("wagon art"),
+                frame.buffer_mut(),
+                scene,
+                i32::from(scene.x + 20),
+                i32::from(scene.bottom()) - 10,
+                mode,
+            );
+        }
         let survivors = self.game.party.iter().filter(|member| member.alive).count();
         if self.screen == Screen::Score
             && !matches!(self.game.status, pioneer_sim::RunStatus::Arrived)
@@ -1629,7 +1673,7 @@ impl App {
             }
             Screen::Score if survivors == 0 => "THE TRAIL ENDS HERE",
             Screen::Score => "WAGON STRANDED",
-            Screen::Talk => crate::conversation::setting(&self.game).1,
+            Screen::Talk => crate::conversation::setting(&self.game, self.talk_setting()).1,
             _ => unreachable!("vignette only renders illustrated screens"),
         };
         frame.render_widget(
@@ -1932,7 +1976,8 @@ impl App {
                 lines.extend(menu(&["Rest 1 day", "Rest 2 days", "Rest 3 days"], self.cursor))
             }
             Screen::Talk => {
-                let (_, setting_label) = crate::conversation::setting(&self.game);
+                let (_, setting_label) =
+                    crate::conversation::setting(&self.game, self.talk_setting());
                 match self.talk_stage {
                     TalkStage::Choose => {
                         lines.push(Line::from(format!("{setting_label}. Who do you approach?")));
@@ -1943,17 +1988,34 @@ impl App {
                             self.cursor,
                         ));
                     }
-                    TalkStage::Topic(_) => {
-                        lines.push(Line::from("What do you ask about?"));
+                    TalkStage::Topic => {
+                        lines.push(Line::from(format!(
+                            "{} — what do you ask about?",
+                            self.talk_speaker
+                                .as_ref()
+                                .map_or("Traveler", |speaker| speaker.name.as_str())
+                        )));
                         let rows = crate::conversation::topic_menu();
                         lines.extend(menu(
                             &rows.iter().map(String::as_str).collect::<Vec<_>>(),
                             self.cursor,
                         ));
                     }
+                    TalkStage::Response => {
+                        if let Some(response) = &self.talk_response {
+                            lines.push(Line::from(format!(
+                                "{} · {setting_label}",
+                                response.speaker_name
+                            )));
+                            lines.extend(response.lines.iter().cloned().map(Line::from));
+                            lines.push(Line::from("Enter/Esc returns to speakers."));
+                        }
+                    }
                 }
-                if let Some(last) = self.log.last() {
-                    lines.push(Line::from(last.clone()));
+                if self.talk_stage != TalkStage::Response {
+                    if let Some(last) = self.log.last() {
+                        lines.push(Line::from(last.clone()));
+                    }
                 }
             }
             Screen::Trade => {

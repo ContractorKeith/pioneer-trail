@@ -654,7 +654,7 @@ fn keyboard_talk_at_a_fort_offers_a_named_speaker_grounded_in_state() {
         "the route answer must name the real next landmark and distance:\n{view}"
     );
 
-    // An answered conversation returns to the speaker list automatically.
+    enter(&mut app); // Dismiss the complete attributed reply.
     let food_before = app.game.inventory.get("food");
 
     enter(&mut app); // Approach the same speaker again, same day.
@@ -666,6 +666,7 @@ fn keyboard_talk_at_a_fort_offers_a_named_speaker_grounded_in_state() {
     assert_eq!(app.game.inventory.get("food"), food_before);
 
     app.game.day += 1; // A real return visit, a day later.
+    enter(&mut app); // Dismiss the previous reply.
     enter(&mut app); // Approach again.
     down(&mut app, 2);
     enter(&mut app); // Ask for news.
@@ -675,6 +676,7 @@ fn keyboard_talk_at_a_fort_offers_a_named_speaker_grounded_in_state() {
     assert_eq!(app.game.inventory.get("food"), food_before + 15);
 
     app.game.day += 1;
+    enter(&mut app); // Dismiss the previous reply.
     enter(&mut app); // Approach a fourth time, another later day.
     down(&mut app, 0);
     enter(&mut app); // Ask about the route again.
@@ -749,6 +751,7 @@ fn keyboard_talk_max_capacity_grants_no_food_and_no_false_claim() {
     enter(&mut app); // Ask about the route.
 
     app.game.day += 1;
+    enter(&mut app); // Dismiss the previous reply.
     enter(&mut app); // Return a day later.
     down(&mut app, 1);
     enter(&mut app); // Ask about supplies.
@@ -785,6 +788,7 @@ fn keyboard_talk_wagon_favor_only_follows_a_real_trade() {
     enter(&mut app); // Approach the wagon speaker.
     enter(&mut app); // Ask a topic.
     app.game.day += 1;
+    enter(&mut app); // Dismiss the previous reply.
     enter(&mut app); // Return a day later, still without ever having traded.
     down(&mut app, 1);
     enter(&mut app);
@@ -793,7 +797,8 @@ fn keyboard_talk_wagon_favor_only_follows_a_real_trade() {
         app.game.conversation_memory.values().all(|memory| !memory.favor_received),
         "mere repeated talk must not fabricate trade familiarity"
     );
-    key(&mut app, KeyCode::Esc); // The talk flow is already back at the speaker list.
+    key(&mut app, KeyCode::Esc); // Dismiss the reply to the speaker list.
+    key(&mut app, KeyCode::Esc); // Return to the trail.
     assert_eq!(app.screen, Screen::Journey);
 
     // Now trade for real.

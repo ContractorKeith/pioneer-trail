@@ -220,7 +220,7 @@ impl GameState {
         if let Some(node) = ahead.as_deref().and_then(|id| self.trail_node(id)) {
             if let Some(river) = &node.river {
                 return format!(
-                    "Word is the {} ahead runs about {} feet wide and {} feet deep just now.",
+                    "The {} ahead is about {} feet wide, with a usual depth of {} feet. Check conditions when you arrive.",
                     node.name, river.width_feet, river.depth_feet
                 );
             }
@@ -235,7 +235,7 @@ impl GameState {
                 };
             }
         }
-        format!("Not much news, but {weather} weather is holding on the road ahead.")
+        format!("Not much news. Here at camp, the weather is {weather}.")
     }
 
     /// Original, data-driven dialogue for a fort speaker's roster entry; a plain
