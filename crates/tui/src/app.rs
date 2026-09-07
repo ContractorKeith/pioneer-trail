@@ -17,6 +17,7 @@ use ratatui::{
 };
 
 mod camp;
+mod journal_view;
 mod route_map;
 
 /// UI-only draft; all rules are submitted to the simulation as commands.
@@ -101,6 +102,7 @@ pub struct App {
     bell_pending: bool,
     outfitting_advice_visible: bool,
     departure_warning_armed: bool,
+    journal_history: Option<RunRecord>,
     travel_moment: Option<crate::travel_moment::TravelMoment>,
     last_travel_moment_day: Option<u32>,
     travel_moment_started_tick: Option<u64>,
@@ -144,6 +146,7 @@ impl App {
             bell_pending: false,
             outfitting_advice_visible: false,
             departure_warning_armed: false,
+            journal_history: None,
             travel_moment: None,
             last_travel_moment_day: None,
             travel_moment_started_tick: None,
@@ -166,6 +169,15 @@ impl App {
     /// A concise, accurate survival prompt for the current trail state.
     pub(crate) fn trail_advice(&self) -> String {
         crate::advice::trail_advice(&self.game)
+    }
+    fn landmark_display_name(&self, id: &str) -> String {
+        self.game
+            .content
+            .trails
+            .iter()
+            .find(|trail| Some(&trail.id) == self.game.trail_id.as_ref())
+            .and_then(|trail| trail.nodes.iter().find(|node| node.id == id))
+            .map_or_else(|| id.to_string(), |node| node.name.clone())
     }
     fn auto_travel_pause_reason(&self) -> Option<String> {
         if self.game.inventory.get("food") < self.game.daily_food_lbs().saturating_mul(3) {
@@ -224,6 +236,7 @@ impl App {
                     1
                 }
             }
+            Screen::Journal => self.journal_entries().len().max(1),
             Screen::Journey | Screen::Camp => 9,
             Screen::Gathering => 2,
             Screen::Map => self
@@ -345,6 +358,12 @@ impl App {
             if matches!(key.code, KeyCode::Char('?') | KeyCode::Esc) {
                 self.outfitting_advice_visible = false;
             }
+            return;
+        }
+        if key.code == KeyCode::Char('J')
+            && matches!(self.screen, Screen::Journey | Screen::Camp | Screen::Score)
+        {
+            self.character('J');
             return;
         }
         let previous_cursor = self.cursor;
@@ -708,6 +727,7 @@ impl App {
                 self.screen = Screen::Score;
             }
             Screen::Score
+            | Screen::Journal
             | Screen::Party
             | Screen::Hall
             | Screen::Settings
@@ -780,7 +800,26 @@ impl App {
                 self.screen = Screen::Party;
                 self.cursor = 0;
             }
-            (Screen::Journey, 'L') => self.open_letters(),
+            (Screen::Journey | Screen::Camp, 'L') => self.open_letters(),
+            (Screen::Journey | Screen::Camp | Screen::Score, 'J') => {
+                self.journal_history = None;
+                self.screen = Screen::Journal;
+                self.cursor = self.game.journal.entries.len().saturating_sub(1);
+            }
+            (Screen::Hall, 'J') => {
+                if let Some(storage) = &self.storage {
+                    match storage.load_history() {
+                        Ok(history) => {
+                            if let Some(run) = history.leaders().get(self.cursor) {
+                                self.journal_history = Some((*run).clone());
+                                self.cursor = run.journal.len().saturating_sub(1);
+                                self.screen = Screen::Journal;
+                            }
+                        }
+                        Err(error) => self.note(format!("Could not read journal: {error}")),
+                    }
+                }
+            }
             (Screen::Journey, 'f') => self.open_gathering(GatheringActivity::Forage),
             (Screen::Journey, 'g') => self.open_gathering(GatheringActivity::Fish),
             (Screen::Journey, 'a') => {
@@ -850,6 +889,23 @@ impl App {
         }
     }
     fn back(&mut self) {
+        if self.screen == Screen::Journal {
+            let historical = self.journal_history.take().is_some();
+            self.screen = if historical {
+                Screen::Hall
+            } else if matches!(
+                self.game.status,
+                pioneer_sim::RunStatus::Arrived | pioneer_sim::RunStatus::Failed
+            ) {
+                Screen::Score
+            } else if self.camp_return {
+                Screen::Camp
+            } else {
+                Screen::Journey
+            };
+            self.cursor = 0;
+            return;
+        }
         if self.screen == Screen::Talk && self.talk_stage != TalkStage::Choose {
             self.clear_talk_response();
             return;
@@ -862,6 +918,7 @@ impl App {
             && matches!(
                 self.screen,
                 Screen::Gathering
+                    | Screen::Letters
                     | Screen::Rest
                     | Screen::Treat
                     | Screen::Supplies
@@ -924,6 +981,15 @@ impl App {
             | Screen::Minigame => Screen::Journey,
             Screen::Score => Screen::Title,
             Screen::Epitaph => Screen::Score,
+            Screen::Journal
+                if matches!(
+                    self.game.status,
+                    pioneer_sim::RunStatus::Arrived | pioneer_sim::RunStatus::Failed
+                ) =>
+            {
+                Screen::Score
+            }
+            Screen::Journal => Screen::Journey,
             Screen::Fork | Screen::River | Screen::Event => Screen::Journey,
             Screen::Journey => Screen::Title,
         }
@@ -1138,12 +1204,13 @@ impl App {
                     self.note(format!("Reached {}.", node.name));
                 }
             }
-            Outcome::MemberDied { name } => self.note(format!("{name} has died.")),
+            Outcome::MemberDied { name, .. } => self.note(format!("{name} has died.")),
             Outcome::LetterAccepted { recipient, destination_id, reward_cents, .. } => {
                 self.note(format!(
-                "Sealed letter for {recipient} accepted: deliver at {destination_id} for ${:.2}.",
-                reward_cents as f64 / 100.0
-            ))
+                    "Sealed letter for {recipient} accepted: deliver at {} for ${:.2}.",
+                    self.landmark_display_name(&destination_id),
+                    reward_cents as f64 / 100.0
+                ))
             }
             Outcome::LetterDeclined { .. } => self.note("You decline the sealed letter."),
             Outcome::LetterDelivered { recipient, reward_cents, .. } => self.note(format!(
@@ -1334,6 +1401,7 @@ impl App {
                 arrived,
                 epitaph: String::new(),
                 cause: if arrived { "Arrived".into() } else { "Trail ended".into() },
+                journal: self.game.journal.entries.clone(),
             };
             match storage.record_run(record) {
                 Ok(_) => self.recorded = true,
@@ -1362,6 +1430,10 @@ impl App {
                 .block(Block::default().borders(Borders::ALL).title("RESIZE TERMINAL")),
                 area,
             );
+            return;
+        }
+        if self.screen == Screen::Journal {
+            self.render_journal(frame);
             return;
         }
         if self.screen == Screen::Map {
@@ -1456,6 +1528,7 @@ impl App {
             Screen::Title => "PIONEER TRAIL",
             Screen::Journey => "ON THE TRAIL",
             Screen::Letters => "SEALED LETTER",
+            Screen::Journal => "PARTY JOURNAL",
             Screen::Camp => "CAMP",
             Screen::Gathering => "GATHERING",
             Screen::Store => "GENERAL STORE",
@@ -1629,9 +1702,7 @@ impl App {
             );
         }
         frame.render_widget(
-            Paragraph::new(
-                "c camp · a travel · i treat · u trade · f forage · g fish · v party · Esc title",
-            ),
+            Paragraph::new("c camp · Shift-J Journal · Shift-L letters · Esc back"),
             Rect::new(canvas.x, canvas.y + 20, 80, 1),
         );
         if let Some(last) = self.log.last() {
@@ -2039,50 +2110,30 @@ impl App {
                     ],
                     self.cursor,
                 ));
-                lines.push(Line::from(
-                    "C camp · A auto · I treat · U trade · V party · Shift-L letters",
-                ));
+                lines.push(Line::from("C camp · Shift-J Journal · Shift-L letters · Esc back"));
             }
             Screen::Letters => {
-                use crate::screens::letters;
                 if let Some(letter) = self.game.offered_letter() {
-                    let destination = self
-                        .game
-                        .content
-                        .trails
-                        .iter()
-                        .find(|trail| Some(&trail.id) == self.game.trail_id.as_ref())
-                        .and_then(|trail| {
-                            trail.nodes.iter().find(|node| node.id == letter.destination_id)
-                        })
-                        .map_or(letter.destination_id.as_str(), |node| node.name.as_str());
+                    let destination = self.landmark_display_name(&letter.destination_id);
                     lines.push(Line::from("A SEALED LETTER"));
                     lines.push(Line::from(letter.text.clone()));
                     lines.push(Line::from(format!(
-                        "For {} at {} · reward {}",
+                        "For {} at {} · reward ${:.2}",
                         letter.recipient,
                         destination,
-                        letters::reward(letter.reward_cents)
+                        letter.reward_cents as f64 / 100.0
                     )));
                     lines.extend(menu(
                         &["Accept and carry it", "Decline without penalty"],
                         self.cursor,
                     ));
                 } else if let Some(letter) = &self.game.active_letter {
-                    let destination = self
-                        .game
-                        .content
-                        .trails
-                        .iter()
-                        .find(|trail| Some(&trail.id) == self.game.trail_id.as_ref())
-                        .and_then(|trail| {
-                            trail.nodes.iter().find(|node| node.id == letter.destination_id)
-                        })
-                        .map_or(letter.destination_id.as_str(), |node| node.name.as_str());
+                    let destination = self.landmark_display_name(&letter.destination_id);
                     lines.push(Line::from(format!(
-                        "Carry this sealed letter to {} for {}.",
+                        "Carry the letter for {} to {} for ${:.2}.",
+                        letter.recipient,
                         destination,
-                        letters::reward(letter.reward_cents)
+                        letter.reward_cents as f64 / 100.0
                     )));
                     if self.game.can_deliver_letter() {
                         lines.extend(menu(
@@ -2095,7 +2146,7 @@ impl App {
                         ));
                     }
                 }
-                lines.push(Line::from("Enter select · Esc return to trail"));
+                lines.push(Line::from("Enter select · Esc back"));
             }
             Screen::Gathering => {
                 use crate::screens::gathering;
@@ -2413,8 +2464,11 @@ impl App {
                         lines.push(Line::from(format!("Share this world: {code}")));
                     }
                 }
-                lines.push(Line::from("[V] Full party · [E] Epitaph · Enter returns to title."));
+                lines.push(Line::from(
+                    "Shift-J Journal · [V] Full party · [E] Epitaph · Enter returns to title.",
+                ));
             }
+            Screen::Journal => {}
             Screen::Epitaph => {
                 lines.push(Line::from("Write up to 80 characters. Enter saves; Esc cancels."));
                 lines.push(Line::from(format!("{}▏", self.epitaph)));
@@ -2433,7 +2487,7 @@ impl App {
                             )));
                         }
                     }
-                    lines.push(Line::from("↑↓ browse the top 20 · Esc title"));
+                    lines.push(Line::from("↑↓ browse · [J] journal · Esc title"));
                 }
             }
             Screen::Settings => lines.push(Line::from(format!(
@@ -2764,6 +2818,39 @@ mod tests {
         assert!(view.contains("Food 1500 lb · $1080.00 · Steady/Filling · 5 alive"));
         assert!(view.contains("1500 lb: up to 100 ration days"));
         assert!(view.contains("The wagon is ready. Five travelers set out from Independence."));
+    }
+    #[test]
+    fn journal_is_reachable_and_renders_in_text_mode_at_both_sizes() {
+        let mut app = App::new(
+            pioneer_data::load().unwrap(),
+            7,
+            Settings { no_art: true, ..Settings::default() },
+        );
+        app.game.apply(Command::Configure {
+            trail_id: "oregon".into(),
+            era_id: "1848".into(),
+            occupation_id: "banker".into(),
+            party: ["Ada", "Ben", "Clara", "Dora", "Eli"].map(str::to_owned).to_vec(),
+            departure_month: 3,
+        });
+        app.game.apply(Command::Buy { item_id: "oxen".into(), quantity: 3 });
+        app.game.apply(Command::Depart);
+        app.screen = Screen::Journey;
+        app.handle_key(KeyEvent::from(KeyCode::Char('J')));
+        assert_eq!(app.screen, Screen::Journal);
+        for (width, height) in [(80, 24), (120, 40)] {
+            let backend = TestBackend::new(width, height);
+            let mut terminal = Terminal::new(backend).unwrap();
+            terminal.draw(|frame| app.render(frame)).unwrap();
+            let mut output = String::new();
+            for y in 0..height {
+                for x in 0..width {
+                    output.push_str(terminal.backend().buffer()[(x, y)].symbol());
+                }
+            }
+            assert!(output.contains("PARTY JOURNAL"));
+            assert!(output.contains("The party departed."));
+        }
     }
     #[test]
     fn store_vignette_uses_only_wide_terminals() {

@@ -111,7 +111,10 @@ fn sealed_letter_screen_is_keyboard_only_and_renders_at_both_sizes() {
         app.screen = Screen::Journey;
         app.handle_key(KeyEvent::from(KeyCode::Char('L')));
         let carrying = render(&mut app, 80, 24);
-        assert!(carrying.contains("Carry this sealed letter to Fort Laramie"), "{carrying}");
+        assert!(
+            carrying.contains("Carry the letter for Martha Bell to Fort Laramie"),
+            "{carrying}"
+        );
         assert!(!carrying.contains("Deliver sealed letter"), "{carrying}");
         app.game.current_node_id = Some("fort_laramie".into());
         app.game.status = RunStatus::AtLandmark("fort_laramie".into());

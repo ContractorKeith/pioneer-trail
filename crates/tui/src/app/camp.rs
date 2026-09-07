@@ -120,7 +120,9 @@ impl App {
             );
         }
         frame.render_widget(
-            Paragraph::new("1-9 select · arrows move · Enter choose · Esc trail"),
+            Paragraph::new(
+                "1-9 choose · arrows move · Shift-J Journal · Shift-L letters · Esc trail",
+            ),
             Rect::new(x + 1, y + 8, 78, 1),
         );
         if let Some(last) = self.log.last() {

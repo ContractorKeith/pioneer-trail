@@ -10,7 +10,7 @@ expression: "format!(\"=== OFFER ===\\n{offer}\\n=== CARRYING ===\\n{carrying}\\
 │ For Martha Bell at Fort Laramie · reward $15.00                                                                      │
 │ ► 1. Accept and carry it                                                                                             │
 │   2. Decline without penalty                                                                                         │
-│ Enter select · Esc return to trail                                                                                   │
+│ Enter select · Esc back                                                                                              │
 │ Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                                                         │
 │                                                                                                                      │
 │                                                                                                                      │
@@ -46,9 +46,9 @@ expression: "format!(\"=== OFFER ===\\n{offer}\\n=== CARRYING ===\\n{carrying}\\
 === CARRYING ===
 ┌SEALED LETTER─────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │ SEALED LETTER                                                                                                        │
-│ Carry this sealed letter to Fort Laramie for $15.00.                                                                 │
+│ Carry the letter for Martha Bell to Fort Laramie for $15.00.                                                         │
 │ Continue on the trail; delivery is not available here.                                                               │
-│ Enter select · Esc return to trail                                                                                   │
+│ Enter select · Esc back                                                                                              │
 │ Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                                                         │
 │                                                                                                                      │
 │                                                                                                                      │
@@ -79,7 +79,7 @@ expression: "format!(\"=== OFFER ===\\n{offer}\\n=== CARRYING ===\\n{carrying}\\
 │                                                                                                                      │
 │                                                                                                                      │
 │ TRAIL LOG─────────────────────────────────────────────────────────────────────────────────────────────────────────── │
-│ Sealed letter for Martha Bell accepted: deliver at fort_laramie for $15.00.                                          │
+│ Sealed letter for Martha Bell accepted: deliver at Fort Laramie for $15.00.                                          │
 │ Choose New Journey to begin.                                                                                         │
 │                                                                                                                      │
 │                                                                                                                      │
@@ -87,10 +87,10 @@ expression: "format!(\"=== OFFER ===\\n{offer}\\n=== CARRYING ===\\n{carrying}\\
 === DELIVERY ===
 ┌SEALED LETTER─────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │ SEALED LETTER                                                                                                        │
-│ Carry this sealed letter to Fort Laramie for $15.00.                                                                 │
+│ Carry the letter for Martha Bell to Fort Laramie for $15.00.                                                         │
 │ ► 1. Deliver sealed letter                                                                                           │
 │   2. Keep carrying it                                                                                                │
-│ Enter select · Esc return to trail                                                                                   │
+│ Enter select · Esc back                                                                                              │
 │ Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                                                         │
 │                                                                                                                      │
 │                                                                                                                      │
@@ -120,7 +120,7 @@ expression: "format!(\"=== OFFER ===\\n{offer}\\n=== CARRYING ===\\n{carrying}\\
 │                                                                                                                      │
 │                                                                                                                      │
 │ TRAIL LOG─────────────────────────────────────────────────────────────────────────────────────────────────────────── │
-│ Sealed letter for Martha Bell accepted: deliver at fort_laramie for $15.00.                                          │
+│ Sealed letter for Martha Bell accepted: deliver at Fort Laramie for $15.00.                                          │
 │ Choose New Journey to begin.                                                                                         │
 │                                                                                                                      │
 │                                                                                                                      │

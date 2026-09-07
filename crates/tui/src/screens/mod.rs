@@ -8,6 +8,7 @@ pub enum Screen {
     Store,
     Journey,
     Letters,
+    Journal,
     Camp,
     Gathering,
     Supplies,
@@ -30,4 +31,3 @@ pub enum Screen {
     Minigame,
 }
 pub mod gathering;
-pub mod letters;

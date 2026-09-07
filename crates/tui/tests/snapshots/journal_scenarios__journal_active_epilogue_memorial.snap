@@ -1,0 +1,411 @@
+---
+source: crates/tui/tests/journal_scenarios.rs
+expression: snapshots
+---
+
+=== active art=true 80x24 ===
+ PARTY JOURNAL                                                                  
+                                                                                
+ Ada's party · day 12 · 304 miles · 5 living travelers                          
+                                                                                
+                                                                                
+ Recorded: 1 stops · 0 recoveries · 0 losses                                    
+                                                                                
+ Entry 2 of 2 · Day 12 · Mile 304                                               
+                                                                                
+                                                                                
+ Reached Fort Kearney.                                                          
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+ Up/Down or k/j browse entries · Esc returns · Ctrl-Q quits                     
+                                                                                
+
+=== epilogue art=true 80x24 ===
+ PARTY JOURNAL · JOURNEY EPILOGUE                                               
+                                                                                
+ Ada's party reached its destination after 120 days and 1885 miles. 5 survived. 
+                                                                                
+                                                                                
+ Recorded: 0 stops · 0 recoveries · 0 losses                                    
+                                                                                
+ Entry 2 of 2 · Day 120 · Mile 1885                                             
+                                                                                
+                                                                                
+ The party arrived at journey's end.                                            
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+ Up/Down or k/j browse entries · Esc returns · Ctrl-Q quits                     
+                                                                                
+
+=== memorial art=true 80x24 ===
+ PARTY JOURNAL · JOURNEY EPILOGUE                                               
+                                                                                
+ Ada's party ended its journey after 47 days and 932 miles. 4 survived.         
+                                                                                
+                                                                                
+ Recorded: 0 stops · 0 recoveries · 1 losses                                    
+                                                                                
+ Entry 2 of 2 · Day 47 · Mile 932                                               
+                                                                                
+ IN MEMORY                                                               ▀▀     
+ Ada died from exhaustion.                                             ▀▀▀▀▀▀   
+                                                                       ▀▀▀▀▀▀   
+                                                                       ▀▀▀▀▀▀   
+                                                                      ▀▀▀▀▀▀▀▀  
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+ Up/Down or k/j browse entries · Esc returns · Ctrl-Q quits                     
+                                                                                
+
+=== active art=true 120x40 ===
+                     PARTY JOURNAL                                                                                      
+                                                                                                                        
+                     Ada's party · day 12 · 304 miles · 5 living travelers                                              
+                                                                                                                        
+                                                                                                                        
+                     Recorded: 1 stops · 0 recoveries · 0 losses                                                        
+                                                                                                                        
+                     Entry 2 of 2 · Day 12 · Mile 304                                                                   
+                                                                                                                        
+                                                                                                                        
+                     Reached Fort Kearney.                                                                              
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                     Up/Down or k/j browse entries · Esc returns · Ctrl-Q quits                                         
+                                                                                                                        
+
+=== epilogue art=true 120x40 ===
+                     PARTY JOURNAL · JOURNEY EPILOGUE                                                                   
+                                                                                                                        
+                     Ada's party reached its destination after 120 days and 1885 miles. 5 survived.                     
+                                                                                                                        
+                                                                                                                        
+                     Recorded: 0 stops · 0 recoveries · 0 losses                                                        
+                                                                                                                        
+                     Entry 2 of 2 · Day 120 · Mile 1885                                                                 
+                                                                                                                        
+                                                                                                                        
+                     The party arrived at journey's end.                                                                
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                     Up/Down or k/j browse entries · Esc returns · Ctrl-Q quits                                         
+                                                                                                                        
+
+=== memorial art=true 120x40 ===
+                     PARTY JOURNAL · JOURNEY EPILOGUE                                                                   
+                                                                                                                        
+                     Ada's party ended its journey after 47 days and 932 miles. 4 survived.                             
+                                                                                                                        
+                                                                                                                        
+                     Recorded: 0 stops · 0 recoveries · 1 losses                                                        
+                                                                                                                        
+                     Entry 2 of 2 · Day 47 · Mile 932                                                                   
+                                                                                                                        
+                     IN MEMORY                                                               ▀▀                         
+                     Ada died from exhaustion.                                             ▀▀▀▀▀▀                       
+                                                                                           ▀▀▀▀▀▀                       
+                                                                                           ▀▀▀▀▀▀                       
+                                                                                          ▀▀▀▀▀▀▀▀                      
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                     Up/Down or k/j browse entries · Esc returns · Ctrl-Q quits                                         
+                                                                                                                        
+
+=== active art=false 80x24 ===
+ PARTY JOURNAL                                                                  
+                                                                                
+ Ada's party · day 12 · 304 miles · 5 living travelers                          
+                                                                                
+                                                                                
+ Recorded: 1 stops · 0 recoveries · 0 losses                                    
+                                                                                
+ Entry 2 of 2 · Day 12 · Mile 304                                               
+                                                                                
+                                                                                
+ Reached Fort Kearney.                                                          
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+ Up/Down or k/j browse entries · Esc returns · Ctrl-Q quits                     
+                                                                                
+
+=== epilogue art=false 80x24 ===
+ PARTY JOURNAL · JOURNEY EPILOGUE                                               
+                                                                                
+ Ada's party reached its destination after 120 days and 1885 miles. 5 survived. 
+                                                                                
+                                                                                
+ Recorded: 0 stops · 0 recoveries · 0 losses                                    
+                                                                                
+ Entry 2 of 2 · Day 120 · Mile 1885                                             
+                                                                                
+                                                                                
+ The party arrived at journey's end.                                            
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+ Up/Down or k/j browse entries · Esc returns · Ctrl-Q quits                     
+                                                                                
+
+=== memorial art=false 80x24 ===
+ PARTY JOURNAL · JOURNEY EPILOGUE                                               
+                                                                                
+ Ada's party ended its journey after 47 days and 932 miles. 4 survived.         
+                                                                                
+                                                                                
+ Recorded: 0 stops · 0 recoveries · 1 losses                                    
+                                                                                
+ Entry 2 of 2 · Day 47 · Mile 932                                               
+                                                                                
+ IN MEMORY                                                                      
+ Ada died from exhaustion.                                                      
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+ Up/Down or k/j browse entries · Esc returns · Ctrl-Q quits                     
+                                                                                
+
+=== active art=false 120x40 ===
+                     PARTY JOURNAL                                                                                      
+                                                                                                                        
+                     Ada's party · day 12 · 304 miles · 5 living travelers                                              
+                                                                                                                        
+                                                                                                                        
+                     Recorded: 1 stops · 0 recoveries · 0 losses                                                        
+                                                                                                                        
+                     Entry 2 of 2 · Day 12 · Mile 304                                                                   
+                                                                                                                        
+                                                                                                                        
+                     Reached Fort Kearney.                                                                              
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                     Up/Down or k/j browse entries · Esc returns · Ctrl-Q quits                                         
+                                                                                                                        
+
+=== epilogue art=false 120x40 ===
+                     PARTY JOURNAL · JOURNEY EPILOGUE                                                                   
+                                                                                                                        
+                     Ada's party reached its destination after 120 days and 1885 miles. 5 survived.                     
+                                                                                                                        
+                                                                                                                        
+                     Recorded: 0 stops · 0 recoveries · 0 losses                                                        
+                                                                                                                        
+                     Entry 2 of 2 · Day 120 · Mile 1885                                                                 
+                                                                                                                        
+                                                                                                                        
+                     The party arrived at journey's end.                                                                
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                     Up/Down or k/j browse entries · Esc returns · Ctrl-Q quits                                         
+                                                                                                                        
+
+=== memorial art=false 120x40 ===
+                     PARTY JOURNAL · JOURNEY EPILOGUE                                                                   
+                                                                                                                        
+                     Ada's party ended its journey after 47 days and 932 miles. 4 survived.                             
+                                                                                                                        
+                                                                                                                        
+                     Recorded: 0 stops · 0 recoveries · 1 losses                                                        
+                                                                                                                        
+                     Entry 2 of 2 · Day 47 · Mile 932                                                                   
+                                                                                                                        
+                     IN MEMORY                                                                                          
+                     Ada died from exhaustion.                                                                          
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                     Up/Down or k/j browse entries · Esc returns · Ctrl-Q quits

@@ -267,7 +267,7 @@ impl GameState {
             .and_then(|trail| trail.nodes.iter().find(|node| node.id == id))
     }
 
-    fn landmark_name(&self, id: &str) -> String {
+    pub(crate) fn landmark_name(&self, id: &str) -> String {
         self.trail_node(id).map_or_else(|| id.to_string(), |node| node.name.clone())
     }
 

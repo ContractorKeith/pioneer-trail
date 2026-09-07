@@ -9,6 +9,7 @@ pub mod conversations;
 pub mod economy;
 pub mod family;
 pub mod health;
+pub mod journal;
 pub mod minigame;
 pub mod party;
 pub mod rng;
@@ -23,6 +24,7 @@ pub use conversations::{ConversationMemory, ConversationTopic, SpeakerSetting, S
 pub use economy::{Counteroffer, Market, NpcTrain};
 pub use family::{FamilyState, Pregnancy};
 pub use health::{AilmentStage, Sex};
+pub use journal::{DeathCause, Journal, JournalEntry, JournalKind};
 pub use minigame::{MinigameKind, MinigameSession};
 pub use party::{Relationships, Skills, Trait};
 pub use state::{

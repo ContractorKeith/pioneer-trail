@@ -276,7 +276,7 @@ expression: "all_screens(120, 40)"
                     ► 1 Continue                2 Supplies                3 Map                                         
                       4 Pace                    5 Rations                 6 Rest                                        
                       7 Hunt                    8 Talk                    9 Buy                                         
-                    c camp · a travel · i treat · u trade · f forage · g fish · v party · Esc title                     
+                    c camp · Shift-J Journal · Shift-L letters · Esc back                                               
                     The wagon is ready. Five travelers set out from Independence.                                       
                                                                                                                         
                                                                                                                         
@@ -318,7 +318,7 @@ expression: "all_screens(120, 40)"
                     ► 1. Rest                   2. Treat                  3. Supplies                                   
                       4. Forage                 5. Fish                   6. Hunt                                       
                       7. Party                  8. Talk                   9. Return to trail                            
-                     1-9 select · arrows move · Enter choose · Esc trail                                                
+                     1-9 choose · arrows move · Shift-J Journal · Shift-L letters · Esc trail                           
                      The wagon is ready. Five travelers set out from Independence.                                      
                                                                                                                         
                                                                                                                         
@@ -863,7 +863,7 @@ expression: "all_screens(120, 40)"
                       Clara: survived, health 100                                                                       
                       Base 2864 · early 200 · no deaths 100 · no ferry 100 · rock 0                                     
                       Share this world: pt-0000000000003hs                                                              
-                      [V] Full party · [E] Epitaph · Enter returns to title.                                            
+                      Shift-J Journal · [V] Full party · [E] Epitaph · Enter returns to title.                          
                       Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                                      
                                                                                                                         
                                                                                                                         
@@ -932,7 +932,7 @@ expression: "all_screens(120, 40)"
 │ PIONEER TRAIL                                                                                                        │
 │ ► Ada  3200 points                                                                                                   │
 │   Clara  2800 points                                                                                                 │
-│ ↑↓ browse the top 20 · Esc title                                                                                     │
+│ ↑↓ browse · [J] journal · Esc title                                                                                  │
 │ Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                                                         │
 │                                                                                                                      │
 │                                                                                                                      │
