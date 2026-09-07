@@ -30,6 +30,9 @@ pub enum JournalKind {
     Landmark { landmark_id: String, name: String },
     Recovered { name: String, ailment: String },
     Relationship { left: String, right: String, affinity: i16 },
+    Birth { mother: String, child: String },
+    Marriage { left: String, right: String },
+    LeftParty { name: String },
     Death { name: String, cause: DeathCause },
     Arrived,
     Failed,
@@ -62,6 +65,9 @@ impl JournalKind {
                     "getting acquainted"
                 }
             ),
+            Self::Birth { mother, child } => format!("{mother} gave birth to {child}."),
+            Self::Marriage { left, right } => format!("{left} and {right} married."),
+            Self::LeftParty { name } => format!("{name} left the party."),
             Self::Death { name, cause } => format!("{name} died from {}.", cause.description()),
             Self::Arrived => "The party arrived at journey's end.".into(),
             Self::Failed => "The journey ended on the trail.".into(),

@@ -74,6 +74,7 @@ pub struct App {
     bell_pending: bool,
     outfitting_advice_visible: bool,
     departure_warning_armed: bool,
+    journal_history: Option<Vec<pioneer_sim::JournalEntry>>,
 }
 impl App {
     pub fn new(content: GameContent, seed: u64, settings: Settings) -> Self {
@@ -107,6 +108,7 @@ impl App {
             bell_pending: false,
             outfitting_advice_visible: false,
             departure_warning_armed: false,
+            journal_history: None,
         }
     }
     pub fn with_storage(mut self, storage: Storage) -> Self {
@@ -166,7 +168,9 @@ impl App {
             Screen::SetupOccupation => self.game.content.occupations.len(),
             Screen::Store => self.game.content.items.len() + 1,
             Screen::Journey => 9,
-            Screen::Journal => self.game.journal.entries.len().max(1),
+            Screen::Journal => {
+                self.journal_history.as_ref().unwrap_or(&self.game.journal.entries).len().max(1)
+            }
             Screen::Map => self
                 .game
                 .content
@@ -277,9 +281,9 @@ impl App {
             }
             return;
         }
-        if key.code == KeyCode::Char('j') && matches!(self.screen, Screen::Journey | Screen::Score)
+        if key.code == KeyCode::Char('J') && matches!(self.screen, Screen::Journey | Screen::Score)
         {
-            self.character('j');
+            self.character('J');
             return;
         }
         let previous_cursor = self.cursor;
@@ -652,9 +656,24 @@ impl App {
                 self.screen = Screen::Party;
                 self.cursor = 0;
             }
-            (Screen::Journey, 'j') | (Screen::Score, 'j') => {
+            (Screen::Journey, 'J') | (Screen::Score, 'J') => {
+                self.journal_history = None;
                 self.screen = Screen::Journal;
                 self.cursor = self.game.journal.entries.len().saturating_sub(1);
+            }
+            (Screen::Hall, 'J') => {
+                if let Some(storage) = &self.storage {
+                    match storage.load_history() {
+                        Ok(history) => {
+                            if let Some(run) = history.leaders().get(self.cursor) {
+                                self.journal_history = Some(run.journal.clone());
+                                self.cursor = run.journal.len().saturating_sub(1);
+                                self.screen = Screen::Journal;
+                            }
+                        }
+                        Err(error) => self.note(format!("Could not read journal: {error}")),
+                    }
+                }
             }
             (Screen::Journey, 'f') => self.apply(Command::Forage),
             (Screen::Journey, 'g') => self.apply(Command::Fish),
@@ -720,6 +739,21 @@ impl App {
         }
     }
     fn back(&mut self) {
+        if self.screen == Screen::Journal {
+            let historical = self.journal_history.take().is_some();
+            self.screen = if historical {
+                Screen::Hall
+            } else if matches!(
+                self.game.status,
+                pioneer_sim::RunStatus::Arrived | pioneer_sim::RunStatus::Failed
+            ) {
+                Screen::Score
+            } else {
+                Screen::Journey
+            };
+            self.cursor = 0;
+            return;
+        }
         if self.screen == Screen::Store && self.outfitting_advice_visible {
             self.outfitting_advice_visible = false;
             return;
@@ -1879,17 +1913,16 @@ impl App {
                 ));
             }
             Screen::Journal => {
-                if self.game.journal.entries.is_empty() {
-                    lines.push(Line::from("No notable moments have been recorded yet."));
+                let entries = self.journal_history.as_ref().unwrap_or(&self.game.journal.entries);
+                if entries.is_empty() {
+                    lines.push(Line::from(if self.journal_history.is_some() {
+                        "Journal unavailable for this legacy journey."
+                    } else {
+                        "No notable moments have been recorded yet."
+                    }));
                 } else {
-                    for (index, entry) in self
-                        .game
-                        .journal
-                        .entries
-                        .iter()
-                        .enumerate()
-                        .skip(self.cursor.saturating_sub(3))
-                        .take(7)
+                    for (index, entry) in
+                        entries.iter().enumerate().skip(self.cursor.saturating_sub(3)).take(7)
                     {
                         lines.push(Line::from(format!(
                             "{} Day {} · {} mi · {}",
@@ -1920,7 +1953,7 @@ impl App {
                             )));
                         }
                     }
-                    lines.push(Line::from("↑↓ browse the top 20 · Esc title"));
+                    lines.push(Line::from("↑↓ browse · [J] journal · Esc title"));
                 }
             }
             Screen::Settings => lines.push(Line::from(format!(
@@ -2192,7 +2225,7 @@ mod tests {
         app.game.apply(Command::Buy { item_id: "oxen".into(), quantity: 3 });
         app.game.apply(Command::Depart);
         app.screen = Screen::Journey;
-        app.handle_key(KeyEvent::from(KeyCode::Char('j')));
+        app.handle_key(KeyEvent::from(KeyCode::Char('J')));
         assert_eq!(app.screen, Screen::Journal);
         for (width, height) in [(80, 24), (120, 40)] {
             let backend = TestBackend::new(width, height);

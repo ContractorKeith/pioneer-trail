@@ -393,7 +393,10 @@ impl GameState {
             }
             if let Some(before) = before_relationships.get(&member.name) {
                 for (other, affinity) in &member.relationships.affinity {
-                    if member.name < *other && before.get(other) != Some(affinity) {
+                    let previous = before.get(other).copied().unwrap_or_default();
+                    let crossed =
+                        (previous < 20 && *affinity >= 20) || (previous > -20 && *affinity <= -20);
+                    if member.name < *other && crossed {
                         entries.push(JournalKind::Relationship {
                             left: member.name.clone(),
                             right: other.clone(),
@@ -413,22 +416,6 @@ impl GameState {
                 Outcome::Departed => {
                     self.journal.record(self.day, self.miles, JournalKind::Departed)
                 }
-                Outcome::ArrivedAt { landmark_id } => {
-                    let name = self
-                        .current_landmark()
-                        .map(|node| node.name.clone())
-                        .unwrap_or_else(|| landmark_id.clone());
-                    self.journal.record(
-                        self.day,
-                        self.miles,
-                        JournalKind::Landmark { landmark_id: landmark_id.clone(), name },
-                    );
-                }
-                Outcome::MemberDied { name, cause } => self.journal.record(
-                    self.day,
-                    self.miles,
-                    JournalKind::Death { name: name.clone(), cause: cause.clone() },
-                ),
                 Outcome::Score { .. } if self.status == RunStatus::Arrived => {
                     self.journal.record(self.day, self.miles, JournalKind::Arrived)
                 }
@@ -439,6 +426,21 @@ impl GameState {
             && !self.journal.entries.iter().any(|entry| matches!(entry.kind, JournalKind::Failed))
         {
             self.journal.record(self.day, self.miles, JournalKind::Failed);
+        }
+    }
+    fn journal_now(&mut self, kind: JournalKind) {
+        self.journal.record(self.day, self.miles, kind);
+    }
+    fn journal_deaths(&mut self, outcomes: &[Outcome]) {
+        let deaths = outcomes
+            .iter()
+            .filter_map(|outcome| match outcome {
+                Outcome::MemberDied { name, cause } => Some((name.clone(), cause.clone())),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        for (name, cause) in deaths {
+            self.journal_now(JournalKind::Death { name, cause });
         }
     }
     fn try_apply(&mut self, c: Command) -> Result<Vec<Outcome>, CommandError> {
@@ -694,6 +696,7 @@ impl GameState {
         }
         self.party_daily(&mut out, false, eaten_food == required_food);
         self.family_daily(&mut out);
+        self.journal_deaths(&out);
         if !self.party.iter().any(|member| member.alive) {
             self.status = RunStatus::Failed;
             return Ok(out);
@@ -888,6 +891,7 @@ impl GameState {
                 }
             }
         }
+        self.journal_deaths(&out);
         self.pass_camp_day(&mut out, false);
         if self.status != RunStatus::Failed {
             self.begin_only_route()?;
@@ -1229,6 +1233,7 @@ impl GameState {
                 cause: DeathCause::Rafting,
             });
         }
+        self.journal_deaths(&outcomes);
         self.active_minigame = None;
         self.pass_camp_day(&mut outcomes, false);
         if completed && self.party.iter().any(|member| member.alive) {
@@ -2231,6 +2236,7 @@ impl GameState {
             return;
         }
         self.current_node_id = Some(n.id.clone());
+        self.journal_now(JournalKind::Landmark { landmark_id: n.id.clone(), name: n.name.clone() });
         let (_, month, day) = self.date();
         if n.id == "independence_rock" && (month < 7 || (month == 7 && day <= 4)) {
             self.flags.insert("independence_rock_early".into());
@@ -2267,6 +2273,7 @@ impl GameState {
     }
     fn progress_ailments(&mut self, out: &mut Vec<Outcome>) {
         let mut spread = Vec::new();
+        let mut recovered = Vec::new();
         for index in 0..self.party.len() {
             if !self.party[index].alive {
                 continue;
@@ -2325,8 +2332,10 @@ impl GameState {
                 if days >= u16::from(definition.severity.max(2)) * 3
                     && self.party[index].health >= 35
                 {
+                    let name = self.party[index].name.clone();
                     self.party[index].ailments.retain(|ailment| ailment != &id);
                     self.party[index].ailment_days.remove(&id);
+                    recovered.push((name, id.clone()));
                 }
                 if crate::health::contagious(&id)
                     && days <= u16::from(definition.severity.max(2)) * 2
@@ -2344,11 +2353,15 @@ impl GameState {
                 target.ailment_days.insert(id, 0);
             }
         }
+        for (name, ailment) in recovered {
+            self.journal_now(JournalKind::Recovered { name, ailment });
+        }
     }
     fn pass_camp_day(&mut self, out: &mut Vec<Outcome>, resting: bool) {
         if self.status == RunStatus::Failed {
             return;
         }
+        let outcome_start = out.len();
         let present_before = self.present_npc_ids();
         self.day = self.day.saturating_add(1);
         let season = self.season();
@@ -2396,6 +2409,7 @@ impl GameState {
             self.status = RunStatus::Failed;
         }
         self.announce_npc_arrivals(&present_before, out);
+        self.journal_deaths(&out[outcome_start..]);
     }
     fn spoil_food(&mut self) {
         let rate_per_mille = match self.weather {
@@ -2467,6 +2481,10 @@ impl GameState {
             baby.health = 80;
             crate::party::initialize_joiner(&mut baby, &mut self.party, &mut self.rng);
             self.party.push(baby);
+            self.journal_now(JournalKind::Birth {
+                mother: mother_name.clone(),
+                child: baby_name.clone(),
+            });
             out.push(Outcome::Message(format!("{} gives birth to {}.", mother_name, baby_name)));
 
             let complication_chance =
@@ -2551,6 +2569,7 @@ impl GameState {
             return;
         }
         self.family.marriages.push(pair.clone());
+        self.journal_now(JournalKind::Marriage { left: pair.0.clone(), right: pair.1.clone() });
         out.push(Outcome::Message(format!("{} and {} celebrate their union.", pair.0, pair.1)));
     }
     fn member_leaves(&mut self, out: &mut Vec<Outcome>) {
@@ -2568,6 +2587,7 @@ impl GameState {
         let member = self.party.remove(index);
         self.family.pregnancies.retain(|pregnancy| pregnancy.mother != member.name);
         out.push(Outcome::Message(format!("{} leaves the party.", member.name)));
+        self.journal_now(JournalKind::LeftParty { name: member.name });
     }
     fn ailment_damage(&self, member: &PartyMember) -> u8 {
         let damage = member
