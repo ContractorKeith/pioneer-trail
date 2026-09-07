@@ -166,6 +166,13 @@ impl App {
             Screen::SetupOccupation => self.game.content.occupations.len(),
             Screen::Store => self.game.content.items.len() + 1,
             Screen::Journey => 9,
+            Screen::Letters => {
+                if self.game.offered_letter().is_some() || self.game.can_deliver_letter() {
+                    2
+                } else {
+                    1
+                }
+            }
             Screen::Map => self
                 .game
                 .content
@@ -445,6 +452,20 @@ impl App {
                     }
                 }
             },
+            Screen::Letters => {
+                if let Some(letter) = self.game.offered_letter() {
+                    let command = if self.cursor == 0 {
+                        Command::AcceptLetter { letter_id: letter.id.clone() }
+                    } else {
+                        Command::DeclineLetter { letter_id: letter.id.clone() }
+                    };
+                    self.apply(command);
+                } else if self.cursor == 0 && self.game.can_deliver_letter() {
+                    self.apply(Command::DeliverLetter);
+                } else {
+                    self.back();
+                }
+            }
             Screen::Pace => {
                 let pace = [Pace::Steady, Pace::Strenuous, Pace::Grueling][self.cursor % 3];
                 self.apply(Command::SetPace(pace));
@@ -645,6 +666,7 @@ impl App {
                 self.screen = Screen::Party;
                 self.cursor = 0;
             }
+            (Screen::Journey, 'L') => self.open_letters(),
             (Screen::Journey, 'f') => self.apply(Command::Forage),
             (Screen::Journey, 'g') => self.apply(Command::Fish),
             (Screen::Journey, 'a') => {
@@ -743,6 +765,7 @@ impl App {
             Screen::SetupDeparture => Screen::SetupParty,
             Screen::Store
             | Screen::Supplies
+            | Screen::Letters
             | Screen::Map
             | Screen::Pace
             | Screen::Rations
@@ -875,7 +898,26 @@ impl App {
                 }
             }
             Outcome::MemberDied { name } => self.note(format!("{name} has died.")),
+            Outcome::LetterAccepted { recipient, destination_id, reward_cents, .. } => {
+                self.note(format!(
+                "Sealed letter for {recipient} accepted: deliver at {destination_id} for ${:.2}.",
+                reward_cents as f64 / 100.0
+            ))
+            }
+            Outcome::LetterDeclined { .. } => self.note("You decline the sealed letter."),
+            Outcome::LetterDelivered { recipient, reward_cents, .. } => self.note(format!(
+                "Delivered the sealed letter to {recipient}; received ${:.2}.",
+                reward_cents as f64 / 100.0
+            )),
             _ => {}
+        }
+    }
+    fn open_letters(&mut self) {
+        if self.game.offered_letter().is_some() || self.game.active_letter.is_some() {
+            self.cursor = 0;
+            self.screen = Screen::Letters;
+        } else {
+            self.note("No sealed-letter business is waiting here.");
         }
     }
     fn note(&mut self, text: impl Into<String>) {
@@ -1094,6 +1136,7 @@ impl App {
         match self.screen {
             Screen::Title => "PIONEER TRAIL",
             Screen::Journey => "ON THE TRAIL",
+            Screen::Letters => "SEALED LETTER",
             Screen::Store => "GENERAL STORE",
             Screen::Score => "JOURNEY COMPLETE",
             _ => "PIONEER TRAIL",
@@ -1550,8 +1593,62 @@ impl App {
                     self.cursor,
                 ));
                 lines.push(Line::from(
-                    "A auto travel · I treat · U trade · F forage · G fish · V party",
+                    "A auto travel · I treat · U trade · F forage · G fish · V party · Shift-L letters",
                 ));
+            }
+            Screen::Letters => {
+                use crate::screens::letters;
+                if let Some(letter) = self.game.offered_letter() {
+                    let destination = self
+                        .game
+                        .content
+                        .trails
+                        .iter()
+                        .find(|trail| Some(&trail.id) == self.game.trail_id.as_ref())
+                        .and_then(|trail| {
+                            trail.nodes.iter().find(|node| node.id == letter.destination_id)
+                        })
+                        .map_or(letter.destination_id.as_str(), |node| node.name.as_str());
+                    lines.push(Line::from("A SEALED LETTER"));
+                    lines.push(Line::from(letter.text.clone()));
+                    lines.push(Line::from(format!(
+                        "For {} at {} · reward {}",
+                        letter.recipient,
+                        destination,
+                        letters::reward(letter.reward_cents)
+                    )));
+                    lines.extend(menu(
+                        &["Accept and carry it", "Decline without penalty"],
+                        self.cursor,
+                    ));
+                } else if let Some(letter) = &self.game.active_letter {
+                    let destination = self
+                        .game
+                        .content
+                        .trails
+                        .iter()
+                        .find(|trail| Some(&trail.id) == self.game.trail_id.as_ref())
+                        .and_then(|trail| {
+                            trail.nodes.iter().find(|node| node.id == letter.destination_id)
+                        })
+                        .map_or(letter.destination_id.as_str(), |node| node.name.as_str());
+                    lines.push(Line::from(format!(
+                        "Carry this sealed letter to {} for {}.",
+                        destination,
+                        letters::reward(letter.reward_cents)
+                    )));
+                    if self.game.can_deliver_letter() {
+                        lines.extend(menu(
+                            &["Deliver sealed letter", "Keep carrying it"],
+                            self.cursor,
+                        ));
+                    } else {
+                        lines.push(Line::from(
+                            "Continue on the trail; delivery is not available here.",
+                        ));
+                    }
+                }
+                lines.push(Line::from("Enter select · Esc return to trail"));
             }
             Screen::Supplies => {
                 lines.push(Line::from(crate::advice::supplies_advice(&self.game)));

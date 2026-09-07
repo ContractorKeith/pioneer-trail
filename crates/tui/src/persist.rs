@@ -326,6 +326,34 @@ mod tests {
     }
 
     #[test]
+    fn forged_active_letter_save_is_rejected_and_preserved() {
+        let temp = Temp::new();
+        let store = Storage::at(&temp.0);
+        let mut game = GameState::with_content(44, pioneer_data::load().unwrap());
+        game.apply(pioneer_sim::Command::Configure {
+            trail_id: "oregon".into(),
+            era_id: "1848".into(),
+            occupation_id: "farmer".into(),
+            party: vec!["Ada".into(), "Ben".into(), "Clara".into(), "Dora".into(), "Eli".into()],
+            departure_month: 3,
+        });
+        game.current_node_id = Some("fort_kearney".into());
+        game.status = pioneer_sim::RunStatus::AtLandmark("fort_kearney".into());
+        game.apply(pioneer_sim::Command::AcceptLetter { letter_id: "platt_note".into() });
+        store.save_session("letter-forgery", &game).unwrap();
+
+        let path = temp.0.join("save.json");
+        let mut value: serde_json::Value =
+            serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        value["game"]["active_letter"]["reward_cents"] = serde_json::json!(99_999);
+        fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
+        let forged = fs::read(&path).unwrap();
+
+        assert!(store.load_session().is_err());
+        assert_eq!(fs::read(path).unwrap(), forged);
+    }
+
+    #[test]
     fn terminal_saves_cannot_resume_into_mandatory_events() {
         let temp = Temp::new();
         let store = Storage::at(&temp.0);
