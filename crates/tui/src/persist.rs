@@ -245,6 +245,7 @@ pub struct Settings {
     pub speed: Speed,
     pub bell: bool,
     pub no_art: bool,
+    pub reduced_motion: bool,
 }
 
 #[cfg(test)]
@@ -385,12 +386,18 @@ mod tests {
     fn settings_round_trip_and_partial_defaults() {
         let temp = Temp::new();
         let store = Storage::at(&temp.0);
-        let settings = Settings { no_art: true, color: ColorMode::Mono, ..Settings::default() };
+        let settings = Settings {
+            no_art: true,
+            color: ColorMode::Mono,
+            reduced_motion: true,
+            ..Settings::default()
+        };
         store.save_settings(&settings).unwrap();
         assert_eq!(store.load_settings().unwrap(), settings);
         fs::write(temp.0.join("settings.toml"), "bell = true").unwrap();
         assert!(store.load_settings().unwrap().bell);
         assert_eq!(store.load_settings().unwrap().speed, Speed::Normal);
+        assert!(!store.load_settings().unwrap().reduced_motion);
     }
 
     #[test]

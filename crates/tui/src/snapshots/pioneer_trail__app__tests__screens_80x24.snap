@@ -246,7 +246,7 @@ OREGON TRAIL ROUTE RECORD · 0 miles · Clear
    │                                                                            
    oQ────────oR                                                                 
                                                                                 
-◆ wagon · @ current stop · > next · * reached · o unknown · † grave             
+◆ wagon · @ last stop · > next · * reached · o unknown · † grave                
 On the way to Kansas River Crossing: 102 miles remain.                          
 Nearest reachable supply: Fort Kearney, 304 miles. Forks may vary.              
 ► @A Independence, Missouri · day 0, mile 0                                     
@@ -342,30 +342,30 @@ Nearest reachable supply: Fort Kearney, 304 miles. Forks may vary.
 └──────────────────────────────────────────────────────────────────────────────┘
 
 === Talk ===
-┌PIONEER TRAIL─────────────────────────────────────────────────────────────────┐
-│ PIONEER TRAIL                                                                │
-│ Talk to people: Enter to listen. Esc returns to camp.                        │
-│ The wagon is ready. Five travelers set out from Independence.                │
-│ Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                 │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│ TRAIL LOG─────────────────────────────────────────────────────────────────── │
-│ The wagon is ready. Five travelers set out from Independence.                │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-└──────────────────────────────────────────────────────────────────────────────┘
+  AT THE FORT                                                                   
+        ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀                          
+       ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀                         
+      ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀                        
+      ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀                        
+     ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀                       
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+                                                                                
+  AT THE FORT. Who do you approach?                                             
+  ► 1. Speak with Silas Enright                                                 
+    2. Speak with Ruth Holloway (neighboring wagon)                             
+    3. Listen to the camp                                                       
+  The wagon is ready. Five travelers set out from Independence.                 
+  Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                  
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+TRAIL LOG───────────────────────────────────────────────────────────────────────
+The wagon is ready. Five travelers set out from Independence.                   
+                                                                                
 
 === Treat ===
 ┌PIONEER TRAIL─────────────────────────────────────────────────────────────────┐
@@ -604,9 +604,9 @@ The wagon is ready. Five travelers set out from Independence.
 === Settings ===
 ┌PIONEER TRAIL─────────────────────────────────────────────────────────────────┐
 │ PIONEER TRAIL                                                                │
-│ [C]olor Truecolor  [B]ell false  [A]rt text-only false  [S]peed Normal       │
+│ [C]olor Truecolor  [B]ell false  [A]rt text-only false  [M]otion reduced     │
+│ false  [S]peed Normal                                                        │
 │ Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                 │
-│                                                                              │
 │                                                                              │
 │                                                                              │
 │                                                                              │

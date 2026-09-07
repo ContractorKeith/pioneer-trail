@@ -143,9 +143,9 @@ impl App {
         }
         frame.render_widget(
             Paragraph::new(if diagram {
-                "◆ wagon · @ current stop · > next · * reached · o unknown · † grave"
+                "◆ wagon · @ last stop · > next · * reached · o unknown · † grave"
             } else {
-                "@ current stop · > next · * reached · o unknown · † grave"
+                "@ last stop · > next · * reached · o unknown · † grave"
             }),
             Rect::new(x, y, 80, 1),
         );

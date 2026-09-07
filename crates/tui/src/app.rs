@@ -9,6 +9,7 @@ use crossterm::event::{self, Event};
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use pioneer_sim::{
     Command, CrossMethod, GameContent, GameState, GatheringActivity, Outcome, Pace, RationLevel,
+    SpeakerSetting, SpeakerView,
 };
 use ratatui::{
     prelude::*,
@@ -35,6 +36,20 @@ struct TradeDraft {
     wanted: usize,
     offered_quantity: u32,
     wanted_quantity: u32,
+}
+/// Talk screen's two-step flow: pick a speaker, then a grounded topic.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+enum TalkStage {
+    #[default]
+    Choose,
+    Topic,
+    Response,
+}
+#[derive(Debug, Clone)]
+struct TalkResponse {
+    speaker_name: String,
+    setting: SpeakerSetting,
+    lines: Vec<String>,
 }
 #[derive(Debug, Clone, Copy)]
 struct GatheringResult {
@@ -86,9 +101,16 @@ pub struct App {
     bell_pending: bool,
     outfitting_advice_visible: bool,
     departure_warning_armed: bool,
+    travel_moment: Option<crate::travel_moment::TravelMoment>,
+    last_travel_moment_day: Option<u32>,
+    travel_moment_started_tick: Option<u64>,
+    resume_auto_travel: bool,
+    talk_stage: TalkStage,
     camp_return: bool,
     gathering_activity: GatheringActivity,
     gathering_result: Option<GatheringResult>,
+    talk_speaker: Option<SpeakerView>,
+    talk_response: Option<TalkResponse>,
 }
 impl App {
     pub fn new(content: GameContent, seed: u64, settings: Settings) -> Self {
@@ -122,9 +144,16 @@ impl App {
             bell_pending: false,
             outfitting_advice_visible: false,
             departure_warning_armed: false,
+            travel_moment: None,
+            last_travel_moment_day: None,
+            travel_moment_started_tick: None,
+            resume_auto_travel: false,
+            talk_stage: TalkStage::default(),
             camp_return: false,
             gathering_activity: GatheringActivity::Forage,
             gathering_result: None,
+            talk_speaker: None,
+            talk_response: None,
         }
     }
     pub fn with_storage(mut self, storage: Storage) -> Self {
@@ -152,6 +181,11 @@ impl App {
         })
     }
     fn advance_auto_travel(&mut self) {
+        if self.travel_moment.is_some() {
+            self.auto_travel = false;
+            self.note("Auto travel paused for a trail moment. Press Space to continue.");
+            return;
+        }
         if let Some(reason) = self.auto_travel_pause_reason() {
             self.auto_travel = false;
             self.note(reason);
@@ -195,6 +229,11 @@ impl App {
             Screen::Pace | Screen::Rations | Screen::Rest => 3,
             Screen::Treat | Screen::Party => self.game.party.len(),
             Screen::Trade => 9,
+            Screen::Talk => match self.talk_stage {
+                TalkStage::Choose => self.game.available_speakers().len() + 1,
+                TalkStage::Topic => crate::conversation::TOPICS.len(),
+                TalkStage::Response => 1,
+            },
             Screen::Hall => self.hall.len(),
             Screen::River => 5,
             Screen::Fork => self.game.current_landmark().map_or(0, |n| n.routes.len()),
@@ -230,6 +269,12 @@ impl App {
         }
         if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('q') {
             self.quit = true;
+            return;
+        }
+        if self.screen == Screen::Journey && self.travel_moment.is_some() {
+            if matches!(key.code, KeyCode::Char(' ') | KeyCode::Enter | KeyCode::Esc) {
+                self.dismiss_travel_moment();
+            }
             return;
         }
         if let Some(game) = &mut self.minigame {
@@ -334,6 +379,7 @@ impl App {
                     self.epitaph.clear();
                     self.outfitting_advice_visible = false;
                     self.departure_warning_armed = false;
+                    self.clear_travel_moment_history();
                     self.camp_return = false;
                     self.gathering_result = None;
                     self.screen = Screen::SetupTrail;
@@ -458,7 +504,9 @@ impl App {
                 4 => self.screen = Screen::Rations,
                 5 => self.screen = Screen::Rest,
                 6 => self.apply(Command::BeginHunt),
-                7 => self.screen = Screen::Talk,
+                7 => {
+                    self.open_talk();
+                }
                 _ => {
                     if self.game.can_shop() {
                         self.screen = Screen::Store
@@ -494,9 +542,34 @@ impl App {
             Screen::Rest => {
                 self.apply(Command::Rest { days: (self.cursor + 1) as u32 });
             }
-            Screen::Talk => {
-                self.apply(Command::Talk);
-            }
+            Screen::Talk => match self.talk_stage {
+                TalkStage::Choose => {
+                    let speakers = self.game.available_speakers();
+                    if self.cursor < speakers.len() {
+                        self.talk_speaker = speakers.get(self.cursor).cloned();
+                        self.talk_stage = TalkStage::Topic;
+                        self.cursor = 0;
+                    } else {
+                        self.apply(Command::Talk);
+                    }
+                }
+                TalkStage::Topic => {
+                    if let Some(speaker) = &self.talk_speaker {
+                        let topic = crate::conversation::TOPICS
+                            [self.cursor % crate::conversation::TOPICS.len()]
+                        .0;
+                        let speaker_id = speaker.id.clone();
+                        self.apply(Command::Converse { speaker_id, topic });
+                    }
+                    self.talk_stage = if self.talk_response.is_some() {
+                        TalkStage::Response
+                    } else {
+                        TalkStage::Choose
+                    };
+                    self.cursor = 0;
+                }
+                TalkStage::Response => self.clear_talk_response(),
+            },
             Screen::Treat => {
                 if let Some(ailment_id) = self
                     .game
@@ -583,6 +656,7 @@ impl App {
                     self.run_id = new_run_id();
                     self.recorded = false;
                     self.pending_event = None;
+                    self.clear_travel_moment_history();
                     if let Some(index) =
                         self.game.content.trails.iter().position(|trail| trail.id == world.trail)
                     {
@@ -673,7 +747,9 @@ impl App {
             (Screen::Journey, 'p') => self.screen = Screen::Pace,
             (Screen::Journey, 'r') => self.screen = Screen::Rations,
             (Screen::Journey, 'x') => self.screen = Screen::Rest,
-            (Screen::Journey, 't') => self.screen = Screen::Talk,
+            (Screen::Journey, 't') => {
+                self.open_talk();
+            }
             (Screen::Journey, 'i') => self.screen = Screen::Treat,
             (Screen::Journey, 'u') => {
                 self.screen = Screen::Trade;
@@ -686,10 +762,11 @@ impl App {
             (Screen::Journey, 'f') => self.open_gathering(GatheringActivity::Forage),
             (Screen::Journey, 'g') => self.open_gathering(GatheringActivity::Fish),
             (Screen::Journey, 'a') => {
-                if matches!(self.game.status, pioneer_sim::RunStatus::AtLandmark(_)) {
+                let enable = !self.auto_travel;
+                self.auto_travel = enable;
+                if enable && matches!(self.game.status, pioneer_sim::RunStatus::AtLandmark(_)) {
                     self.apply(Command::Continue);
                 }
-                self.auto_travel = !self.auto_travel;
             }
             (Screen::SetupTrail, 'd') => {
                 use pioneer_sim::state::Difficulty;
@@ -743,10 +820,18 @@ impl App {
                 self.settings.no_art = !self.settings.no_art;
                 self.save_settings();
             }
+            (Screen::Settings, 'm') => {
+                self.settings.reduced_motion = !self.settings.reduced_motion;
+                self.save_settings();
+            }
             _ => {}
         }
     }
     fn back(&mut self) {
+        if self.screen == Screen::Talk && self.talk_stage != TalkStage::Choose {
+            self.clear_talk_response();
+            return;
+        }
         if self.screen == Screen::Gathering && self.gathering_result.is_some() {
             self.dismiss_gathering();
             return;
@@ -820,6 +905,23 @@ impl App {
             Screen::Journey => Screen::Title,
         }
     }
+    fn open_talk(&mut self) {
+        self.clear_talk_response();
+        self.screen = Screen::Talk;
+    }
+    fn clear_talk_response(&mut self) {
+        self.talk_stage = TalkStage::Choose;
+        self.talk_speaker = None;
+        self.talk_response = None;
+        self.cursor = 0;
+    }
+    fn talk_setting(&self) -> Option<SpeakerSetting> {
+        self.talk_response
+            .as_ref()
+            .map(|response| response.setting)
+            .or_else(|| self.talk_speaker.as_ref().map(|speaker| speaker.setting))
+            .or_else(|| self.game.available_speakers().first().map(|speaker| speaker.setting))
+    }
     fn apply(&mut self, command: Command) {
         let previous_screen = self.screen;
         let previous_miles = self.game.miles;
@@ -833,9 +935,13 @@ impl App {
                 | Command::InviteNpc { .. }
                 | Command::DismissNpc { .. }
                 | Command::Talk
+                | Command::Converse { .. }
                 | Command::Treat { .. }
         );
+        let travel_command = matches!(&command, Command::Continue | Command::TravelDay);
         let outcomes = self.game.apply(command);
+        let advanced_day =
+            outcomes.iter().any(|outcome| matches!(outcome, Outcome::DayAdvanced { .. }));
         let rejected = !outcomes.is_empty()
             && outcomes.iter().all(|outcome| matches!(outcome, Outcome::Rejected(_)));
         for outcome in outcomes {
@@ -857,6 +963,24 @@ impl App {
         }
         self.autosave();
         self.sync_screen();
+        if travel_command
+            && advanced_day
+            && self.screen == Screen::Journey
+            && !self.settings.reduced_motion
+        {
+            self.travel_moment = crate::travel_moment::after_travel_day(
+                self.game.day,
+                self.game.weather,
+                self.game.terrain(),
+                self.last_travel_moment_day,
+            );
+            if self.travel_moment.is_some() {
+                self.last_travel_moment_day = Some(self.game.day);
+                self.travel_moment_started_tick = Some(self.animation_tick);
+                self.resume_auto_travel = self.auto_travel;
+                self.auto_travel = false;
+            }
+        }
         if rejected
             || (retain_screen
                 && self.game.pending_event.is_none()
@@ -878,7 +1002,22 @@ impl App {
         if self.screen != Screen::Journey || self.game.status != pioneer_sim::RunStatus::Travelling
         {
             self.auto_travel = false;
+            self.travel_moment = None;
+            self.travel_moment_started_tick = None;
+            self.resume_auto_travel = false;
         }
+    }
+    fn dismiss_travel_moment(&mut self) {
+        self.travel_moment = None;
+        self.travel_moment_started_tick = None;
+        let resume = std::mem::take(&mut self.resume_auto_travel);
+        if resume && self.screen == Screen::Journey && self.auto_travel_pause_reason().is_none() {
+            self.auto_travel = true;
+        }
+    }
+    fn clear_travel_moment_history(&mut self) {
+        self.dismiss_travel_moment();
+        self.last_travel_moment_day = None;
     }
     fn sync_screen(&mut self) {
         if self.game.pending_event.is_some()
@@ -965,6 +1104,12 @@ impl App {
             Outcome::Message(text) => self.note(text),
             Outcome::Rejected(error) => self.note(error.to_string()),
             Outcome::Quote { text, .. } => self.note(text),
+            Outcome::Conversation { speaker_name, setting, lines, .. } => {
+                for line in &lines {
+                    self.note(line.clone());
+                }
+                self.talk_response = Some(TalkResponse { speaker_name, setting, lines });
+            }
             Outcome::ArrivedAt { .. } => {
                 if let Some(node) = self.game.current_landmark() {
                     self.note(format!("Reached {}.", node.name));
@@ -1046,6 +1191,7 @@ impl App {
                     self.game = game;
                     self.recorded = false;
                     self.minigame = None;
+                    self.clear_travel_moment_history();
                     self.load_graves();
                     self.sync_screen();
                 }
@@ -1153,6 +1299,16 @@ impl App {
             }
         }
     }
+    pub fn tick_presentation(&mut self, tick: u64) {
+        self.animation_tick = tick;
+        if self.travel_moment.is_some()
+            && self
+                .travel_moment_started_tick
+                .is_some_and(|started| self.animation_tick.saturating_sub(started) >= 6)
+        {
+            self.dismiss_travel_moment();
+        }
+    }
     pub fn render(&mut self, frame: &mut Frame) {
         let area = frame.area();
         if area.width < 80 || area.height < 24 {
@@ -1170,6 +1326,19 @@ impl App {
             self.render_route_map(frame);
             return;
         }
+        if self.settings.no_art {
+            if let Some(moment) = &self.travel_moment {
+                let text = format!(
+                    "TRAIL MOMENT\n\n{}\n\n{}\n\nWeather: {:?}\n\nSpace/Enter Continue · Esc dismiss · Ctrl-Q quit",
+                    moment.title, moment.text, self.game.weather
+                );
+                let moment = Paragraph::new(text)
+                    .block(Block::default().borders(Borders::ALL))
+                    .wrap(ratatui::widgets::Wrap { trim: true });
+                frame.render_widget(moment, area);
+                return;
+            }
+        }
         if self.screen == Screen::Camp {
             self.render_camp(frame);
             return;
@@ -1179,10 +1348,11 @@ impl App {
                 self.screen,
                 Screen::Title
                     | Screen::Journey
-                    | Screen::Gathering
                     | Screen::River
                     | Screen::Event
                     | Screen::Score
+                    | Screen::Talk
+                    | Screen::Gathering
             )
         {
             self.render_scene(frame);
@@ -1299,7 +1469,7 @@ impl App {
             }
             return;
         }
-        if matches!(self.screen, Screen::River | Screen::Event | Screen::Score) {
+        if matches!(self.screen, Screen::River | Screen::Event | Screen::Score | Screen::Talk) {
             self.render_scene_vignette(
                 frame,
                 Rect::new(canvas.x, area.y, canvas.width, area.height),
@@ -1335,8 +1505,16 @@ impl App {
             art::embedded(file).expect("terrain art")
         });
         art::render_section(background, frame.buffer_mut(), canvas, 2, mode);
+        crate::art::render_weather_overlay(
+            frame.buffer_mut(),
+            canvas,
+            self.game.weather,
+            if self.settings.reduced_motion { 0 } else { self.animation_tick },
+            mode,
+        );
         let moving = matches!(self.game.status, pioneer_sim::RunStatus::Travelling);
-        let phase = if moving { self.animation_tick % 4 } else { 0 };
+        let phase =
+            if moving && !self.settings.reduced_motion { self.animation_tick % 4 } else { 0 };
         for (file, x, y) in
             [(format!("ox_{}.px", phase % 2), 10, 8), (format!("wagon_{phase}.px"), 32, 3)]
         {
@@ -1345,6 +1523,33 @@ impl App {
                 frame.buffer_mut(),
                 Rect::new(canvas.x + x, canvas.y + y, 80 - x, 14 - y),
                 mode,
+            );
+        }
+        if let Some(moment) = &self.travel_moment {
+            if let Some(sprite) = moment.wildlife_sprite.and_then(art::embedded) {
+                art::render_at(
+                    sprite,
+                    frame.buffer_mut(),
+                    canvas,
+                    i32::from(canvas.x) + 60
+                        - (self
+                            .animation_tick
+                            .saturating_sub(
+                                self.travel_moment_started_tick.unwrap_or(self.animation_tick),
+                            )
+                            .min(6) as i32
+                            * 2),
+                    i32::from(canvas.y) + 9,
+                    mode,
+                );
+            }
+            let moment_area = Rect::new(canvas.x + 8, canvas.y + 2, 64, 7);
+            frame.render_widget(
+                Paragraph::new(format!("{}\n\n{}\n\nSpace · continue", moment.title, moment.text))
+                    .block(Block::default().borders(Borders::ALL).title("TRAIL MOMENT"))
+                    .style(Style::default().fg(Color::White).bg(Color::Black))
+                    .wrap(ratatui::widgets::Wrap { trim: true }),
+                moment_area,
             );
         }
         let (year, month, day) = self.game.date();
@@ -1535,6 +1740,12 @@ impl App {
                     .unwrap_or_else(|| "terrain_forest.px".into()),
                 16 - scene_height,
             ),
+            Screen::Talk => {
+                let (file, _) = crate::conversation::setting(&self.game, self.talk_setting());
+                let file =
+                    if art::embedded(&file).is_some() { file } else { "terrain_plains.px".into() };
+                (file, 16 - scene_height)
+            }
             _ => ("terrain_plains.px".into(), 16 - scene_height),
         };
         art::render_section(
@@ -1544,6 +1755,25 @@ impl App {
             source_y,
             mode,
         );
+        if self.screen == Screen::Event {
+            art::render_weather_overlay(
+                frame.buffer_mut(),
+                scene,
+                self.game.weather,
+                if self.settings.reduced_motion { 0 } else { self.animation_tick },
+                mode,
+            );
+        }
+        if self.screen == Screen::Talk && self.talk_setting() == Some(SpeakerSetting::Wagon) {
+            art::render_at(
+                art::embedded("wagon_0.px").expect("wagon art"),
+                frame.buffer_mut(),
+                scene,
+                i32::from(scene.x + 20),
+                i32::from(scene.bottom()) - 10,
+                mode,
+            );
+        }
         let survivors = self.game.party.iter().filter(|member| member.alive).count();
         if self.screen == Screen::Score
             && !matches!(self.game.status, pioneer_sim::RunStatus::Arrived)
@@ -1578,6 +1808,7 @@ impl App {
             }
             Screen::Score if survivors == 0 => "THE TRAIL ENDS HERE",
             Screen::Score => "WAGON STRANDED",
+            Screen::Talk => crate::conversation::setting(&self.game, self.talk_setting()).1,
             _ => unreachable!("vignette only renders illustrated screens"),
         };
         frame.render_widget(
@@ -1830,9 +2061,46 @@ impl App {
                 lines.extend(menu(&["Rest 1 day", "Rest 2 days", "Rest 3 days"], self.cursor))
             }
             Screen::Talk => {
-                lines.push(Line::from("Talk to people: Enter to listen. Esc returns to camp."));
-                if let Some(last) = self.log.last() {
-                    lines.push(Line::from(last.clone()));
+                let (_, setting_label) =
+                    crate::conversation::setting(&self.game, self.talk_setting());
+                match self.talk_stage {
+                    TalkStage::Choose => {
+                        lines.push(Line::from(format!("{setting_label}. Who do you approach?")));
+                        let speakers = self.game.available_speakers();
+                        let rows = crate::conversation::speaker_menu(&speakers);
+                        lines.extend(menu(
+                            &rows.iter().map(String::as_str).collect::<Vec<_>>(),
+                            self.cursor,
+                        ));
+                    }
+                    TalkStage::Topic => {
+                        lines.push(Line::from(format!(
+                            "{} — what do you ask about?",
+                            self.talk_speaker
+                                .as_ref()
+                                .map_or("Traveler", |speaker| speaker.name.as_str())
+                        )));
+                        let rows = crate::conversation::topic_menu();
+                        lines.extend(menu(
+                            &rows.iter().map(String::as_str).collect::<Vec<_>>(),
+                            self.cursor,
+                        ));
+                    }
+                    TalkStage::Response => {
+                        if let Some(response) = &self.talk_response {
+                            lines.push(Line::from(format!(
+                                "{} · {setting_label}",
+                                response.speaker_name
+                            )));
+                            lines.extend(response.lines.iter().cloned().map(Line::from));
+                            lines.push(Line::from("Enter/Esc returns to speakers."));
+                        }
+                    }
+                }
+                if self.talk_stage != TalkStage::Response {
+                    if let Some(last) = self.log.last() {
+                        lines.push(Line::from(last.clone()));
+                    }
                 }
             }
             Screen::Trade => {
@@ -2072,8 +2340,12 @@ impl App {
                 }
             }
             Screen::Settings => lines.push(Line::from(format!(
-                "[C]olor {:?}  [B]ell {}  [A]rt text-only {}  [S]peed {:?}",
-                self.settings.color, self.settings.bell, self.settings.no_art, self.settings.speed
+                "[C]olor {:?}  [B]ell {}  [A]rt text-only {}  [M]otion reduced {}  [S]peed {:?}",
+                self.settings.color,
+                self.settings.bell,
+                self.settings.no_art,
+                self.settings.reduced_motion,
+                self.settings.speed
             ))),
             Screen::Seed => lines.push(Line::from(format!("Enter world code: {}", self.seed_text))),
             Screen::Treat => {
@@ -2135,6 +2407,7 @@ pub fn run(mut app: App) -> anyhow::Result<()> {
         }
         let now = std::time::Instant::now();
         let size = terminal.size()?;
+        app.tick_presentation((started.elapsed().as_millis() / 250) as u64);
         if app.auto_travel && now >= next_day && size.width >= 80 && size.height >= 24 {
             app.advance_auto_travel();
             next_day =
@@ -2155,7 +2428,6 @@ pub fn run(mut app: App) -> anyhow::Result<()> {
         } else {
             next_tick = now + step;
         }
-        app.animation_tick = (started.elapsed().as_millis() / 250) as u64;
     }
     drop(terminal);
     drop(guard);
@@ -2259,6 +2531,14 @@ mod tests {
                     app.game.party[1].ailments = vec!["fever".into()];
                     app.game.party[1].health = 68;
                 }
+                Screen::Talk => {
+                    app.game.current_node_id = Some("fort_kearney".into());
+                    app.game.target_node_id = Some("chimney_rock".into());
+                    app.game.route_miles_remaining = 250;
+                    app.game.miles = 304;
+                    app.game.day = 20;
+                    app.game.status = pioneer_sim::RunStatus::AtLandmark("fort_kearney".into());
+                }
                 Screen::Minigame => {
                     app.game.apply(Command::Depart);
                     app.apply(Command::BeginHunt);
@@ -2320,6 +2600,66 @@ mod tests {
     #[test]
     fn snapshots_at_120x40() {
         insta::assert_snapshot!("screens_120x40", all_screens(120, 40));
+    }
+    fn app_view(app: &mut App, width: u16, height: u16) -> String {
+        let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+        terminal.draw(|frame| app.render(frame)).unwrap();
+        terminal
+            .backend()
+            .buffer()
+            .content
+            .chunks(width as usize)
+            .map(|row| row.iter().map(|cell| cell.symbol()).collect::<String>())
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+    #[test]
+    fn travel_moment_and_weathered_event_snapshots_cover_modes_and_sizes() {
+        for (no_art, width, height) in
+            [(false, 80, 24), (false, 120, 40), (true, 80, 24), (true, 120, 40)]
+        {
+            let mut moment = outfitted_app();
+            moment.settings.no_art = no_art;
+            moment.game.weather = pioneer_sim::WeatherKind::Rain;
+            moment.travel_moment = Some(crate::travel_moment::TravelMoment {
+                title: "RAIN ON THE CANVAS",
+                text: "Rain beads on the wagon cover.",
+                wildlife_sprite: None,
+            });
+            insta::assert_snapshot!(
+                format!("travel_moment_{width}x{height}_{}", if no_art { "text" } else { "art" }),
+                app_view(&mut moment, width, height)
+            );
+
+            let mut event = outfitted_app();
+            event.settings.no_art = no_art;
+            event.game.weather = pioneer_sim::WeatherKind::Rain;
+            event.pending_event = Some("wheel".into());
+            event.game.pending_event = event.pending_event.clone();
+            event.screen = Screen::Event;
+            insta::assert_snapshot!(
+                format!("weathered_event_{width}x{height}_{}", if no_art { "text" } else { "art" }),
+                app_view(&mut event, width, height)
+            );
+        }
+    }
+    #[test]
+    fn event_skip_and_reduced_motion_camp_fire_are_presentation_safe() {
+        let mut event = outfitted_app();
+        event.pending_event = Some("wheel".into());
+        event.game.pending_event = event.pending_event.clone();
+        event.screen = Screen::Event;
+        event.handle_key(KeyEvent::from(KeyCode::Esc));
+        assert_eq!(event.screen, Screen::Event);
+        assert_eq!(event.game.pending_event.as_deref(), Some("wheel"));
+
+        let mut camp = outfitted_app();
+        camp.handle_key(KeyEvent::from(KeyCode::Char('c')));
+        camp.settings.reduced_motion = true;
+        camp.tick_presentation(1);
+        let first = app_view(&mut camp, 80, 24);
+        camp.tick_presentation(2);
+        assert_eq!(first, app_view(&mut camp, 80, 24));
     }
     #[test]
     fn journey_tip_keeps_status_and_latest_log_at_80x24() {
@@ -2588,6 +2928,153 @@ mod tests {
         assert_eq!(app.game.day, day + 1, "three full days permits auto travel to resume");
     }
     #[test]
+    fn skipping_a_travel_moment_preserves_the_simulation_state() {
+        let mut app = outfitted_app();
+        app.travel_moment = Some(crate::travel_moment::TravelMoment {
+            title: "MEADOWLARK",
+            text: "A meadowlark rises from the grass.",
+            wildlife_sprite: None,
+        });
+        let before = serde_json::to_value(&app.game).unwrap();
+
+        app.handle_key(KeyEvent::from(KeyCode::Char(' ')));
+
+        assert!(app.travel_moment.is_none());
+        assert_eq!(serde_json::to_value(&app.game).unwrap(), before);
+    }
+
+    #[test]
+    fn auto_travel_pauses_for_a_travel_moment_without_another_day() {
+        let mut app = outfitted_app();
+        app.travel_moment = Some(crate::travel_moment::TravelMoment {
+            title: "HIGH GROUND",
+            text: "Loose stone clicks beneath the wheels.",
+            wildlife_sprite: None,
+        });
+        app.auto_travel = true;
+        let day = app.game.day;
+
+        app.advance_auto_travel();
+
+        assert_eq!(app.game.day, day);
+        assert!(!app.auto_travel);
+    }
+
+    #[test]
+    fn travel_moments_remain_readable_without_art_or_color() {
+        let mut app = outfitted_app();
+        app.game.weather = pioneer_sim::WeatherKind::Rain;
+        app.travel_moment = Some(crate::travel_moment::TravelMoment {
+            title: "RAIN ON THE CANVAS",
+            text: "Rain beads on the wagon cover.",
+            wildlife_sprite: None,
+        });
+        app.settings.no_art = true;
+        let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+        terminal.draw(|frame| app.render(frame)).unwrap();
+        let text = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect::<String>();
+        assert!(text.contains("Weather: Rain"));
+        assert!(text.contains("RAIN ON THE CANVAS"));
+        assert!(text.contains("Continue"));
+
+        app.settings.no_art = false;
+        app.settings.color = crate::persist::ColorMode::Mono;
+        let mut terminal = Terminal::new(TestBackend::new(120, 40)).unwrap();
+        terminal.draw(|frame| app.render(frame)).unwrap();
+        let text = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect::<String>();
+        assert!(text.contains("Rain"));
+        assert!(text.contains("RAIN ON THE CANVAS"));
+    }
+    #[test]
+    fn rendering_a_moment_is_observational_and_presentation_ticks_expire_it() {
+        let mut app = outfitted_app();
+        app.travel_moment = Some(crate::travel_moment::TravelMoment {
+            title: "MEADOWLARK",
+            text: "A meadowlark rises from the grass.",
+            wildlife_sprite: Some("squirrel_0.px"),
+        });
+        app.travel_moment_started_tick = Some(0);
+        app.resume_auto_travel = true;
+        let before = serde_json::to_value(&app.game).unwrap();
+
+        app.handle_key(KeyEvent::from(KeyCode::Char('7')));
+        assert_eq!(serde_json::to_value(&app.game).unwrap(), before);
+        assert_eq!(app.screen, Screen::Journey);
+
+        app.animation_tick = 6;
+        let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+        terminal.draw(|frame| app.render(frame)).unwrap();
+        assert!(app.travel_moment.is_some(), "render must not expire or resume a moment");
+        assert!(!app.auto_travel);
+
+        app.tick_presentation(6);
+        assert!(app.travel_moment.is_none());
+        assert!(app.auto_travel);
+    }
+
+    #[test]
+    fn weather_renders_behind_the_wagon_and_oxen() {
+        fn journey_buffer(app: &mut App) -> ratatui::buffer::Buffer {
+            let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+            terminal.draw(|frame| app.render(frame)).unwrap();
+            terminal.backend().buffer().clone()
+        }
+
+        let mut clear = outfitted_app();
+        clear.settings.reduced_motion = true;
+        let clear_buffer = journey_buffer(&mut clear);
+
+        let mut rain = outfitted_app();
+        rain.settings.reduced_motion = true;
+        rain.game.weather = pioneer_sim::WeatherKind::Rain;
+        let rain_buffer = journey_buffer(&mut rain);
+
+        for (file, origin) in [("ox_0.px", (10, 8)), ("wagon_0.px", (32, 3))] {
+            let sprite = crate::art::embedded(file).unwrap();
+            for y in 0..sprite.cell_height() {
+                for x in 0..sprite.width() {
+                    if sprite.pixel(x, y * 2).is_none() && sprite.pixel(x, y * 2 + 1).is_none() {
+                        continue;
+                    }
+                    assert_eq!(
+                        rain_buffer[(origin.0 + x, origin.1 + y)],
+                        clear_buffer[(origin.0 + x, origin.1 + y)],
+                        "weather covered {file} at ({x}, {y})"
+                    );
+                }
+            }
+        }
+    }
+    #[test]
+    fn starting_a_new_journey_clears_old_travel_moment_spacing() {
+        let mut app = outfitted_app();
+        app.travel_moment = Some(crate::travel_moment::TravelMoment {
+            title: "MEADOWLARK",
+            text: "A meadowlark rises from the grass.",
+            wildlife_sprite: None,
+        });
+        app.last_travel_moment_day = Some(99);
+        app.screen = Screen::Title;
+        app.cursor = 0;
+
+        app.select();
+
+        assert!(app.travel_moment.is_none());
+        assert!(app.last_travel_moment_day.is_none());
+    }
+    #[test]
     fn trail_advice_is_short_and_does_not_invent_a_cause_of_death() {
         let mut app = outfitted_app();
         app.game.inventory.quantities.insert("food".into(), 0);
@@ -2671,5 +3158,73 @@ mod tests {
         assert_eq!(app.screen, Screen::Score);
         assert_eq!(app.game.status, pioneer_sim::RunStatus::Arrived);
         assert_eq!(app.game.miles, 1885);
+    }
+    #[test]
+    fn talk_topic_stage_shows_a_cursor_marker_on_the_selected_topic() {
+        let mut app = outfitted_app();
+        app.game.current_node_id = Some("fort_kearney".into());
+        app.game.status = pioneer_sim::RunStatus::AtLandmark("fort_kearney".into());
+        app.handle_key(KeyEvent::from(KeyCode::Char('t')));
+        assert_eq!(app.screen, Screen::Talk);
+        app.handle_key(KeyEvent::from(KeyCode::Enter)); // Choose the first speaker.
+        app.handle_key(KeyEvent::from(KeyCode::Down));
+        let view = render_screen(&mut app, 80, 24);
+        assert!(
+            view.contains("► 2. Ask about supplies"),
+            "cursor should mark the selected topic:\n{view}"
+        );
+        assert!(view.contains("1. Ask about the route"));
+        assert!(view.contains("3. Ask for news"));
+    }
+    /// The longest realistic reply (a multi-route fork, each with a long label and
+    /// target name) must still leave the menu, controls line, and trail log legible
+    /// at the minimum 80×24 terminal — nothing should be crowded off screen.
+    #[test]
+    fn talk_screen_wraps_the_longest_route_answer_without_losing_controls_or_log() {
+        let mut app = outfitted_app();
+        app.game.current_node_id = Some("fort_kearney".into());
+        app.game.target_node_id = Some("chimney_rock".into());
+        app.game.route_miles_remaining = 0;
+        app.game.status = pioneer_sim::RunStatus::AtLandmark("fort_kearney".into());
+        if let Some(node) = app
+            .game
+            .content
+            .trails
+            .iter_mut()
+            .find(|t| t.id == "oregon")
+            .and_then(|t| t.nodes.iter_mut().find(|n| n.id == "fort_kearney"))
+        {
+            node.routes = vec![
+                pioneer_sim::RouteDefinition {
+                    id: "main".into(),
+                    label: "Follow the well-worn emigrant road along the North Platte".into(),
+                    target_id: "chimney_rock".into(),
+                    distance_miles: 250,
+                },
+                pioneer_sim::RouteDefinition {
+                    id: "alt".into(),
+                    label: "Risk the longer southern bluffs route past the sandhills".into(),
+                    target_id: "independence_rock".into(),
+                    distance_miles: 610,
+                },
+            ];
+        }
+        app.handle_key(KeyEvent::from(KeyCode::Char('t')));
+        app.handle_key(KeyEvent::from(KeyCode::Enter)); // Choose the first speaker.
+        app.handle_key(KeyEvent::from(KeyCode::Enter)); // Ask about the route.
+        let view = render_screen(&mut app, 80, 24);
+        assert!(view.contains("Esc: Back"), "controls must stay visible:\n{view}");
+        assert!(view.contains("TRAIL LOG"), "the trail log must stay visible:\n{view}");
+        assert_eq!(view.lines().count(), 24, "the frame must still be exactly 24 rows:\n{view}");
+    }
+    fn render_screen(app: &mut App, width: u16, height: u16) -> String {
+        let backend = TestBackend::new(width, height);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|frame| app.render(frame)).unwrap();
+        let buffer = terminal.backend().buffer();
+        (0..height)
+            .map(|y| (0..width).map(|x| buffer[(x, y)].symbol().to_owned()).collect::<String>())
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 }
