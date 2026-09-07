@@ -9,6 +9,7 @@ use crossterm::event::{self, Event};
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use pioneer_sim::{
     Command, CrossMethod, GameContent, GameState, GatheringActivity, Outcome, Pace, RationLevel,
+    SpeakerSetting, SpeakerView,
 };
 use ratatui::{
     prelude::*,
@@ -34,6 +35,20 @@ struct TradeDraft {
     wanted: usize,
     offered_quantity: u32,
     wanted_quantity: u32,
+}
+/// Talk screen's two-step flow: pick a speaker, then a grounded topic.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+enum TalkStage {
+    #[default]
+    Choose,
+    Topic,
+    Response,
+}
+#[derive(Debug, Clone)]
+struct TalkResponse {
+    speaker_name: String,
+    setting: SpeakerSetting,
+    lines: Vec<String>,
 }
 #[derive(Debug, Clone, Copy)]
 struct GatheringResult {
@@ -89,9 +104,12 @@ pub struct App {
     last_travel_moment_day: Option<u32>,
     travel_moment_started_tick: Option<u64>,
     resume_auto_travel: bool,
+    talk_stage: TalkStage,
     camp_return: bool,
     gathering_activity: GatheringActivity,
     gathering_result: Option<GatheringResult>,
+    talk_speaker: Option<SpeakerView>,
+    talk_response: Option<TalkResponse>,
 }
 impl App {
     pub fn new(content: GameContent, seed: u64, settings: Settings) -> Self {
@@ -129,9 +147,12 @@ impl App {
             last_travel_moment_day: None,
             travel_moment_started_tick: None,
             resume_auto_travel: false,
+            talk_stage: TalkStage::default(),
             camp_return: false,
             gathering_activity: GatheringActivity::Forage,
             gathering_result: None,
+            talk_speaker: None,
+            talk_response: None,
         }
     }
     pub fn with_storage(mut self, storage: Storage) -> Self {
@@ -207,6 +228,11 @@ impl App {
             Screen::Pace | Screen::Rations | Screen::Rest => 3,
             Screen::Treat | Screen::Party => self.game.party.len(),
             Screen::Trade => 9,
+            Screen::Talk => match self.talk_stage {
+                TalkStage::Choose => self.game.available_speakers().len() + 1,
+                TalkStage::Topic => crate::conversation::TOPICS.len(),
+                TalkStage::Response => 1,
+            },
             Screen::Hall => self.hall.len(),
             Screen::River => 5,
             Screen::Fork => self.game.current_landmark().map_or(0, |n| n.routes.len()),
@@ -477,7 +503,9 @@ impl App {
                 4 => self.screen = Screen::Rations,
                 5 => self.screen = Screen::Rest,
                 6 => self.apply(Command::BeginHunt),
-                7 => self.screen = Screen::Talk,
+                7 => {
+                    self.open_talk();
+                }
                 _ => {
                     if self.game.can_shop() {
                         self.screen = Screen::Store
@@ -513,9 +541,34 @@ impl App {
             Screen::Rest => {
                 self.apply(Command::Rest { days: (self.cursor + 1) as u32 });
             }
-            Screen::Talk => {
-                self.apply(Command::Talk);
-            }
+            Screen::Talk => match self.talk_stage {
+                TalkStage::Choose => {
+                    let speakers = self.game.available_speakers();
+                    if self.cursor < speakers.len() {
+                        self.talk_speaker = speakers.get(self.cursor).cloned();
+                        self.talk_stage = TalkStage::Topic;
+                        self.cursor = 0;
+                    } else {
+                        self.apply(Command::Talk);
+                    }
+                }
+                TalkStage::Topic => {
+                    if let Some(speaker) = &self.talk_speaker {
+                        let topic = crate::conversation::TOPICS
+                            [self.cursor % crate::conversation::TOPICS.len()]
+                        .0;
+                        let speaker_id = speaker.id.clone();
+                        self.apply(Command::Converse { speaker_id, topic });
+                    }
+                    self.talk_stage = if self.talk_response.is_some() {
+                        TalkStage::Response
+                    } else {
+                        TalkStage::Choose
+                    };
+                    self.cursor = 0;
+                }
+                TalkStage::Response => self.clear_talk_response(),
+            },
             Screen::Treat => {
                 if let Some(ailment_id) = self
                     .game
@@ -693,7 +746,9 @@ impl App {
             (Screen::Journey, 'p') => self.screen = Screen::Pace,
             (Screen::Journey, 'r') => self.screen = Screen::Rations,
             (Screen::Journey, 'x') => self.screen = Screen::Rest,
-            (Screen::Journey, 't') => self.screen = Screen::Talk,
+            (Screen::Journey, 't') => {
+                self.open_talk();
+            }
             (Screen::Journey, 'i') => self.screen = Screen::Treat,
             (Screen::Journey, 'u') => {
                 self.screen = Screen::Trade;
@@ -772,6 +827,10 @@ impl App {
         }
     }
     fn back(&mut self) {
+        if self.screen == Screen::Talk && self.talk_stage != TalkStage::Choose {
+            self.clear_talk_response();
+            return;
+        }
         if self.screen == Screen::Gathering && self.gathering_result.is_some() {
             self.dismiss_gathering();
             return;
@@ -845,6 +904,23 @@ impl App {
             Screen::Journey => Screen::Title,
         }
     }
+    fn open_talk(&mut self) {
+        self.clear_talk_response();
+        self.screen = Screen::Talk;
+    }
+    fn clear_talk_response(&mut self) {
+        self.talk_stage = TalkStage::Choose;
+        self.talk_speaker = None;
+        self.talk_response = None;
+        self.cursor = 0;
+    }
+    fn talk_setting(&self) -> Option<SpeakerSetting> {
+        self.talk_response
+            .as_ref()
+            .map(|response| response.setting)
+            .or_else(|| self.talk_speaker.as_ref().map(|speaker| speaker.setting))
+            .or_else(|| self.game.available_speakers().first().map(|speaker| speaker.setting))
+    }
     fn apply(&mut self, command: Command) {
         let previous_screen = self.screen;
         let previous_miles = self.game.miles;
@@ -858,6 +934,7 @@ impl App {
                 | Command::InviteNpc { .. }
                 | Command::DismissNpc { .. }
                 | Command::Talk
+                | Command::Converse { .. }
                 | Command::Treat { .. }
         );
         let travel_command = matches!(&command, Command::Continue | Command::TravelDay);
@@ -1026,6 +1103,12 @@ impl App {
             Outcome::Message(text) => self.note(text),
             Outcome::Rejected(error) => self.note(error.to_string()),
             Outcome::Quote { text, .. } => self.note(text),
+            Outcome::Conversation { speaker_name, setting, lines, .. } => {
+                for line in &lines {
+                    self.note(line.clone());
+                }
+                self.talk_response = Some(TalkResponse { speaker_name, setting, lines });
+            }
             Outcome::ArrivedAt { .. } => {
                 if let Some(node) = self.game.current_landmark() {
                     self.note(format!("Reached {}.", node.name));
@@ -1260,10 +1343,11 @@ impl App {
                 self.screen,
                 Screen::Title
                     | Screen::Journey
-                    | Screen::Gathering
                     | Screen::River
                     | Screen::Event
                     | Screen::Score
+                    | Screen::Talk
+                    | Screen::Gathering
             )
         {
             self.render_scene(frame);
@@ -1380,7 +1464,7 @@ impl App {
             }
             return;
         }
-        if matches!(self.screen, Screen::River | Screen::Event | Screen::Score) {
+        if matches!(self.screen, Screen::River | Screen::Event | Screen::Score | Screen::Talk) {
             self.render_scene_vignette(
                 frame,
                 Rect::new(canvas.x, area.y, canvas.width, area.height),
@@ -1651,6 +1735,12 @@ impl App {
                     .unwrap_or_else(|| "terrain_forest.px".into()),
                 16 - scene_height,
             ),
+            Screen::Talk => {
+                let (file, _) = crate::conversation::setting(&self.game, self.talk_setting());
+                let file =
+                    if art::embedded(&file).is_some() { file } else { "terrain_plains.px".into() };
+                (file, 16 - scene_height)
+            }
             _ => ("terrain_plains.px".into(), 16 - scene_height),
         };
         art::render_section(
@@ -1666,6 +1756,16 @@ impl App {
                 scene,
                 self.game.weather,
                 if self.settings.reduced_motion { 0 } else { self.animation_tick },
+                mode,
+            );
+        }
+        if self.screen == Screen::Talk && self.talk_setting() == Some(SpeakerSetting::Wagon) {
+            art::render_at(
+                art::embedded("wagon_0.px").expect("wagon art"),
+                frame.buffer_mut(),
+                scene,
+                i32::from(scene.x + 20),
+                i32::from(scene.bottom()) - 10,
                 mode,
             );
         }
@@ -1703,6 +1803,7 @@ impl App {
             }
             Screen::Score if survivors == 0 => "THE TRAIL ENDS HERE",
             Screen::Score => "WAGON STRANDED",
+            Screen::Talk => crate::conversation::setting(&self.game, self.talk_setting()).1,
             _ => unreachable!("vignette only renders illustrated screens"),
         };
         frame.render_widget(
@@ -2005,9 +2106,46 @@ impl App {
                 lines.extend(menu(&["Rest 1 day", "Rest 2 days", "Rest 3 days"], self.cursor))
             }
             Screen::Talk => {
-                lines.push(Line::from("Talk to people: Enter to listen. Esc returns to camp."));
-                if let Some(last) = self.log.last() {
-                    lines.push(Line::from(last.clone()));
+                let (_, setting_label) =
+                    crate::conversation::setting(&self.game, self.talk_setting());
+                match self.talk_stage {
+                    TalkStage::Choose => {
+                        lines.push(Line::from(format!("{setting_label}. Who do you approach?")));
+                        let speakers = self.game.available_speakers();
+                        let rows = crate::conversation::speaker_menu(&speakers);
+                        lines.extend(menu(
+                            &rows.iter().map(String::as_str).collect::<Vec<_>>(),
+                            self.cursor,
+                        ));
+                    }
+                    TalkStage::Topic => {
+                        lines.push(Line::from(format!(
+                            "{} — what do you ask about?",
+                            self.talk_speaker
+                                .as_ref()
+                                .map_or("Traveler", |speaker| speaker.name.as_str())
+                        )));
+                        let rows = crate::conversation::topic_menu();
+                        lines.extend(menu(
+                            &rows.iter().map(String::as_str).collect::<Vec<_>>(),
+                            self.cursor,
+                        ));
+                    }
+                    TalkStage::Response => {
+                        if let Some(response) = &self.talk_response {
+                            lines.push(Line::from(format!(
+                                "{} · {setting_label}",
+                                response.speaker_name
+                            )));
+                            lines.extend(response.lines.iter().cloned().map(Line::from));
+                            lines.push(Line::from("Enter/Esc returns to speakers."));
+                        }
+                    }
+                }
+                if self.talk_stage != TalkStage::Response {
+                    if let Some(last) = self.log.last() {
+                        lines.push(Line::from(last.clone()));
+                    }
                 }
             }
             Screen::Trade => {
@@ -2437,6 +2575,14 @@ mod tests {
                 Screen::Treat => {
                     app.game.party[1].ailments = vec!["fever".into()];
                     app.game.party[1].health = 68;
+                }
+                Screen::Talk => {
+                    app.game.current_node_id = Some("fort_kearney".into());
+                    app.game.target_node_id = Some("chimney_rock".into());
+                    app.game.route_miles_remaining = 250;
+                    app.game.miles = 304;
+                    app.game.day = 20;
+                    app.game.status = pioneer_sim::RunStatus::AtLandmark("fort_kearney".into());
                 }
                 Screen::Minigame => {
                     app.game.apply(Command::Depart);
@@ -3057,5 +3203,73 @@ mod tests {
         assert_eq!(app.screen, Screen::Score);
         assert_eq!(app.game.status, pioneer_sim::RunStatus::Arrived);
         assert_eq!(app.game.miles, 1885);
+    }
+    #[test]
+    fn talk_topic_stage_shows_a_cursor_marker_on_the_selected_topic() {
+        let mut app = outfitted_app();
+        app.game.current_node_id = Some("fort_kearney".into());
+        app.game.status = pioneer_sim::RunStatus::AtLandmark("fort_kearney".into());
+        app.handle_key(KeyEvent::from(KeyCode::Char('t')));
+        assert_eq!(app.screen, Screen::Talk);
+        app.handle_key(KeyEvent::from(KeyCode::Enter)); // Choose the first speaker.
+        app.handle_key(KeyEvent::from(KeyCode::Down));
+        let view = render_screen(&mut app, 80, 24);
+        assert!(
+            view.contains("► 2. Ask about supplies"),
+            "cursor should mark the selected topic:\n{view}"
+        );
+        assert!(view.contains("1. Ask about the route"));
+        assert!(view.contains("3. Ask for news"));
+    }
+    /// The longest realistic reply (a multi-route fork, each with a long label and
+    /// target name) must still leave the menu, controls line, and trail log legible
+    /// at the minimum 80×24 terminal — nothing should be crowded off screen.
+    #[test]
+    fn talk_screen_wraps_the_longest_route_answer_without_losing_controls_or_log() {
+        let mut app = outfitted_app();
+        app.game.current_node_id = Some("fort_kearney".into());
+        app.game.target_node_id = Some("chimney_rock".into());
+        app.game.route_miles_remaining = 0;
+        app.game.status = pioneer_sim::RunStatus::AtLandmark("fort_kearney".into());
+        if let Some(node) = app
+            .game
+            .content
+            .trails
+            .iter_mut()
+            .find(|t| t.id == "oregon")
+            .and_then(|t| t.nodes.iter_mut().find(|n| n.id == "fort_kearney"))
+        {
+            node.routes = vec![
+                pioneer_sim::RouteDefinition {
+                    id: "main".into(),
+                    label: "Follow the well-worn emigrant road along the North Platte".into(),
+                    target_id: "chimney_rock".into(),
+                    distance_miles: 250,
+                },
+                pioneer_sim::RouteDefinition {
+                    id: "alt".into(),
+                    label: "Risk the longer southern bluffs route past the sandhills".into(),
+                    target_id: "independence_rock".into(),
+                    distance_miles: 610,
+                },
+            ];
+        }
+        app.handle_key(KeyEvent::from(KeyCode::Char('t')));
+        app.handle_key(KeyEvent::from(KeyCode::Enter)); // Choose the first speaker.
+        app.handle_key(KeyEvent::from(KeyCode::Enter)); // Ask about the route.
+        let view = render_screen(&mut app, 80, 24);
+        assert!(view.contains("Esc: Back"), "controls must stay visible:\n{view}");
+        assert!(view.contains("TRAIL LOG"), "the trail log must stay visible:\n{view}");
+        assert_eq!(view.lines().count(), 24, "the frame must still be exactly 24 rows:\n{view}");
+    }
+    fn render_screen(app: &mut App, width: u16, height: u16) -> String {
+        let backend = TestBackend::new(width, height);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|frame| app.render(frame)).unwrap();
+        let buffer = terminal.backend().buffer();
+        (0..height)
+            .map(|y| (0..width).map(|x| buffer[(x, y)].symbol().to_owned()).collect::<String>())
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 }
