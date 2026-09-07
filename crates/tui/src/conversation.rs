@@ -2,7 +2,9 @@
 //!
 //! Pure helpers over [`GameState`]; `app.rs` owns the small cursor/stage state
 //! machine (choose a speaker, then a topic) and calls into these to render.
-use pioneer_sim::{ConversationTopic, GameState, LandmarkKind, SpeakerSetting, SpeakerView};
+use pioneer_sim::{
+    ConversationTopic, GameState, LandmarkKind, RunStatus, SpeakerSetting, SpeakerView,
+};
 
 pub(crate) const TOPICS: [(ConversationTopic, &str); 3] = [
     (ConversationTopic::Route, "Ask about the route"),
@@ -30,14 +32,16 @@ pub(crate) fn topic_menu() -> Vec<String> {
 
 /// The background art file and a one-line setting description, used both for the
 /// illustrated scene and for the `--no-art` text description (DESIGN.md §8).
-pub(crate) fn setting(game: &GameState) -> (String, &'static str) {
-    if let Some(node) = game.current_landmark() {
-        if node.kind == LandmarkKind::Fort {
-            return (format!("{}.px", node.id), "AT THE FORT");
+pub(crate) fn setting(game: &GameState, speaker: Option<SpeakerSetting>) -> (String, &'static str) {
+    if speaker == Some(SpeakerSetting::Fort) && matches!(game.status, RunStatus::AtLandmark(_)) {
+        if let Some(node) = game.current_landmark() {
+            if node.kind == LandmarkKind::Fort {
+                return (format!("{}.px", node.id), "AT THE FORT");
+            }
         }
     }
-    if game.available_speakers().iter().any(|s| s.setting == SpeakerSetting::Wagon) {
-        return ("wagon_0.px".into(), "A NEIGHBORING WAGON");
+    if speaker == Some(SpeakerSetting::Wagon) {
+        return ("terrain_plains.px".into(), "A NEIGHBORING WAGON");
     }
     ("terrain_plains.px".into(), "CAMP AT NIGHT")
 }
