@@ -17,8 +17,11 @@ static NEXT: AtomicU64 = AtomicU64::new(0);
 struct Temp(PathBuf);
 impl Temp {
     fn new() -> Self {
-        let path = std::env::temp_dir()
-            .join(format!("pioneer-journal-scenarios-{}", NEXT.fetch_add(1, Ordering::Relaxed)));
+        let path = std::env::temp_dir().join(format!(
+            "pioneer-journal-scenarios-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
         fs::create_dir(&path).unwrap();
         Self(path)
     }
@@ -239,7 +242,77 @@ fn five_long_dead_names_leave_score_controls_visible() {
 fn render(app: &mut App, width: u16, height: u16) -> String {
     let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
     terminal.draw(|frame| app.render(frame)).unwrap();
-    terminal.backend().buffer().content.iter().map(|cell| cell.symbol()).collect()
+    terminal
+        .backend()
+        .buffer()
+        .content
+        .chunks(usize::from(width))
+        .map(|row| row.iter().map(|cell| cell.symbol()).collect::<String>())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn journal_view(no_art: bool, kind: JournalKind, status: RunStatus, day: u32, miles: u32) -> App {
+    let mut app =
+        App::new(pioneer_data::load().unwrap(), 12, Settings { no_art, ..Settings::default() });
+    app.game = journey();
+    app.game.day = day;
+    app.game.miles = miles;
+    app.game.status = status;
+    if let JournalKind::Death { name, .. } = &kind {
+        if let Some(member) = app.game.party.iter_mut().find(|member| member.name == *name) {
+            member.alive = false;
+            member.health = 0;
+        }
+    }
+    app.game.journal.record(day, miles, kind);
+    app.screen = Screen::Journal;
+    app.handle_key(KeyEvent::from(KeyCode::Down));
+    app
+}
+
+#[test]
+fn journal_active_epilogue_and_memorial_snapshots_cover_sizes_and_art_modes() {
+    let mut snapshots = String::new();
+    for no_art in [false, true] {
+        for (width, height) in [(80, 24), (120, 40)] {
+            let views = [
+                (
+                    "active",
+                    journal_view(
+                        no_art,
+                        JournalKind::Landmark {
+                            landmark_id: "fort_kearney".into(),
+                            name: "Fort Kearney".into(),
+                        },
+                        RunStatus::Travelling,
+                        12,
+                        304,
+                    ),
+                ),
+                (
+                    "epilogue",
+                    journal_view(no_art, JournalKind::Arrived, RunStatus::Arrived, 120, 1_885),
+                ),
+                (
+                    "memorial",
+                    journal_view(
+                        no_art,
+                        JournalKind::Death { name: "Ada".into(), cause: DeathCause::Exhaustion },
+                        RunStatus::Failed,
+                        47,
+                        932,
+                    ),
+                ),
+            ];
+            for (name, mut app) in views {
+                snapshots.push_str(&format!("\n=== {name} art={} {width}x{height} ===\n", !no_art));
+                snapshots.push_str(&render(&mut app, width, height));
+                snapshots.push('\n');
+            }
+        }
+    }
+    insta::assert_snapshot!("journal_active_epilogue_memorial", snapshots);
 }
 
 #[test]
