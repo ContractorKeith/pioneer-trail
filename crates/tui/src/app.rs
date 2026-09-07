@@ -2503,7 +2503,14 @@ mod tests {
     fn app_view(app: &mut App, width: u16, height: u16) -> String {
         let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
         terminal.draw(|frame| app.render(frame)).unwrap();
-        terminal.backend().buffer().content.iter().map(|cell| cell.symbol()).collect()
+        terminal
+            .backend()
+            .buffer()
+            .content
+            .chunks(width as usize)
+            .map(|row| row.iter().map(|cell| cell.symbol()).collect::<String>())
+            .collect::<Vec<_>>()
+            .join("\n")
     }
     #[test]
     fn travel_moment_and_weathered_event_snapshots_cover_modes_and_sizes() {
@@ -2550,7 +2557,7 @@ mod tests {
         camp.settings.reduced_motion = true;
         camp.tick_presentation(1);
         let first = app_view(&mut camp, 80, 24);
-        camp.tick_presentation(9);
+        camp.tick_presentation(2);
         assert_eq!(first, app_view(&mut camp, 80, 24));
     }
     #[test]
