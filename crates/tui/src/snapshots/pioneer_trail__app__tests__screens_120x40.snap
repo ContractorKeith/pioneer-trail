@@ -340,46 +340,46 @@ expression: "all_screens(120, 40)"
 └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 
 === Map ===
-┌PIONEER TRAIL─────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│ PIONEER TRAIL                                                                                                        │
-│ 0 miles · Clear · next kansas_river (102 mi)                                                                         │
-│ ► Independence, Missouri: 0 miles                                                                                    │
-│   Kansas River Crossing: 102 miles                                                                                   │
-│   Big Blue River Crossing: 185 miles                                                                                 │
-│   Fort Kearney: 304 miles                                                                                            │
-│   Chimney Rock: 554 miles                                                                                            │
-│   Fort Laramie: 640 miles                                                                                            │
-│   Independence Rock: 830 miles                                                                                       │
-│   South Pass: 932 miles                                                                                              │
-│   Green River Crossing: 989 miles                                                                                    │
-│   Fort Bridger: 1151 miles                                                                                           │
-│   Soda Springs: 1143 miles                                                                                           │
-│ ↑↓ scroll landmarks and graves                                                                                       │
-│ Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                                                         │
-│                                                                                                                      │
-│                                                                                                                      │
-│                                                                                                                      │
-│                                                                                                                      │
-│                                                                                                                      │
-│                                                                                                                      │
-│                                                                                                                      │
-│                                                                                                                      │
-│                                                                                                                      │
-│                                                                                                                      │
-│                                                                                                                      │
-│                                                                                                                      │
-│                                                                                                                      │
-│                                                                                                                      │
-│                                                                                                                      │
-│                                                                                                                      │
-│                                                                                                                      │
-│                                                                                                                      │
-│ TRAIL LOG─────────────────────────────────────────────────────────────────────────────────────────────────────────── │
-│ The wagon is ready. Five travelers set out from Independence.                                                        │
-│                                                                                                                      │
-│                                                                                                                      │
-│                                                                                                                      │
-└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+                    Oregon Trail ROUTE RECORD · 0 miles · Clear                                                         
+                                                                                                                        
+                       ◆A────────>B────────oC────────oD────────oE────────oF────────oG────────oH                         
+                                                                                   │         │                          
+                       oP────────oO────────oN────────oM────────oL────────oK────────oJ────────oI                         
+                       │                                                                                                
+                       oQ────────oR                                                                                     
+                                                                                                                        
+                    ◆ wagon · @ last stop · > next · * reached · o unknown · † grave                                    
+                    On the way to Kansas River Crossing: 102 miles remain.                                              
+                    Nearest reachable supply: Fort Kearney, 304 mi. Forks may vary.                                     
+                    ► @A Independence, Missouri · day 0, mile 0                                                         
+                      >B Kansas River Crossing · 102 route mi                                                           
+                      oC Big Blue River Crossing · 185 route mi                                                         
+                      oD Fort Kearney · 304 route mi                                                                    
+                      oE Chimney Rock · 554 route mi                                                                    
+                      oF Fort Laramie · 640 route mi                                                                    
+                      oG Independence Rock · 830 route mi                                                               
+                      oH South Pass · 932 route mi                                                                      
+                      oI Green River Crossing · 989 route mi                                                            
+                      oJ Fort Bridger · 1151 route mi                                                                   
+                      oK Soda Springs · 1143 route mi                                                                   
+                      oL Fort Hall · 1200 route mi                                                                      
+                      oM Snake River Crossing · 1380 route mi                                                           
+                      oN Fort Boise · 1493 route mi                                                                     
+                      oO Blue Mountains · 1653 route mi                                                                 
+                      oP Fort Walla Walla · 1708 route mi                                                               
+                      oQ The Dalles · 1813 route mi                                                                     
+                      oR Willamette Valley · 1885 route mi                                                              
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                    ↑↓ / jk scroll stops and graves · Esc back · schematic, not to scale                                
 
 === Pace ===
 ┌PIONEER TRAIL─────────────────────────────────────────────────────────────────────────────────────────────────────────┐

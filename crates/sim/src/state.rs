@@ -131,6 +131,9 @@ pub struct GameState {
     pub loose_bullets: u8,
     #[serde(default)]
     pub last_fresh_food_day: Option<u32>,
+    /// Stops actually reached, in order. Empty on saves made before route records existed.
+    #[serde(default)]
+    pub visited_landmarks: Vec<crate::route_record::Visit>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum Command {
@@ -317,6 +320,7 @@ impl GameState {
             active_minigame: None,
             loose_bullets: 0,
             last_fresh_food_day: None,
+            visited_landmarks: Vec::new(),
         }
     }
     pub fn npc_present(&self, npc_id: &str) -> bool {
@@ -339,7 +343,17 @@ impl GameState {
         }
     }
     pub fn apply(&mut self, c: Command) -> Vec<Outcome> {
+        let previous_node = self.current_node_id.clone();
         let mut outcomes = self.try_apply(c).unwrap_or_else(|e| vec![Outcome::Rejected(e)]);
+        if self.current_node_id != previous_node {
+            if let Some(id) = &self.current_node_id {
+                self.visited_landmarks.push(crate::route_record::Visit {
+                    landmark_id: id.clone(),
+                    day: self.day,
+                    mile: self.miles,
+                });
+            }
+        }
         if matches!(self.status, RunStatus::Arrived | RunStatus::Failed) {
             self.pending_event = None;
             self.active_minigame = None;

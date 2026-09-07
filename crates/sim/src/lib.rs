@@ -11,6 +11,7 @@ pub mod health;
 pub mod minigame;
 pub mod party;
 pub mod rng;
+pub mod route_record;
 pub mod score;
 pub mod state;
 pub mod weather;

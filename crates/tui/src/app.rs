@@ -13,6 +13,8 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem, Paragraph},
 };
 
+mod route_map;
+
 /// UI-only draft; all rules are submitted to the simulation as commands.
 #[derive(Debug, Clone)]
 struct SetupDraft {
@@ -1030,6 +1032,10 @@ impl App {
             );
             return;
         }
+        if self.screen == Screen::Map {
+            self.render_route_map(frame);
+            return;
+        }
         if !self.settings.no_art
             && matches!(
                 self.screen,
@@ -1559,57 +1565,7 @@ impl App {
                     lines.push(Line::from(format!("{id}: {quantity}")));
                 }
             }
-            Screen::Map => {
-                lines.push(Line::from(format!(
-                    "{} miles · {:?} · next {} ({} mi)",
-                    self.game.miles,
-                    self.game.weather,
-                    self.game.target_node_id.as_deref().unwrap_or("camp"),
-                    self.game.route_miles_remaining
-                )));
-                if let Some(trail) = self
-                    .game
-                    .content
-                    .trails
-                    .iter()
-                    .find(|trail| Some(&trail.id) == self.game.trail_id.as_ref())
-                {
-                    let mut entries = trail
-                        .nodes
-                        .iter()
-                        .map(|node| {
-                            format!(
-                                "{} {}: {} miles",
-                                if Some(&node.id) == self.game.current_node_id.as_ref() {
-                                    "►"
-                                } else {
-                                    " "
-                                },
-                                node.name,
-                                node.mile
-                            )
-                        })
-                        .collect::<Vec<_>>();
-                    entries.extend(self.graves.iter().map(|grave| {
-                        format!(
-                            "† Mile {} · {} · {}{}",
-                            grave.mile,
-                            grave.leader,
-                            grave.date,
-                            if grave.local { " [local]" } else { "" }
-                        )
-                    }));
-                    lines.extend(entries.into_iter().skip(self.cursor).take(11).map(Line::from));
-                    if let Some(grave) = self
-                        .cursor
-                        .checked_sub(trail.nodes.len())
-                        .and_then(|index| self.graves.get(index))
-                    {
-                        lines.push(Line::from(format!("{}: {}", grave.cause, grave.epitaph)));
-                    }
-                    lines.push(Line::from("↑↓ scroll landmarks and graves"));
-                }
-            }
+            Screen::Map => {}
             Screen::Pace => {
                 lines.push(Line::from(
                     crate::advice::screen_advice(&self.game, Screen::Pace).unwrap(),
