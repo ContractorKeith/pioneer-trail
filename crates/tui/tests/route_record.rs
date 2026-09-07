@@ -1,5 +1,9 @@
 use crossterm::event::{KeyCode, KeyEvent};
-use pioneer_sim::{route_record::Visit, Command, GameState, RunStatus};
+use pioneer_sim::{
+    content::{LandmarkDefinition, LandmarkKind, RouteDefinition},
+    route_record::Visit,
+    Command, CrossMethod, GameState, RunStatus,
+};
 use pioneer_trail::{app::App, persist::Settings, screens::Screen};
 use ratatui::{backend::TestBackend, Terminal};
 
@@ -58,6 +62,60 @@ fn selecting_a_fork_does_not_stamp_the_other_branch() {
         assert!(game.visited_landmarks.iter().any(|v| v.landmark_id == route.target_id));
         let other = routes.iter().find(|r| r.id != route.id).unwrap();
         assert!(!game.visited_landmarks.iter().any(|v| v.landmark_id == other.target_id));
+    }
+}
+
+fn apply(game: &mut GameState, command: Command) {
+    let outcomes = game.apply(command);
+    assert!(
+        !outcomes.iter().any(|outcome| matches!(outcome, pioneer_sim::Outcome::Rejected(_))),
+        "command was rejected: {outcomes:?}"
+    );
+}
+
+fn reach_node(game: &mut GameState, target: &str) {
+    for _ in 0..200 {
+        if game.current_node_id.as_deref() == Some(target) {
+            return;
+        }
+        // Keep the fixture focused on route commands rather than provisioning
+        // or illness attrition; it never changes route position or choices.
+        game.inventory.quantities.insert("food".into(), 500);
+        for member in game.party.iter_mut().filter(|member| member.alive) {
+            member.health = 100;
+        }
+        match &game.status {
+            RunStatus::Travelling => apply(game, Command::TravelDay),
+            RunStatus::AtLandmark(_) => apply(game, Command::Continue),
+            // Caulking can lose cargo but cannot choose a casualty, keeping this
+            // command-only fixture deterministic enough to reach the fork.
+            RunStatus::AwaitingRiver(_) => {
+                apply(game, Command::CrossRiver { method: CrossMethod::Caulk })
+            }
+            status => panic!("could not reach {target}; stopped at {status:?}"),
+        }
+    }
+    panic!("did not reach {target} within the command budget");
+}
+
+#[test]
+fn real_journey_commands_stamp_only_the_oregon_fork_that_was_taken() {
+    for (route_id, target, supply, miles) in [
+        ("green", "green_river", "Fort Hall", 268),
+        ("bridger", "fort_bridger", "Fort Bridger", 219),
+    ] {
+        let mut state = game("oregon");
+        reach_node(&mut state, "south_pass");
+        assert!(matches!(state.status, RunStatus::AwaitingFork(_)));
+        assert!(state.visited_landmarks.iter().any(|visit| visit.landmark_id == "south_pass"));
+
+        apply(&mut state, Command::ChooseRoute { route_id: route_id.into() });
+        assert_eq!(state.next_supply_stop(), Some((supply, miles)));
+        reach_node(&mut state, target);
+
+        assert!(state.visited_landmarks.iter().any(|visit| visit.landmark_id == target));
+        let other = if target == "green_river" { "fort_bridger" } else { "green_river" };
+        assert!(!state.visited_landmarks.iter().any(|visit| visit.landmark_id == other));
     }
 }
 
@@ -154,8 +212,43 @@ fn legacy_history_renders_unknown_stops_in_text_mode() {
     let text =
         terminal.backend().buffer().content.iter().map(|cell| cell.symbol()).collect::<String>();
     assert!(text.contains("Earlier visits were not recorded in this save."));
-    assert!(text.contains("oC Big Blue River Crossing · 185 route mi"));
+    assert!(text.contains("oC Big Blue River Crossing · 185 route miles"));
     assert!(!text.contains("day 0, mile 0"));
+}
+
+#[test]
+fn extended_future_trail_uses_a_safe_text_listing() {
+    let mut game = game("oregon");
+    let trail = game.content.trails.iter_mut().find(|trail| trail.id == "oregon").unwrap();
+    for index in 0..9 {
+        trail.nodes.push(LandmarkDefinition {
+            id: format!("future_stop_{index}"),
+            name: format!("Future stop {}", index + 1),
+            mile: 2_000 + index,
+            kind: LandmarkKind::Landmark,
+            routes: vec![RouteDefinition {
+                id: "finish".into(),
+                label: "Continue to journey's end".into(),
+                target_id: "willamette".into(),
+                distance_miles: 1,
+            }],
+            river: None,
+            store: false,
+        });
+    }
+    let mut app = App::new(game.content.clone(), 23, Settings::default());
+    app.game = game;
+    app.screen = Screen::Journey;
+    app.handle_key(KeyEvent::from(KeyCode::Char('m')));
+    for _ in 0..26 {
+        app.handle_key(KeyEvent::from(KeyCode::Down));
+    }
+    let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+    terminal.draw(|frame| app.render(frame)).unwrap();
+    let text =
+        terminal.backend().buffer().content.iter().map(|cell| cell.symbol()).collect::<String>();
+    assert!(text.contains("ROUTE MAP LISTING · 27 stops"));
+    assert!(text.contains("27 Future stop 9"));
 }
 
 #[test]

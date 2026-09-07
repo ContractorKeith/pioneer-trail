@@ -1,5 +1,7 @@
 use super::*;
 
+const MAX_DIAGRAM_STOPS: usize = 24;
+
 impl App {
     pub(super) fn render_route_map(&self, frame: &mut Frame) {
         let area = frame.area();
@@ -18,12 +20,15 @@ impl App {
         frame.render_widget(
             Paragraph::new(format!(
                 "{} ROUTE RECORD · {} miles · {:?}",
-                trail.name, self.game.miles, self.game.weather
+                trail.name.to_uppercase(),
+                self.game.miles,
+                self.game.weather
             )),
             Rect::new(x, y, 80, 1),
         );
         y += 1;
-        if !self.settings.no_art {
+        let diagram = !self.settings.no_art && trail.nodes.len() <= MAX_DIAGRAM_STOPS;
+        if diagram {
             let position = |index: usize| {
                 let row = index / 8;
                 let column = if row.is_multiple_of(2) { index % 8 } else { 7 - index % 8 };
@@ -57,7 +62,7 @@ impl App {
             for (index, node) in trail.nodes.iter().enumerate() {
                 let (px, py) = position(index);
                 let stamp = self.map_stamp(&node.id);
-                let code = char::from(b'A' + index as u8);
+                let code = stop_label(index);
                 let color = mode.color(if stamp == '@' {
                     crate::art::Pixel::Orange
                 } else if matches!(stamp, '*' | '>') {
@@ -126,8 +131,22 @@ impl App {
             }
             y += (trail.nodes.len().div_ceil(8) * 2 + 1) as u16;
         }
+        if !self.settings.no_art && !diagram {
+            frame.render_widget(
+                Paragraph::new(format!(
+                    "ROUTE MAP LISTING · {} stops (diagram available for 24 or fewer stops)",
+                    trail.nodes.len()
+                )),
+                Rect::new(x, y, 80, 1),
+            );
+            y += 1;
+        }
         frame.render_widget(
-            Paragraph::new("◆ wagon · @ last stop · > next · * reached · o unknown · † grave"),
+            Paragraph::new(if diagram {
+                "◆ wagon · @ current stop · > next · * reached · o unknown · † grave"
+            } else {
+                "@ current stop · > next · * reached · o unknown · † grave"
+            }),
             Rect::new(x, y, 80, 1),
         );
         y += 1;
@@ -150,7 +169,7 @@ impl App {
         let supply = self.game.next_supply_stop().map_or_else(
             || "No further supply stop on a reachable route.".into(),
             |(name, miles)| {
-                format!("Nearest reachable supply: {name}, {miles} mi. Forks may vary.")
+                format!("Nearest reachable supply: {name}, {miles} miles. Forks may vary.")
             },
         );
         frame.render_widget(Paragraph::new(supply), Rect::new(x, y, 80, 1));
@@ -170,14 +189,14 @@ impl App {
             .map(|(i, n)| {
                 let visit = self.game.visited_landmarks.iter().find(|v| v.landmark_id == n.id);
                 let detail = visit.map_or_else(
-                    || format!("{} route mi", n.mile),
+                    || format!("{} route miles", n.mile),
                     |v| format!("day {}, mile {}", v.day, v.mile),
                 );
                 format!(
                     "{} {}{} {} · {detail}",
                     marker(i == self.cursor),
                     self.map_stamp(&n.id),
-                    char::from(b'A' + i as u8),
+                    stop_label(i),
                     n.name
                 )
             })
@@ -219,5 +238,13 @@ impl App {
         } else {
             'o'
         }
+    }
+}
+
+fn stop_label(index: usize) -> String {
+    if index < 26 {
+        char::from(b'A' + index as u8).to_string()
+    } else {
+        (index + 1).to_string()
     }
 }
