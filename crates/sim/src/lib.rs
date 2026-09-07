@@ -5,6 +5,7 @@
 
 pub mod calendar;
 pub mod content;
+pub mod conversations;
 pub mod economy;
 pub mod family;
 pub mod health;
@@ -12,12 +13,14 @@ pub mod journal;
 pub mod minigame;
 pub mod party;
 pub mod rng;
+pub mod route_record;
 pub mod score;
 pub mod state;
 pub mod weather;
 
 pub use calendar::{days_in_month, is_leap_year, CalendarDate};
 pub use content::*;
+pub use conversations::{ConversationMemory, ConversationTopic, SpeakerSetting, SpeakerView};
 pub use economy::{Counteroffer, Market, NpcTrain};
 pub use family::{FamilyState, Pregnancy};
 pub use health::{AilmentStage, Sex};

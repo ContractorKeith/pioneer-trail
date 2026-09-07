@@ -45,6 +45,7 @@ pub fn validate(content: &GameContent) -> Result<(), ContentError> {
     unique(content.ailments.iter().map(|value| value.id.as_str()), "ailment")?;
     unique(content.events.iter().map(|value| value.id.as_str()), "event")?;
     unique(content.quotes.iter().map(|value| value.id.as_str()), "quote")?;
+    unique(content.speakers.iter().map(|value| value.id.as_str()), "speaker")?;
     unique(content.events.iter().map(|value| value.text.as_str()), "event text")?;
     unique(
         content.quotes.iter().map(|value| {
@@ -65,6 +66,13 @@ pub fn validate(content: &GameContent) -> Result<(), ContentError> {
         .trails
         .iter()
         .flat_map(|trail| trail.nodes.iter())
+        .map(|node| node.id.as_str())
+        .collect::<HashSet<_>>();
+    let fort_landmark_ids = content
+        .trails
+        .iter()
+        .flat_map(|trail| trail.nodes.iter())
+        .filter(|node| node.kind == LandmarkKind::Fort)
         .map(|node| node.id.as_str())
         .collect::<HashSet<_>>();
     let store_ids = content
@@ -287,6 +295,26 @@ pub fn validate(content: &GameContent) -> Result<(), ContentError> {
                 )
             }),
             &format!("quote {} has an unsupported state tag", quote.id),
+        )?;
+    }
+    for speaker in &content.speakers {
+        expect(
+            fort_landmark_ids.contains(speaker.landmark_id.as_str()),
+            &format!("speaker {} names a non-fort landmark {}", speaker.id, speaker.landmark_id),
+        )?;
+        expect(
+            valid_text(&speaker.name, 60) && !speaker.name.is_empty(),
+            &format!("speaker {} needs a name", speaker.id),
+        )?;
+        expect(
+            valid_text(&speaker.greeting, 240)
+                && valid_text(&speaker.returning_greeting, 240)
+                && speaker.greeting != speaker.returning_greeting,
+            &format!("speaker {} needs distinct first-meeting and returning greetings", speaker.id),
+        )?;
+        expect(
+            speaker.favor_food_lbs > 0 && speaker.favor_food_lbs <= 50,
+            &format!("speaker {} favor_food_lbs must stay a small, bounded amount", speaker.id),
         )?;
     }
     Ok(())
@@ -572,6 +600,40 @@ mod tests {
         assert!(content.ailments.len() >= 20);
         assert!(content.events.len() >= 150);
         assert!(content.quotes.len() >= 200);
+        assert!(content.speakers.len() >= 10);
+        let fort_ids = content
+            .trails
+            .iter()
+            .flat_map(|trail| trail.nodes.iter())
+            .filter(|node| node.kind == pioneer_sim::LandmarkKind::Fort)
+            .map(|node| node.id.as_str())
+            .collect::<HashSet<_>>();
+        for id in &fort_ids {
+            assert!(
+                content.speakers.iter().any(|speaker| speaker.landmark_id == *id),
+                "fort {id} has no named speaker"
+            );
+        }
+    }
+
+    #[test]
+    fn speaker_landmark_must_be_a_fort() {
+        let content = load().unwrap();
+        let mut invalid = content;
+        invalid.speakers[0].landmark_id = "independence".into();
+        assert!(validate(&invalid).unwrap_err().to_string().contains("non-fort landmark"));
+    }
+
+    #[test]
+    fn speaker_favor_food_must_stay_small_and_bounded() {
+        let content = load().unwrap();
+        let mut too_much = content.clone();
+        too_much.speakers[0].favor_food_lbs = 5_000;
+        assert!(validate(&too_much).unwrap_err().to_string().contains("bounded amount"));
+
+        let mut zero = content;
+        zero.speakers[0].favor_food_lbs = 0;
+        assert!(validate(&zero).unwrap_err().to_string().contains("bounded amount"));
     }
 
     #[test]

@@ -62,7 +62,7 @@ impl Inventory {
     pub fn get(&self, id: &str) -> u32 {
         self.quantities.get(id).copied().unwrap_or(0)
     }
-    fn add(&mut self, id: &str, n: u32) {
+    pub(crate) fn add(&mut self, id: &str, n: u32) {
         let quantity = self.quantities.entry(id.into()).or_default();
         *quantity = quantity.saturating_add(n);
     }
@@ -134,6 +134,12 @@ pub struct GameState {
     pub last_fresh_food_day: Option<u32>,
     #[serde(default)]
     pub journal: Journal,
+    /// Stops actually reached, in order. Empty on saves made before route records existed.
+    #[serde(default)]
+    pub visited_landmarks: Vec<crate::route_record::Visit>,
+    /// Per-speaker conversation memory: recognizes prior meetings and gates one-time favors.
+    #[serde(default)]
+    pub conversation_memory: BTreeMap<String, crate::conversations::ConversationMemory>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum Command {
@@ -201,6 +207,10 @@ pub enum Command {
         choice_id: String,
     },
     Talk,
+    Converse {
+        speaker_id: String,
+        topic: crate::conversations::ConversationTopic,
+    },
     Treat {
         member_index: usize,
         ailment_id: String,
@@ -224,18 +234,60 @@ pub enum GatheringActivity {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum Outcome {
     Configured,
-    Purchased { item_id: String, quantity: u32, cost_cents: i64 },
+    Purchased {
+        item_id: String,
+        quantity: u32,
+        cost_cents: i64,
+    },
     Departed,
-    DayAdvanced { day: u32, miles: u32, weather: WeatherKind },
-    ArrivedAt { landmark_id: String },
-    ForkAvailable { landmark_id: String },
-    RiverCrossingRequired { landmark_id: String },
-    Event { event_id: String, text: String },
-    Quote { quote_id: String, text: String },
-    Treated { member_index: usize, ailment_id: String },
-    Score { points: u32 },
-    MemberDied { name: String, cause: DeathCause },
-    Gathered { activity: GatheringActivity, food_lbs: u32, net_food_lbs: i64, days: u8 },
+    DayAdvanced {
+        day: u32,
+        miles: u32,
+        weather: WeatherKind,
+    },
+    ArrivedAt {
+        landmark_id: String,
+    },
+    ForkAvailable {
+        landmark_id: String,
+    },
+    RiverCrossingRequired {
+        landmark_id: String,
+    },
+    Event {
+        event_id: String,
+        text: String,
+    },
+    Quote {
+        quote_id: String,
+        text: String,
+    },
+    Conversation {
+        speaker_id: String,
+        speaker_name: String,
+        setting: crate::conversations::SpeakerSetting,
+        recognized: bool,
+        topic: crate::conversations::ConversationTopic,
+        lines: Vec<String>,
+        favor: Option<String>,
+    },
+    Treated {
+        member_index: usize,
+        ailment_id: String,
+    },
+    Score {
+        points: u32,
+    },
+    MemberDied {
+        name: String,
+        cause: DeathCause,
+    },
+    Gathered {
+        activity: GatheringActivity,
+        food_lbs: u32,
+        net_food_lbs: i64,
+        days: u8,
+    },
     Message(String),
     Rejected(CommandError),
 }
@@ -333,6 +385,8 @@ impl GameState {
             loose_bullets: 0,
             last_fresh_food_day: None,
             journal: Journal::default(),
+            visited_landmarks: Vec::new(),
+            conversation_memory: BTreeMap::new(),
         }
     }
     pub fn npc_present(&self, npc_id: &str) -> bool {
@@ -355,9 +409,19 @@ impl GameState {
         }
     }
     pub fn apply(&mut self, c: Command) -> Vec<Outcome> {
+        let previous_node = self.current_node_id.clone();
         let mut outcomes = self.try_apply(c).unwrap_or_else(|e| vec![Outcome::Rejected(e)]);
         if outcomes.iter().any(|outcome| matches!(outcome, Outcome::Rejected(_))) {
             return outcomes;
+        }
+        if self.current_node_id != previous_node {
+            if let Some(id) = &self.current_node_id {
+                self.visited_landmarks.push(crate::route_record::Visit {
+                    landmark_id: id.clone(),
+                    day: self.day,
+                    mile: self.miles,
+                });
+            }
         }
         if matches!(self.status, RunStatus::Arrived | RunStatus::Failed) {
             self.pending_event = None;
@@ -532,6 +596,7 @@ impl GameState {
             Command::CrossRiver { method } => self.cross(method),
             Command::Respond { event_id, choice_id } => self.respond(&event_id, &choice_id),
             Command::Talk => self.talk(),
+            Command::Converse { speaker_id, topic } => self.converse(&speaker_id, topic),
             Command::Treat { member_index, ailment_id } => self.treat(member_index, &ailment_id),
             Command::BeginHunt => self.begin_hunt(),
             Command::HuntResult { food_lbs, shots } => self.hunt(food_lbs, shots),
@@ -1815,7 +1880,7 @@ impl GameState {
     fn apply_percent(amount: i64, percent: u16) -> i64 {
         (i128::from(amount) * i128::from(percent) / 100).clamp(1, i128::from(i64::MAX)) as i64
     }
-    fn era_rules(&self) -> EraRules {
+    pub(crate) fn era_rules(&self) -> EraRules {
         self.era_id
             .as_ref()
             .and_then(|id| self.content.era_rules.get(id))
@@ -1846,7 +1911,7 @@ impl GameState {
             last_restock_day: self.day,
         })
     }
-    fn max_addable(&self, item_id: &str) -> Option<u32> {
+    pub(crate) fn max_addable(&self, item_id: &str) -> Option<u32> {
         let item = self.content.items.iter().find(|item| item.id == item_id)?;
         let item_limit = item.limit.checked_sub(self.inventory.get(item_id))?;
         let weight_limit =
@@ -1927,6 +1992,9 @@ impl GameState {
                 if !trail.nodes.iter().any(|candidate| &candidate.id == node) {
                     return Err(CommandError::UnknownId(node.clone()));
                 }
+            }
+            if !self.visits_are_valid_for(trail) {
+                return Err(CommandError::InvalidSetup);
             }
         }
         if let Some(id) = &self.era_id {
@@ -2061,7 +2129,7 @@ impl GameState {
     fn traveling(&self) -> Result<(), CommandError> {
         self.phase(RunStatus::Travelling)
     }
-    fn at_camp(&self) -> Result<(), CommandError> {
+    pub(crate) fn at_camp(&self) -> Result<(), CommandError> {
         if matches!(
             self.status,
             RunStatus::Travelling

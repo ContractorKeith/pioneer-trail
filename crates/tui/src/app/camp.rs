@@ -19,7 +19,7 @@ impl App {
             4 => self.open_gathering(GatheringActivity::Fish),
             5 => self.apply(Command::BeginHunt),
             6 => self.screen = Screen::Party,
-            7 => self.screen = Screen::Talk,
+            7 => self.open_talk(),
             _ => self.back(),
         }
     }
@@ -52,7 +52,7 @@ impl App {
                     mode,
                 );
             }
-            let fire = if self.animation_tick.is_multiple_of(2) {
+            let fire = if self.settings.reduced_motion || self.animation_tick.is_multiple_of(2) {
                 "camp_fire_0.px"
             } else {
                 "camp_fire_1.px"
