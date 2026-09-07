@@ -1240,7 +1240,14 @@ impl App {
         }
         if self.settings.no_art {
             if let Some(moment) = &self.travel_moment {
-                frame.render_widget(Paragraph::new(format!("TRAIL MOMENT\n\n{}\n\n{}\n\nWeather: {:?}\n\nSpace/Enter Continue · Esc dismiss · Ctrl-Q quit", moment.title, moment.text, self.game.weather)).block(Block::default().borders(Borders::ALL)).wrap(ratatui::widgets::Wrap { trim: true }), area);
+                let text = format!(
+                    "TRAIL MOMENT\n\n{}\n\n{}\n\nWeather: {:?}\n\nSpace/Enter Continue · Esc dismiss · Ctrl-Q quit",
+                    moment.title, moment.text, self.game.weather
+                );
+                let moment = Paragraph::new(text)
+                    .block(Block::default().borders(Borders::ALL))
+                    .wrap(ratatui::widgets::Wrap { trim: true });
+                frame.render_widget(moment, area);
                 return;
             }
         }
@@ -1653,6 +1660,15 @@ impl App {
             source_y,
             mode,
         );
+        if self.screen == Screen::Event {
+            art::render_weather_overlay(
+                frame.buffer_mut(),
+                scene,
+                self.game.weather,
+                if self.settings.reduced_motion { 0 } else { self.animation_tick },
+                mode,
+            );
+        }
         let survivors = self.game.party.iter().filter(|member| member.alive).count();
         if self.screen == Screen::Score
             && !matches!(self.game.status, pioneer_sim::RunStatus::Arrived)
