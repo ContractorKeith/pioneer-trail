@@ -61,7 +61,7 @@ impl Inventory {
     pub fn get(&self, id: &str) -> u32 {
         self.quantities.get(id).copied().unwrap_or(0)
     }
-    fn add(&mut self, id: &str, n: u32) {
+    pub(crate) fn add(&mut self, id: &str, n: u32) {
         let quantity = self.quantities.entry(id.into()).or_default();
         *quantity = quantity.saturating_add(n);
     }
@@ -131,6 +131,9 @@ pub struct GameState {
     pub loose_bullets: u8,
     #[serde(default)]
     pub last_fresh_food_day: Option<u32>,
+    /// Per-speaker conversation memory: recognizes prior meetings and gates one-time favors.
+    #[serde(default)]
+    pub conversation_memory: BTreeMap<String, crate::conversations::ConversationMemory>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum Command {
@@ -192,6 +195,10 @@ pub enum Command {
         choice_id: String,
     },
     Talk,
+    Converse {
+        speaker_id: String,
+        topic: crate::conversations::ConversationTopic,
+    },
     Treat {
         member_index: usize,
         ailment_id: String,
@@ -210,17 +217,53 @@ pub enum Command {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum Outcome {
     Configured,
-    Purchased { item_id: String, quantity: u32, cost_cents: i64 },
+    Purchased {
+        item_id: String,
+        quantity: u32,
+        cost_cents: i64,
+    },
     Departed,
-    DayAdvanced { day: u32, miles: u32, weather: WeatherKind },
-    ArrivedAt { landmark_id: String },
-    ForkAvailable { landmark_id: String },
-    RiverCrossingRequired { landmark_id: String },
-    Event { event_id: String, text: String },
-    Quote { quote_id: String, text: String },
-    Treated { member_index: usize, ailment_id: String },
-    Score { points: u32 },
-    MemberDied { name: String },
+    DayAdvanced {
+        day: u32,
+        miles: u32,
+        weather: WeatherKind,
+    },
+    ArrivedAt {
+        landmark_id: String,
+    },
+    ForkAvailable {
+        landmark_id: String,
+    },
+    RiverCrossingRequired {
+        landmark_id: String,
+    },
+    Event {
+        event_id: String,
+        text: String,
+    },
+    Quote {
+        quote_id: String,
+        text: String,
+    },
+    Conversation {
+        speaker_id: String,
+        speaker_name: String,
+        setting: crate::conversations::SpeakerSetting,
+        recognized: bool,
+        topic: crate::conversations::ConversationTopic,
+        lines: Vec<String>,
+        favor: Option<String>,
+    },
+    Treated {
+        member_index: usize,
+        ailment_id: String,
+    },
+    Score {
+        points: u32,
+    },
+    MemberDied {
+        name: String,
+    },
     Message(String),
     Rejected(CommandError),
 }
@@ -317,6 +360,7 @@ impl GameState {
             active_minigame: None,
             loose_bullets: 0,
             last_fresh_food_day: None,
+            conversation_memory: BTreeMap::new(),
         }
     }
     pub fn npc_present(&self, npc_id: &str) -> bool {
@@ -446,6 +490,7 @@ impl GameState {
             Command::CrossRiver { method } => self.cross(method),
             Command::Respond { event_id, choice_id } => self.respond(&event_id, &choice_id),
             Command::Talk => self.talk(),
+            Command::Converse { speaker_id, topic } => self.converse(&speaker_id, topic),
             Command::Treat { member_index, ailment_id } => self.treat(member_index, &ailment_id),
             Command::BeginHunt => self.begin_hunt(),
             Command::HuntResult { food_lbs, shots } => self.hunt(food_lbs, shots),
@@ -1891,7 +1936,7 @@ impl GameState {
     fn traveling(&self) -> Result<(), CommandError> {
         self.phase(RunStatus::Travelling)
     }
-    fn at_camp(&self) -> Result<(), CommandError> {
+    pub(crate) fn at_camp(&self) -> Result<(), CommandError> {
         if matches!(
             self.status,
             RunStatus::Travelling

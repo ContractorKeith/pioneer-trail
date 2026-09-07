@@ -31,6 +31,13 @@ struct TradeDraft {
     offered_quantity: u32,
     wanted_quantity: u32,
 }
+/// Talk screen's two-step flow: pick a speaker, then a grounded topic.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+enum TalkStage {
+    #[default]
+    Choose,
+    Topic(usize),
+}
 impl Default for SetupDraft {
     fn default() -> Self {
         Self {
@@ -74,6 +81,7 @@ pub struct App {
     bell_pending: bool,
     outfitting_advice_visible: bool,
     departure_warning_armed: bool,
+    talk_stage: TalkStage,
 }
 impl App {
     pub fn new(content: GameContent, seed: u64, settings: Settings) -> Self {
@@ -107,6 +115,7 @@ impl App {
             bell_pending: false,
             outfitting_advice_visible: false,
             departure_warning_armed: false,
+            talk_stage: TalkStage::default(),
         }
     }
     pub fn with_storage(mut self, storage: Storage) -> Self {
@@ -176,6 +185,10 @@ impl App {
             Screen::Pace | Screen::Rations | Screen::Rest => 3,
             Screen::Treat | Screen::Party => self.game.party.len(),
             Screen::Trade => 9,
+            Screen::Talk => match self.talk_stage {
+                TalkStage::Choose => self.game.available_speakers().len() + 1,
+                TalkStage::Topic(_) => crate::conversation::TOPICS.len(),
+            },
             Screen::Hall => self.hall.len(),
             Screen::River => 5,
             Screen::Fork => self.game.current_landmark().map_or(0, |n| n.routes.len()),
@@ -436,7 +449,10 @@ impl App {
                 4 => self.screen = Screen::Rations,
                 5 => self.screen = Screen::Rest,
                 6 => self.apply(Command::BeginHunt),
-                7 => self.screen = Screen::Talk,
+                7 => {
+                    self.talk_stage = TalkStage::Choose;
+                    self.screen = Screen::Talk;
+                }
                 _ => {
                     if self.game.can_shop() {
                         self.screen = Screen::Store
@@ -457,9 +473,29 @@ impl App {
             Screen::Rest => {
                 self.apply(Command::Rest { days: (self.cursor + 1) as u32 });
             }
-            Screen::Talk => {
-                self.apply(Command::Talk);
-            }
+            Screen::Talk => match self.talk_stage {
+                TalkStage::Choose => {
+                    let speakers = self.game.available_speakers();
+                    if self.cursor < speakers.len() {
+                        self.talk_stage = TalkStage::Topic(self.cursor);
+                        self.cursor = 0;
+                    } else {
+                        self.apply(Command::Talk);
+                    }
+                }
+                TalkStage::Topic(speaker_index) => {
+                    let speakers = self.game.available_speakers();
+                    if let Some(speaker) = speakers.get(speaker_index) {
+                        let topic = crate::conversation::TOPICS
+                            [self.cursor % crate::conversation::TOPICS.len()]
+                        .0;
+                        let speaker_id = speaker.id.clone();
+                        self.apply(Command::Converse { speaker_id, topic });
+                    }
+                    self.talk_stage = TalkStage::Choose;
+                    self.cursor = 0;
+                }
+            },
             Screen::Treat => {
                 if let Some(ailment_id) = self
                     .game
@@ -635,7 +671,10 @@ impl App {
             (Screen::Journey, 'p') => self.screen = Screen::Pace,
             (Screen::Journey, 'r') => self.screen = Screen::Rations,
             (Screen::Journey, 'x') => self.screen = Screen::Rest,
-            (Screen::Journey, 't') => self.screen = Screen::Talk,
+            (Screen::Journey, 't') => {
+                self.talk_stage = TalkStage::Choose;
+                self.screen = Screen::Talk;
+            }
             (Screen::Journey, 'i') => self.screen = Screen::Treat,
             (Screen::Journey, 'u') => {
                 self.screen = Screen::Trade;
@@ -709,6 +748,11 @@ impl App {
         }
     }
     fn back(&mut self) {
+        if self.screen == Screen::Talk && self.talk_stage != TalkStage::Choose {
+            self.talk_stage = TalkStage::Choose;
+            self.cursor = 0;
+            return;
+        }
         if self.screen == Screen::Store && self.outfitting_advice_visible {
             self.outfitting_advice_visible = false;
             return;
@@ -771,6 +815,7 @@ impl App {
                 | Command::InviteNpc { .. }
                 | Command::DismissNpc { .. }
                 | Command::Talk
+                | Command::Converse { .. }
                 | Command::Treat { .. }
         );
         let outcomes = self.game.apply(command);
@@ -869,6 +914,11 @@ impl App {
             Outcome::Message(text) => self.note(text),
             Outcome::Rejected(error) => self.note(error.to_string()),
             Outcome::Quote { text, .. } => self.note(text),
+            Outcome::Conversation { lines, .. } => {
+                for line in lines {
+                    self.note(line);
+                }
+            }
             Outcome::ArrivedAt { .. } => {
                 if let Some(node) = self.game.current_landmark() {
                     self.note(format!("Reached {}.", node.name));
@@ -1033,7 +1083,12 @@ impl App {
         if !self.settings.no_art
             && matches!(
                 self.screen,
-                Screen::Title | Screen::Journey | Screen::River | Screen::Event | Screen::Score
+                Screen::Title
+                    | Screen::Journey
+                    | Screen::River
+                    | Screen::Event
+                    | Screen::Score
+                    | Screen::Talk
             )
         {
             self.render_scene(frame);
@@ -1148,7 +1203,7 @@ impl App {
             }
             return;
         }
-        if matches!(self.screen, Screen::River | Screen::Event | Screen::Score) {
+        if matches!(self.screen, Screen::River | Screen::Event | Screen::Score | Screen::Talk) {
             self.render_scene_vignette(
                 frame,
                 Rect::new(canvas.x, area.y, canvas.width, area.height),
@@ -1322,6 +1377,11 @@ impl App {
                     .unwrap_or_else(|| "terrain_forest.px".into()),
                 16 - scene_height,
             ),
+            Screen::Talk => {
+                let (file, _) = crate::conversation::setting(&self.game);
+                let file = if art::embedded(&file).is_some() { file } else { "wagon_0.px".into() };
+                (file, 16 - scene_height)
+            }
             _ => ("terrain_plains.px".into(), 16 - scene_height),
         };
         art::render_section(
@@ -1365,6 +1425,7 @@ impl App {
             }
             Screen::Score if survivors == 0 => "THE TRAIL ENDS HERE",
             Screen::Score => "WAGON STRANDED",
+            Screen::Talk => crate::conversation::setting(&self.game).1,
             _ => unreachable!("vignette only renders illustrated screens"),
         };
         frame.render_widget(
@@ -1629,7 +1690,26 @@ impl App {
                 lines.extend(menu(&["Rest 1 day", "Rest 2 days", "Rest 3 days"], self.cursor))
             }
             Screen::Talk => {
-                lines.push(Line::from("Talk to people: Enter to listen. Esc returns to camp."));
+                let (_, setting_label) = crate::conversation::setting(&self.game);
+                match self.talk_stage {
+                    TalkStage::Choose => {
+                        lines.push(Line::from(format!("{setting_label}. Who do you approach?")));
+                        let speakers = self.game.available_speakers();
+                        let rows = crate::conversation::speaker_menu(&speakers);
+                        lines.extend(menu(
+                            &rows.iter().map(String::as_str).collect::<Vec<_>>(),
+                            self.cursor,
+                        ));
+                    }
+                    TalkStage::Topic(_) => {
+                        lines.push(Line::from("What do you ask about?"));
+                        let rows = crate::conversation::topic_menu();
+                        lines.extend(menu(
+                            &rows.iter().map(String::as_str).collect::<Vec<_>>(),
+                            self.cursor,
+                        ));
+                    }
+                }
                 if let Some(last) = self.log.last() {
                     lines.push(Line::from(last.clone()));
                 }
@@ -2053,6 +2133,14 @@ mod tests {
                 Screen::Treat => {
                     app.game.party[1].ailments = vec!["fever".into()];
                     app.game.party[1].health = 68;
+                }
+                Screen::Talk => {
+                    app.game.current_node_id = Some("fort_kearney".into());
+                    app.game.target_node_id = Some("chimney_rock".into());
+                    app.game.route_miles_remaining = 250;
+                    app.game.miles = 304;
+                    app.game.day = 20;
+                    app.game.status = pioneer_sim::RunStatus::AtLandmark("fort_kearney".into());
                 }
                 Screen::Minigame => {
                     app.game.apply(Command::Depart);

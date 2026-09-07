@@ -609,3 +609,84 @@ fn keyboard_journey_reaches_score_hall_and_fresh_setup() {
     key(&mut app, KeyCode::Char('1'));
     assert_eq!(app.screen, Screen::SetupTrail);
 }
+
+#[test]
+fn keyboard_talk_at_a_fort_offers_a_named_speaker_grounded_in_state() {
+    let temp = TempDir::new();
+    let mut app = loaded_app(11, Storage::at(&temp.0));
+    start_setup(&mut app);
+    buy_standard_outfit(&mut app);
+    depart(&mut app);
+
+    app.game.current_node_id = Some("fort_kearney".into());
+    app.game.target_node_id = Some("chimney_rock".into());
+    app.game.route_miles_remaining = 250;
+    app.game.miles = 304;
+    app.game.status = RunStatus::AtLandmark("fort_kearney".into());
+
+    key(&mut app, KeyCode::Char('t'));
+    assert_eq!(app.screen, Screen::Talk);
+    let view = render(&mut app, 80, 24);
+    assert!(view.contains("Speak with"), "a named speaker should be listed:\n{view}");
+
+    enter(&mut app); // Choose the first listed speaker.
+    let view = render(&mut app, 80, 24);
+    assert!(view.contains("Ask about the route"), "topics should follow speaker choice:\n{view}");
+
+    key(&mut app, KeyCode::Esc); // Esc backs out of the topic choice, not the whole screen.
+    assert_eq!(app.screen, Screen::Talk);
+    let view = render(&mut app, 80, 24);
+    assert!(view.contains("Speak with"), "Esc should return to the speaker list:\n{view}");
+
+    enter(&mut app); // Choose the speaker again.
+    enter(&mut app); // Ask about the route.
+    assert_eq!(app.screen, Screen::Talk, "the talk screen should stay open after an answer");
+    assert_eq!(app.game.conversation_memory.len(), 1);
+    let (speaker_id, memory) = app.game.conversation_memory.iter().next().unwrap();
+    let speaker_id = speaker_id.clone();
+    assert_eq!(memory.times_talked, 1);
+    assert!(!memory.favor_received, "a favor must not be granted on a first meeting");
+    let view = render(&mut app, 80, 24);
+    assert!(
+        view.contains("Chimney Rock") && view.contains("250"),
+        "the route answer must name the real next landmark and distance:\n{view}"
+    );
+
+    // An answered conversation returns to the speaker list automatically.
+    let food_before = app.game.inventory.get("food");
+
+    enter(&mut app); // Approach the same speaker again.
+    down(&mut app, 1);
+    enter(&mut app); // Ask about supplies this time.
+    let memory = &app.game.conversation_memory[&speaker_id];
+    assert_eq!(memory.times_talked, 2);
+    assert!(memory.favor_received, "a return visit should be recognized with a one-time favor");
+    assert_eq!(app.game.inventory.get("food"), food_before + 15);
+
+    enter(&mut app); // Approach again.
+    down(&mut app, 2);
+    enter(&mut app); // Ask for news a third time.
+    assert_eq!(
+        app.game.inventory.get("food"),
+        food_before + 15,
+        "the favor must not be granted a second time"
+    );
+}
+
+#[test]
+fn keyboard_talk_no_art_mode_describes_the_setting_in_text() {
+    let temp = TempDir::new();
+    let mut app = loaded_app(11, Storage::at(&temp.0));
+    app.settings.no_art = true;
+    start_setup(&mut app);
+    buy_standard_outfit(&mut app);
+    depart(&mut app);
+
+    app.game.current_node_id = Some("fort_kearney".into());
+    app.game.status = RunStatus::AtLandmark("fort_kearney".into());
+    key(&mut app, KeyCode::Char('t'));
+
+    let view = render(&mut app, 80, 24);
+    assert!(view.contains("AT THE FORT"), "no-art mode must still describe the setting:\n{view}");
+    assert!(!view.contains('▀'), "no-art mode must not draw pixel art:\n{view}");
+}
