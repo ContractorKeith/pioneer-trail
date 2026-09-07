@@ -7,11 +7,15 @@ use crate::{
 };
 use crossterm::event::{self, Event};
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
-use pioneer_sim::{Command, CrossMethod, GameContent, GameState, Outcome, Pace, RationLevel};
+use pioneer_sim::{
+    Command, CrossMethod, GameContent, GameState, GatheringActivity, Outcome, Pace, RationLevel,
+};
 use ratatui::{
     prelude::*,
     widgets::{Block, Borders, List, ListItem, Paragraph},
 };
+
+mod camp;
 
 /// UI-only draft; all rules are submitted to the simulation as commands.
 #[derive(Debug, Clone)]
@@ -37,6 +41,13 @@ enum TalkStage {
     #[default]
     Choose,
     Topic(usize),
+}
+#[derive(Debug, Clone, Copy)]
+struct GatheringResult {
+    activity: GatheringActivity,
+    food_lbs: u32,
+    net_food_lbs: i64,
+    days: u8,
 }
 impl Default for SetupDraft {
     fn default() -> Self {
@@ -82,6 +93,9 @@ pub struct App {
     outfitting_advice_visible: bool,
     departure_warning_armed: bool,
     talk_stage: TalkStage,
+    camp_return: bool,
+    gathering_activity: GatheringActivity,
+    gathering_result: Option<GatheringResult>,
 }
 impl App {
     pub fn new(content: GameContent, seed: u64, settings: Settings) -> Self {
@@ -116,6 +130,9 @@ impl App {
             outfitting_advice_visible: false,
             departure_warning_armed: false,
             talk_stage: TalkStage::default(),
+            camp_return: false,
+            gathering_activity: GatheringActivity::Forage,
+            gathering_result: None,
         }
     }
     pub fn with_storage(mut self, storage: Storage) -> Self {
@@ -174,7 +191,8 @@ impl App {
             Screen::SetupTrail => self.game.content.trails.len(),
             Screen::SetupOccupation => self.game.content.occupations.len(),
             Screen::Store => self.game.content.items.len() + 1,
-            Screen::Journey => 9,
+            Screen::Journey | Screen::Camp => 9,
+            Screen::Gathering => 2,
             Screen::Map => self
                 .game
                 .content
@@ -328,6 +346,8 @@ impl App {
                     self.epitaph.clear();
                     self.outfitting_advice_visible = false;
                     self.departure_warning_armed = false;
+                    self.camp_return = false;
+                    self.gathering_result = None;
                     self.screen = Screen::SetupTrail;
                     self.cursor = self.draft.trail;
                 }
@@ -441,6 +461,7 @@ impl App {
                     }
                 }
             }
+            Screen::Camp => self.select_camp(),
             Screen::Journey => match self.cursor % 9 {
                 0 => self.apply(Command::Continue),
                 1 => self.screen = Screen::Supplies,
@@ -461,6 +482,21 @@ impl App {
                     }
                 }
             },
+            Screen::Gathering => {
+                if self.gathering_result.is_some() {
+                    self.dismiss_gathering();
+                    return;
+                }
+                let command = if self.cursor == 0 {
+                    match self.gathering_activity {
+                        GatheringActivity::Forage => Command::Forage,
+                        GatheringActivity::Fish => Command::Fish,
+                    }
+                } else {
+                    Command::Gather { activity: self.gathering_activity, days: 3 }
+                };
+                self.apply(command);
+            }
             Screen::Pace => {
                 let pace = [Pace::Steady, Pace::Strenuous, Pace::Grueling][self.cursor % 3];
                 self.apply(Command::SetPace(pace));
@@ -665,6 +701,7 @@ impl App {
     }
     fn character(&mut self, character: char) {
         match (self.screen, character) {
+            (Screen::Journey, 'c') => self.open_camp(),
             (Screen::Event, 'r') => self.apply(Command::Repair),
             (Screen::Journey, 's') => self.screen = Screen::Supplies,
             (Screen::Journey, 'm') => self.screen = Screen::Map,
@@ -684,8 +721,8 @@ impl App {
                 self.screen = Screen::Party;
                 self.cursor = 0;
             }
-            (Screen::Journey, 'f') => self.apply(Command::Forage),
-            (Screen::Journey, 'g') => self.apply(Command::Fish),
+            (Screen::Journey, 'f') => self.open_gathering(GatheringActivity::Forage),
+            (Screen::Journey, 'g') => self.open_gathering(GatheringActivity::Fish),
             (Screen::Journey, 'a') => {
                 if matches!(self.game.status, pioneer_sim::RunStatus::AtLandmark(_)) {
                     self.apply(Command::Continue);
@@ -753,6 +790,28 @@ impl App {
             self.cursor = 0;
             return;
         }
+        if self.screen == Screen::Gathering && self.gathering_result.is_some() {
+            self.dismiss_gathering();
+            return;
+        }
+        if self.camp_return
+            && matches!(
+                self.screen,
+                Screen::Gathering
+                    | Screen::Rest
+                    | Screen::Treat
+                    | Screen::Supplies
+                    | Screen::Party
+                    | Screen::Talk
+            )
+        {
+            self.screen = Screen::Camp;
+            self.cursor = 0;
+            return;
+        }
+        if self.screen == Screen::Camp {
+            self.camp_return = false;
+        }
         if self.screen == Screen::Store && self.outfitting_advice_visible {
             self.outfitting_advice_visible = false;
             return;
@@ -786,7 +845,9 @@ impl App {
             Screen::SetupParty => Screen::SetupOccupation,
             Screen::SetupDeparture => Screen::SetupParty,
             Screen::Store
+            | Screen::Camp
             | Screen::Supplies
+            | Screen::Gathering
             | Screen::Map
             | Screen::Pace
             | Screen::Rations
@@ -855,12 +916,37 @@ impl App {
         if self.screen != previous_screen {
             self.cursor = 0;
         }
+        if self.camp_return && self.screen == Screen::Journey {
+            self.screen = Screen::Camp;
+        }
         if self.screen != Screen::Journey || self.game.status != pioneer_sim::RunStatus::Travelling
         {
             self.auto_travel = false;
         }
     }
     fn sync_screen(&mut self) {
+        if self.game.pending_event.is_some()
+            || matches!(
+                self.game.status,
+                pioneer_sim::RunStatus::Setup
+                    | pioneer_sim::RunStatus::Outfitting
+                    | pioneer_sim::RunStatus::Arrived
+                    | pioneer_sim::RunStatus::Failed
+                    | pioneer_sim::RunStatus::AwaitingFork(_)
+                    | pioneer_sim::RunStatus::AwaitingRiver(_)
+            )
+        {
+            self.camp_return = false;
+        }
+        if matches!(
+            self.game.status,
+            pioneer_sim::RunStatus::Setup
+                | pioneer_sim::RunStatus::Outfitting
+                | pioneer_sim::RunStatus::Arrived
+                | pioneer_sim::RunStatus::Failed
+        ) {
+            self.gathering_result = None;
+        }
         if self.game.active_minigame.is_some() {
             if self.minigame.is_none() {
                 self.minigame = crate::minigame::host::LiveMinigame::from_session(&self.game);
@@ -885,6 +971,15 @@ impl App {
             pioneer_sim::RunStatus::AwaitingRiver(_) => Screen::River,
             pioneer_sim::RunStatus::Arrived | pioneer_sim::RunStatus::Failed => Screen::Score,
         };
+        if self.gathering_result.is_some()
+            && self.game.pending_event.is_none()
+            && matches!(
+                self.game.status,
+                pioneer_sim::RunStatus::Travelling | pioneer_sim::RunStatus::AtLandmark(_)
+            )
+        {
+            self.screen = Screen::Gathering;
+        }
         if matches!(
             self.game.status,
             pioneer_sim::RunStatus::Arrived | pioneer_sim::RunStatus::Failed
@@ -925,8 +1020,48 @@ impl App {
                 }
             }
             Outcome::MemberDied { name } => self.note(format!("{name} has died.")),
+            Outcome::Gathered { activity, food_lbs, net_food_lbs, days } => {
+                self.gathering_activity = activity;
+                self.gathering_result =
+                    Some(GatheringResult { activity, food_lbs, net_food_lbs, days });
+                self.note(format!(
+                    "{} {} lb in {} day{}.",
+                    crate::screens::gathering::result_verb(activity),
+                    food_lbs,
+                    days,
+                    if days == 1 { "" } else { "s" }
+                ))
+            }
             _ => {}
         }
+    }
+    pub fn open_gathering(&mut self, activity: GatheringActivity) {
+        if self.game.pending_event.is_some()
+            || self.game.active_minigame.is_some()
+            || !matches!(
+                self.game.status,
+                pioneer_sim::RunStatus::Travelling | pioneer_sim::RunStatus::AtLandmark(_)
+            )
+        {
+            self.note("Gathering is not available now.");
+            return;
+        }
+        if activity == GatheringActivity::Fish
+            && !matches!(self.game.terrain(), pioneer_sim::Terrain::RiverValley)
+        {
+            self.note("Fishing needs river water.");
+            return;
+        }
+        self.gathering_activity = activity;
+        self.auto_travel = false;
+        self.gathering_result = None;
+        self.cursor = 0;
+        self.screen = Screen::Gathering;
+    }
+    fn dismiss_gathering(&mut self) {
+        self.gathering_result = None;
+        self.cursor = 0;
+        self.screen = if self.camp_return { Screen::Camp } else { Screen::Journey };
     }
     fn note(&mut self, text: impl Into<String>) {
         self.log.push(text.into());
@@ -1080,6 +1215,10 @@ impl App {
             );
             return;
         }
+        if self.screen == Screen::Camp {
+            self.render_camp(frame);
+            return;
+        }
         if !self.settings.no_art
             && matches!(
                 self.screen,
@@ -1089,6 +1228,7 @@ impl App {
                     | Screen::Event
                     | Screen::Score
                     | Screen::Talk
+                    | Screen::Gathering
             )
         {
             self.render_scene(frame);
@@ -1149,6 +1289,8 @@ impl App {
         match self.screen {
             Screen::Title => "PIONEER TRAIL",
             Screen::Journey => "ON THE TRAIL",
+            Screen::Camp => "CAMP",
+            Screen::Gathering => "GATHERING",
             Screen::Store => "GENERAL STORE",
             Screen::Score => "JOURNEY COMPLETE",
             _ => "PIONEER TRAIL",
@@ -1209,6 +1351,10 @@ impl App {
                 Rect::new(canvas.x, area.y, canvas.width, area.height),
                 mode,
             );
+            return;
+        }
+        if self.screen == Screen::Gathering {
+            self.render_gathering_scene(frame, canvas, mode);
             return;
         }
         let node = self.game.current_landmark();
@@ -1282,7 +1428,7 @@ impl App {
         }
         frame.render_widget(
             Paragraph::new(
-                "a travel · i treat · u trade · f forage · g fish · v party · Esc title",
+                "c camp · a travel · i treat · u trade · f forage · g fish · v party · Esc title",
             ),
             Rect::new(canvas.x, canvas.y + 20, 80, 1),
         );
@@ -1311,6 +1457,64 @@ impl App {
                 Paragraph::new(party)
                     .block(Block::default().borders(Borders::TOP).title("YOUR PARTY")),
                 Rect::new(canvas.x, canvas.y + 25, 80, area.height - 25),
+            );
+        }
+    }
+    fn render_gathering_scene(&self, frame: &mut Frame, canvas: Rect, mode: crate::art::ColorMode) {
+        use crate::{art, screens::gathering};
+        art::render(
+            art::embedded(gathering::scene(self.gathering_activity)).expect("gathering art"),
+            frame.buffer_mut(),
+            Rect::new(canvas.x, canvas.y, 80, 16),
+            mode,
+        );
+        if let Some(result) = self.gathering_result {
+            let net = format_food_change(result.net_food_lbs);
+            let lines = [
+                "GATHERING RESULT".to_owned(),
+                format!("{} {} lb.", gathering::result_verb(result.activity), result.food_lbs),
+                format!(
+                    "Camp food changed {net} lb over {} day{}.",
+                    result.days,
+                    if result.days == 1 { "" } else { "s" }
+                ),
+                "Enter or Esc returns to camp. This result cannot be collected again.".to_owned(),
+            ];
+            for (index, line) in lines.iter().enumerate() {
+                frame.render_widget(
+                    Paragraph::new(line.clone()),
+                    Rect::new(canvas.x, canvas.y + 16 + index as u16, 80, 1),
+                );
+            }
+            return;
+        }
+        let daily_food = self.game.daily_food_lbs();
+        let options = [
+            format!("Quick gathering — 1 day; camp eats {daily_food} lb. Haul is uncertain."),
+            format!("Search longer — up to 3 days; camp eats {daily_food} lb each day."),
+        ];
+        frame.render_widget(
+            Paragraph::new(gathering::heading(self.gathering_activity)),
+            Rect::new(canvas.x, canvas.y + 16, 80, 1),
+        );
+        frame.render_widget(
+            Paragraph::new("Haul varies. Weather and illness still affect the camp."),
+            Rect::new(canvas.x, canvas.y + 17, 80, 1),
+        );
+        for (index, option) in options.iter().enumerate() {
+            frame.render_widget(
+                Paragraph::new(format!("{} {}. {option}", marker(index == self.cursor), index + 1)),
+                Rect::new(canvas.x, canvas.y + 18 + index as u16, 80, 1),
+            );
+        }
+        frame.render_widget(
+            Paragraph::new("Enter select · Esc return without spending a day"),
+            Rect::new(canvas.x, canvas.y + 20, 80, 1),
+        );
+        if let Some(last) = self.log.last() {
+            frame.render_widget(
+                Paragraph::new(last.clone()).wrap(ratatui::widgets::Wrap { trim: true }),
+                Rect::new(canvas.x, canvas.y + 21, 80, 3),
             );
         }
     }
@@ -1594,6 +1798,9 @@ impl App {
                     ));
                 }
             }
+            Screen::Camp => lines.push(Line::from(
+                "A fire burns beside the parked wagon. Visiting camp costs no time.",
+            )),
             Screen::Journey => {
                 lines.push(Line::from(format!(
                     "Day {} · {} miles · Food {} lb · Cash ${:.2}",
@@ -1611,8 +1818,43 @@ impl App {
                     self.cursor,
                 ));
                 lines.push(Line::from(
-                    "A auto travel · I treat · U trade · F forage · G fish · V party",
+                    "C camp · A auto travel · I treat · U trade · F forage · G fish · V party",
                 ));
+            }
+            Screen::Gathering => {
+                use crate::screens::gathering;
+                if let Some(result) = self.gathering_result {
+                    lines.push(Line::from("GATHERING RESULT"));
+                    lines.push(Line::from(format!(
+                        "{} {} lb.",
+                        gathering::result_verb(result.activity),
+                        result.food_lbs
+                    )));
+                    lines.push(Line::from(format!(
+                        "Camp food changed {} lb over {} day{}.",
+                        format_food_change(result.net_food_lbs),
+                        result.days,
+                        if result.days == 1 { "" } else { "s" }
+                    )));
+                    lines.push(Line::from(
+                        "Enter or Esc returns to camp. This result cannot be collected again.",
+                    ));
+                    return lines;
+                }
+                let daily_food = self.game.daily_food_lbs();
+                lines.push(Line::from(gathering::heading(self.gathering_activity)));
+                lines.push(Line::from(format!(
+                    "{} Weather and illness still press on the camp.",
+                    gathering::availability(self.gathering_activity)
+                )));
+                lines.extend(menu(
+                    &[
+                        &format!("Quick gathering — 1 day; camp eats {daily_food} lb. Haul is uncertain."),
+                        &format!("Search longer — up to 3 days; camp eats {daily_food} lb each day."),
+                    ],
+                    self.cursor,
+                ));
+                lines.push(Line::from("Enter select · Esc return without spending a day"));
             }
             Screen::Supplies => {
                 lines.push(Line::from(crate::advice::supplies_advice(&self.game)));
@@ -2054,6 +2296,10 @@ fn marker(selected: bool) -> &'static str {
         " "
     }
 }
+
+fn format_food_change(change: i64) -> String {
+    format!("{change:+}")
+}
 fn menu(items: &[&str], cursor: usize) -> Vec<Line<'static>> {
     items
         .iter()
@@ -2172,6 +2418,7 @@ mod tests {
             Screen::SetupDeparture,
             Screen::Store,
             Screen::Journey,
+            Screen::Camp,
             Screen::Supplies,
             Screen::Map,
             Screen::Pace,

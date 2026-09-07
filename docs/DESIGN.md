@@ -44,6 +44,7 @@ Rules:
 - Pixels are 1 wide × 1 tall in the source. On screen they are roughly 1:1 in most terminal fonts
   (a cell is ~1:2, halved vertically). Do not compensate; the slight squash is the look.
 - Sprites snap to whole pixels. No sub-pixel positioning, no smoothing when scrolling.
+- Activity screens may crop an 80×32 source into a shorter vignette to keep all actions visible at 80×24. Campsite uses a 12-cell crop; decision and ending screens use smaller crops. Preserve the ground line and put controls outside the art.
 - Terminal minimum 80×24: 16 rows scene, 1 row status, 7 rows text/menu. At 120×40 the scene stays
   80×16 centered; extra width goes to margins and a wider text panel; extra height to the log.
 
