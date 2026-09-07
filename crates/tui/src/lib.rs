@@ -3,6 +3,7 @@ mod advice;
 pub mod app;
 pub mod art;
 pub mod art_manifest;
+mod conversation;
 pub mod headless;
 pub mod input;
 pub mod legacy;

@@ -5,6 +5,7 @@
 
 pub mod calendar;
 pub mod content;
+pub mod conversations;
 pub mod economy;
 pub mod family;
 pub mod health;
@@ -17,13 +18,14 @@ pub mod weather;
 
 pub use calendar::{days_in_month, is_leap_year, CalendarDate};
 pub use content::*;
+pub use conversations::{ConversationMemory, ConversationTopic, SpeakerSetting, SpeakerView};
 pub use economy::{Counteroffer, Market, NpcTrain};
 pub use family::{FamilyState, Pregnancy};
 pub use health::{AilmentStage, Sex};
 pub use minigame::{MinigameKind, MinigameSession};
 pub use party::{Relationships, Skills, Trait};
 pub use state::{
-    AcceptedLetter, Command, CommandError, CrossMethod, GameState, Outcome, Pace, RationLevel,
-    RunStatus,
+    AcceptedLetter, Command, CommandError, CrossMethod, GameState, GatheringActivity, Outcome,
+    Pace, RationLevel, RunStatus,
 };
 pub use weather::{Terrain, WeatherState};

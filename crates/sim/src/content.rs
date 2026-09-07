@@ -23,6 +23,8 @@ pub struct GameContent {
     /// This mirrors other saved content: resume stays deterministic rather than being rewritten.
     #[serde(default)]
     pub letters: Vec<LetterDefinition>,
+    #[serde(default)]
+    pub speakers: Vec<SpeakerDefinition>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct LetterDefinition {
@@ -118,6 +120,25 @@ pub struct QuoteDefinition {
     pub landmark_id: Option<String>,
     pub seasons: Vec<Season>,
     pub state_tags: Vec<String>,
+}
+
+/// A named traveler available for conversation at a specific fort or trading post.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SpeakerDefinition {
+    pub id: String,
+    pub name: String,
+    pub landmark_id: String,
+    pub greeting: String,
+    pub returning_greeting: String,
+    /// Sentence describing the small favor offered on a recognized return visit.
+    pub favor_text: String,
+    /// Pounds of food the favor offers; capped at wagon capacity when granted.
+    #[serde(default = "default_favor_food_lbs")]
+    pub favor_food_lbs: u32,
+}
+
+fn default_favor_food_lbs() -> u32 {
+    15
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

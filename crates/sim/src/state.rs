@@ -61,7 +61,7 @@ impl Inventory {
     pub fn get(&self, id: &str) -> u32 {
         self.quantities.get(id).copied().unwrap_or(0)
     }
-    fn add(&mut self, id: &str, n: u32) {
+    pub(crate) fn add(&mut self, id: &str, n: u32) {
         let quantity = self.quantities.entry(id.into()).or_default();
         *quantity = quantity.saturating_add(n);
     }
@@ -135,6 +135,9 @@ pub struct GameState {
     pub active_letter: Option<AcceptedLetter>,
     #[serde(default)]
     pub letter_origins_offered: BTreeSet<String>,
+    /// Per-speaker conversation memory: recognizes prior meetings and gates one-time favors.
+    #[serde(default)]
+    pub conversation_memory: BTreeMap<String, crate::conversations::ConversationMemory>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum Command {
@@ -146,6 +149,12 @@ pub enum Command {
         letter_id: String,
     },
     DeliverLetter,
+    /// A multi-day gathering search. The existing `Forage` and `Fish` commands
+    /// remain the one-day actions for callers that want their established economy.
+    Gather {
+        activity: GatheringActivity,
+        days: u8,
+    },
     Forage,
     Fish,
     Sell {
@@ -203,6 +212,10 @@ pub enum Command {
         choice_id: String,
     },
     Talk,
+    Converse {
+        speaker_id: String,
+        topic: crate::conversations::ConversationTopic,
+    },
     Treat {
         member_index: usize,
         ailment_id: String,
@@ -217,6 +230,11 @@ pub enum Command {
         casualties: u8,
         completed: bool,
     },
+}
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum GatheringActivity {
+    Forage,
+    Fish,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct AcceptedLetter {
@@ -256,6 +274,15 @@ pub enum Outcome {
         quote_id: String,
         text: String,
     },
+    Conversation {
+        speaker_id: String,
+        speaker_name: String,
+        setting: crate::conversations::SpeakerSetting,
+        recognized: bool,
+        topic: crate::conversations::ConversationTopic,
+        lines: Vec<String>,
+        favor: Option<String>,
+    },
     Treated {
         member_index: usize,
         ailment_id: String,
@@ -279,6 +306,12 @@ pub enum Outcome {
         letter_id: String,
         recipient: String,
         reward_cents: i64,
+    },
+    Gathered {
+        activity: GatheringActivity,
+        food_lbs: u32,
+        net_food_lbs: i64,
+        days: u8,
     },
     Message(String),
     Rejected(CommandError),
@@ -378,6 +411,7 @@ impl GameState {
             last_fresh_food_day: None,
             active_letter: None,
             letter_origins_offered: BTreeSet::new(),
+            conversation_memory: BTreeMap::new(),
         }
     }
     pub fn npc_present(&self, npc_id: &str) -> bool {
@@ -447,6 +481,7 @@ impl GameState {
             Command::AcceptLetter { letter_id } => self.accept_letter(&letter_id),
             Command::DeclineLetter { letter_id } => self.decline_letter(&letter_id),
             Command::DeliverLetter => self.deliver_letter(),
+            Command::Gather { activity, days } => self.gather(activity, days),
             Command::Forage => self.forage(),
             Command::Fish => self.fish(),
             Command::Sell { item_id, quantity } => self.sell(&item_id, quantity),
@@ -510,6 +545,7 @@ impl GameState {
             Command::CrossRiver { method } => self.cross(method),
             Command::Respond { event_id, choice_id } => self.respond(&event_id, &choice_id),
             Command::Talk => self.talk(),
+            Command::Converse { speaker_id, topic } => self.converse(&speaker_id, topic),
             Command::Treat { member_index, ailment_id } => self.treat(member_index, &ailment_id),
             Command::BeginHunt => self.begin_hunt(),
             Command::HuntResult { food_lbs, shots } => self.hunt(food_lbs, shots),
@@ -1216,6 +1252,91 @@ impl GameState {
     }
     fn forage(&mut self) -> Result<Vec<Outcome>, CommandError> {
         self.at_camp()?;
+        let before_food = self.inventory.get("food");
+        let food = self.forage_haul();
+        self.inventory.add("food", food);
+        let mut outcomes = Vec::new();
+        self.pass_camp_day(&mut outcomes, false);
+        if food > 0 {
+            self.last_fresh_food_day = Some(self.day);
+        }
+        outcomes.push(Outcome::Message(format!("Foraged {food} lbs of food.")));
+        outcomes.push(Outcome::Gathered {
+            activity: GatheringActivity::Forage,
+            food_lbs: food,
+            net_food_lbs: i64::from(self.inventory.get("food")) - i64::from(before_food),
+            days: 1,
+        });
+        Ok(outcomes)
+    }
+    /// Search longer than the familiar one-day command. Each day uses the same
+    /// camp-day rules as quick gathering, so food, illness, and a terminal
+    /// party state are resolved by the simulation rather than the UI.
+    fn gather(
+        &mut self,
+        activity: GatheringActivity,
+        days: u8,
+    ) -> Result<Vec<Outcome>, CommandError> {
+        self.at_camp()?;
+        if !(2..=3).contains(&days)
+            || (activity == GatheringActivity::Fish
+                && !matches!(self.terrain(), Terrain::RiverValley))
+        {
+            return Err(CommandError::InvalidChoice);
+        }
+        let before_food = self.inventory.get("food");
+        let mut outcomes = Vec::new();
+        let mut food: u32 = 0;
+        let mut elapsed = 0;
+        for _ in 0..days {
+            let haul = match activity {
+                GatheringActivity::Forage => self.forage_haul(),
+                GatheringActivity::Fish => self.fish_haul(),
+            };
+            self.inventory.add("food", haul);
+            self.pass_camp_day(&mut outcomes, false);
+            if haul > 0 {
+                self.last_fresh_food_day = Some(self.day);
+            }
+            food = food.saturating_add(haul);
+            elapsed += 1;
+            if matches!(self.status, RunStatus::Failed | RunStatus::Arrived)
+                || self.pending_event.is_some()
+            {
+                break;
+            }
+        }
+        outcomes.push(Outcome::Gathered {
+            activity,
+            food_lbs: food,
+            net_food_lbs: i64::from(self.inventory.get("food")) - i64::from(before_food),
+            days: elapsed,
+        });
+        Ok(outcomes)
+    }
+    fn fish(&mut self) -> Result<Vec<Outcome>, CommandError> {
+        self.at_camp()?;
+        if !matches!(self.terrain(), Terrain::RiverValley) {
+            return Err(CommandError::InvalidPhase);
+        }
+        let before_food = self.inventory.get("food");
+        let food = self.fish_haul();
+        self.inventory.add("food", food);
+        let mut outcomes = Vec::new();
+        self.pass_camp_day(&mut outcomes, false);
+        if food > 0 {
+            self.last_fresh_food_day = Some(self.day);
+        }
+        outcomes.push(Outcome::Message(format!("Caught {food} lbs of fish.")));
+        outcomes.push(Outcome::Gathered {
+            activity: GatheringActivity::Fish,
+            food_lbs: food,
+            net_food_lbs: i64::from(self.inventory.get("food")) - i64::from(before_food),
+            days: 1,
+        });
+        Ok(outcomes)
+    }
+    fn forage_haul(&mut self) -> u32 {
         let bonus = self
             .party
             .iter()
@@ -1227,16 +1348,8 @@ impl GameState {
             .count() as u32
             * 10;
         let occupation_bonus = u32::from(self.occupation_id.as_deref() == Some("farmer")) * 10;
-        let food = (self.rng.stream("forage").gen_range(5..=25) + bonus + occupation_bonus)
-            .min(self.max_addable("food").unwrap_or(0));
-        self.inventory.add("food", food);
-        let mut outcomes = Vec::new();
-        self.pass_camp_day(&mut outcomes, false);
-        if food > 0 {
-            self.last_fresh_food_day = Some(self.day);
-        }
-        outcomes.push(Outcome::Message(format!("Foraged {food} lbs of food.")));
-        Ok(outcomes)
+        (self.rng.stream("forage").gen_range(5..=25) + bonus + occupation_bonus)
+            .min(self.max_addable("food").unwrap_or(0))
     }
     pub fn offered_letter(&self) -> Option<&crate::content::LetterDefinition> {
         let origin = self.current_node_id.as_deref()?;
@@ -1250,6 +1363,7 @@ impl GameState {
             self.content.letters.iter().find(|letter| {
                 Some(letter.trail_id.as_str()) == self.trail_id.as_deref()
                     && letter.origin_id == origin
+                    && !self.era_rules().unavailable_stores.contains(&letter.destination_id)
             })
         })
         .flatten()
@@ -1306,24 +1420,8 @@ impl GameState {
             reward_cents: letter.reward_cents,
         }])
     }
-    fn fish(&mut self) -> Result<Vec<Outcome>, CommandError> {
-        self.at_camp()?;
-        if !matches!(self.terrain(), Terrain::RiverValley) {
-            return Err(CommandError::InvalidPhase);
-        }
-        let food = self
-            .rng
-            .stream("fishing")
-            .gen_range(10..=45)
-            .min(self.max_addable("food").unwrap_or(0));
-        self.inventory.add("food", food);
-        let mut outcomes = Vec::new();
-        self.pass_camp_day(&mut outcomes, false);
-        if food > 0 {
-            self.last_fresh_food_day = Some(self.day);
-        }
-        outcomes.push(Outcome::Message(format!("Caught {food} lbs of fish.")));
-        Ok(outcomes)
+    fn fish_haul(&mut self) -> u32 {
+        self.rng.stream("fishing").gen_range(10..=45).min(self.max_addable("food").unwrap_or(0))
     }
     fn sell(&mut self, item_id: &str, quantity: u32) -> Result<Vec<Outcome>, CommandError> {
         if !self.can_shop() || quantity == 0 {
@@ -1777,7 +1875,7 @@ impl GameState {
     fn apply_percent(amount: i64, percent: u16) -> i64 {
         (i128::from(amount) * i128::from(percent) / 100).clamp(1, i128::from(i64::MAX)) as i64
     }
-    fn era_rules(&self) -> EraRules {
+    pub(crate) fn era_rules(&self) -> EraRules {
         self.era_id
             .as_ref()
             .and_then(|id| self.content.era_rules.get(id))
@@ -1808,7 +1906,7 @@ impl GameState {
             last_restock_day: self.day,
         })
     }
-    fn max_addable(&self, item_id: &str) -> Option<u32> {
+    pub(crate) fn max_addable(&self, item_id: &str) -> Option<u32> {
         let item = self.content.items.iter().find(|item| item.id == item_id)?;
         let item_limit = item.limit.checked_sub(self.inventory.get(item_id))?;
         let weight_limit =
@@ -2052,7 +2150,7 @@ impl GameState {
     fn traveling(&self) -> Result<(), CommandError> {
         self.phase(RunStatus::Travelling)
     }
-    fn at_camp(&self) -> Result<(), CommandError> {
+    pub(crate) fn at_camp(&self) -> Result<(), CommandError> {
         if matches!(
             self.status,
             RunStatus::Travelling
@@ -3851,6 +3949,92 @@ mod tests {
         assert!(matches!(game.apply(Command::Fish).as_slice(), outcomes
             if outcomes.iter().any(|outcome| matches!(outcome, Outcome::Message(message) if message == "Caught 0 lbs of fish."))));
         assert!(game.last_fresh_food_day.is_none());
+    }
+
+    #[test]
+    fn longer_gathering_reports_actual_days_and_stops_at_terminal_state() {
+        let mut game = run(57);
+        let start_day = game.day;
+        let outcomes = game.apply(Command::Gather { activity: GatheringActivity::Forage, days: 3 });
+        assert!(matches!(
+            outcomes.last(),
+            Some(Outcome::Gathered { activity: GatheringActivity::Forage, days: 3, .. })
+        ));
+        assert_eq!(game.day, start_day + 3);
+
+        let mut starving = run(58);
+        starving.inventory.quantities.insert("food".into(), 0);
+        starving.content.items.iter_mut().find(|item| item.id == "food").unwrap().limit = 0;
+        for member in &mut starving.party {
+            member.health = 5;
+        }
+        let outcomes =
+            starving.apply(Command::Gather { activity: GatheringActivity::Forage, days: 3 });
+        assert_eq!(starving.status, RunStatus::Failed);
+        assert!(matches!(outcomes.last(), Some(Outcome::Gathered { days: 1, .. })));
+    }
+
+    #[test]
+    fn longer_fishing_requires_river_and_rejected_commands_do_not_mutate() {
+        let mut game = run(59);
+        let before = serde_json::to_string(&game).unwrap();
+        assert!(matches!(
+            game.apply(Command::Gather { activity: GatheringActivity::Fish, days: 3 }).as_slice(),
+            [Outcome::Rejected(CommandError::InvalidChoice)]
+        ));
+        assert_eq!(serde_json::to_string(&game).unwrap(), before);
+    }
+
+    #[test]
+    fn longer_search_matches_three_quick_forage_days_at_the_sim_boundary() {
+        let mut longer = run(60);
+        longer.inventory.quantities.insert("food".into(), 500);
+        let mut quick = longer.clone();
+        let outcomes =
+            longer.apply(Command::Gather { activity: GatheringActivity::Forage, days: 3 });
+        let gross = outcomes
+            .iter()
+            .find_map(|outcome| match outcome {
+                Outcome::Gathered { food_lbs, days: 3, .. } => Some(*food_lbs),
+                _ => None,
+            })
+            .unwrap();
+        let quick_gross = (0..3)
+            .map(|_| {
+                quick
+                    .apply(Command::Forage)
+                    .into_iter()
+                    .find_map(|outcome| match outcome {
+                        Outcome::Gathered { food_lbs, .. } => Some(food_lbs),
+                        _ => None,
+                    })
+                    .unwrap()
+            })
+            .sum::<u32>();
+        assert_eq!(gross, quick_gross);
+        assert_eq!(serde_json::to_value(longer).unwrap(), serde_json::to_value(quick).unwrap());
+    }
+
+    #[test]
+    fn longer_search_reports_zero_gross_at_capacity_and_event_phase_rejects_without_mutation() {
+        let mut full = run(61);
+        full.inventory.quantities.insert("food".into(), 100);
+        full.content.items.iter_mut().find(|item| item.id == "food").unwrap().limit = 0;
+        assert!(matches!(
+            full.apply(Command::Gather { activity: GatheringActivity::Forage, days: 3 }).last(),
+            Some(Outcome::Gathered { food_lbs: 0, days: 3, net_food_lbs, .. }) if *net_food_lbs < 0
+        ));
+
+        let mut interrupted = run(62);
+        interrupted.pending_event = Some("wheel".into());
+        let before = serde_json::to_value(&interrupted).unwrap();
+        assert!(matches!(
+            interrupted
+                .apply(Command::Gather { activity: GatheringActivity::Forage, days: 3 })
+                .as_slice(),
+            [Outcome::Rejected(CommandError::InvalidPhase)]
+        ));
+        assert_eq!(serde_json::to_value(interrupted).unwrap(), before);
     }
 
     #[test]
