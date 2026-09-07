@@ -592,7 +592,7 @@ checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
 
 [[package]]
 name = "pioneer-data"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "include_dir",
  "pioneer-sim",
@@ -603,7 +603,7 @@ dependencies = [
 
 [[package]]
 name = "pioneer-sim"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "proptest",
  "rand 0.8.8",
@@ -615,7 +615,7 @@ dependencies = [
 
 [[package]]
 name = "pioneer-tools"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -628,7 +628,7 @@ dependencies = [
 
 [[package]]
 name = "pioneer-trail"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "clap",

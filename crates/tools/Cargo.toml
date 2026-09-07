@@ -21,9 +21,9 @@ name = "balance-report"
 path = "src/balance_report.rs"
 
 [dependencies]
-pioneer-data = { path = "../data", version = "0.1.1" }
-pioneer-sim = { path = "../sim", version = "0.1.1" }
-pioneer-trail = { path = "../tui", version = "0.1.1" }
+pioneer-data = { path = "../data", version = "0.2.0" }
+pioneer-sim = { path = "../sim", version = "0.2.0" }
+pioneer-trail = { path = "../tui", version = "0.2.0" }
 anyhow = { workspace = true }
 clap = { workspace = true }
 crossterm = { workspace = true }

@@ -25,6 +25,13 @@ First trip? Press `?` in the store for budget-aware buying advice. Check the sel
 and total price before buying. Trail tips explain food and health risks, and automatic travel
 pauses when your party needs attention. See [first-journey improvements](docs/features/first-journey/README.md).
 
+## What's new in v0.2.0
+
+This update adds a no-cost `c` camp screen,
+gathering previews for quick one-day or longer three-day searches, named conversations, skippable
+travel moments, a visited-route map, a persistent journal, and optional sealed letters. See
+[Playing](docs/PLAYING.md) for the controls and save notes.
+
 ## Play from source
 
 Install a current Rust toolchain, clone this repository, then run:
@@ -72,6 +79,7 @@ cargo run --release -p pioneer-trail -- --headless-sim 100 --seed 42
 - Data-driven trail events, ailments, morale, party relationships, and a local hall of fame.
 - Hunting and rafting minigames, with text controls available through `--no-art`.
 - Seeded runs, autosaves, local settings, and resumable journeys.
+- Camps, gathering results, named conversations, route records, journals, travel moments, and sealed letters.
 
 Read [the player guide](docs/PLAYING.md) before your first trip. [Build status](docs/BUILD_STATUS.md)
 maps the current implementation to the original plan and records deliberate limits. The original

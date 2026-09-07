@@ -1702,7 +1702,9 @@ impl App {
             );
         }
         frame.render_widget(
-            Paragraph::new("c camp · Shift-J Journal · Shift-L letters · Esc back"),
+            Paragraph::new(
+                "c camp · Shift-J Journal · Shift-L letters · a auto · u trade · Esc back",
+            ),
             Rect::new(canvas.x, canvas.y + 20, 80, 1),
         );
         if let Some(last) = self.log.last() {
@@ -2110,7 +2112,9 @@ impl App {
                     ],
                     self.cursor,
                 ));
-                lines.push(Line::from("C camp · Shift-J Journal · Shift-L letters · Esc back"));
+                lines.push(Line::from(
+                    "C camp · Shift-J Journal · Shift-L letters · A auto · U trade · Esc back",
+                ));
             }
             Screen::Letters => {
                 if let Some(letter) = self.game.offered_letter() {

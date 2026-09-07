@@ -7,6 +7,9 @@ and [release acceptance](RELEASE_ACCEPTANCE.md) for verification.
 [First-journey improvements](features/first-journey/README.md) records the v0.1.1 buying advice,
 survival tips, automatic-travel safeguards, illustrated screens, and verification.
 
+[Camp and encounters](features/camp-and-encounters/README.md) tracks the v0.2.0 release candidate:
+gathering, camps, conversations, travel moments, route records, journals, and optional letters.
+
 | Phase | Player-visible result | Status |
 |---|---|---|
 | 1. Core simulation | Calendar, travel, supplies, health, seeded state, and headless runs | Implemented |

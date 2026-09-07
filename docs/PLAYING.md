@@ -33,23 +33,30 @@ The game is keyboard-only.
 | Menus | Arrow keys or `h` `j` `k` `l` to move, Enter or Space to choose, number keys for visible choices |
 | General | Esc goes back, Ctrl-Q quits |
 | Trail setup | Up and Down choose a trail, Left and Right choose an era, `d` cycles difficulty, Enter continues |
-| On the trail | Enter or `1` advances one day; `a` toggles automatic travel |
+| On the trail | Enter or `1` advances one day; `a` toggles automatic travel; `c` opens camp without spending time |
 | On the trail | `s` supplies, `m` map, `p` pace, `r` rations, `x` rest, `7` hunt |
-| On the trail | `i` treatment, `u` trade, `v` party, `f` forage, `g` fish, `t` talk |
+| On the trail | `i` treatment, `u` trade, `v` party |
+| Gathering | `f` or `g` on the trail, or Forage/Fish from camp, opens a preview: quick takes one day; longer search takes three. Results show gross haul, net food, and elapsed days |
+| Conversations | `t` on the trail, or Talk from camp, opens named talks where available; choose a speaker and topic, then Enter or Esc returns from the reply |
+| Journal | Shift-`J` opens the journal from the trail, camp, or ending screen; in the Hall, it opens the selected finished journey's journal |
+| On the trail or camp | Shift-`L` opens an eligible sealed-letter offer or your carried letter; delivery is only available at its destination |
 | Store | Up and Down choose an item, Left and Right set quantity, Enter buys, `s` sells, `?` opens advice |
 | Events | `r` repairs when a repair action is offered |
-| Settings | `c` cycles color, `b` toggles the bell, `a` toggles text-only art, `s` cycles speed |
+| Settings | `c` cycles color, `b` toggles the bell, `a` toggles text-only art, `m` toggles reduced motion, `s` cycles speed |
 | Hunt | Arrow keys or `h` `j` `k` `l` aim, Space shoots, Esc finishes |
 | Raft | Left and Right, or `h` and `l`, steer; Esc aborts the crossing |
 
 Some trail commands are available only when their situation permits them. For example, buying
 requires an open store, and river choices appear when the party reaches a crossing.
 
+The map records actual visited stops and chosen branches, not every milestone on a trail. Optional
+travel moments can be skipped with Space, Enter, or Esc; mandatory events still require a choice.
+
 ## Making the trip
 
 Travel advances the calendar and consumes food. Pace, rations, weather, terrain, health, and
-supplies affect progress and risk. Check the map before committing to a route, and treat sick party
-members before travel makes a manageable problem expensive.
+supplies affect progress and risk. Check the visited-route map before committing to a route, and
+treat sick party members before travel makes a manageable problem expensive.
 
 The trail tip prioritizes low food and illness, then offers occasional general advice. Automatic
 travel pauses before its next day when less than three ration-days of food remain, someone is
@@ -90,6 +97,10 @@ local.
 Resuming preserves the journey, including pending events and crossings. If a save is made while a
 hunt or raft minigame is active, resuming restarts that minigame from its seeded initial state. It
 does not preserve an in-progress aim, timer position, or raft steering position.
+
+Older saves retain their embedded content, so they do not receive new fort speakers or sealed
+letters. Their journal and route record begin when resumed; older Hall records explicitly show
+unknown earlier history rather than inventing it.
 
 ## Terminal options
 
