@@ -347,6 +347,29 @@ mod tests {
     }
 
     #[test]
+    fn saves_reject_forged_route_history_without_replacing_it() {
+        let temp = Temp::new();
+        let store = Storage::at(&temp.0);
+        let mut game = GameState::with_content(41, pioneer_data::load().unwrap());
+        game.apply(pioneer_sim::Command::Configure {
+            trail_id: "oregon".into(),
+            era_id: "1848".into(),
+            occupation_id: "banker".into(),
+            party: vec!["Ada".into(), "Ben".into(), "Clara".into(), "Dora".into(), "Eli".into()],
+            departure_month: 3,
+        });
+        game.visited_landmarks.push(pioneer_sim::route_record::Visit {
+            landmark_id: "willamette".into(),
+            day: 0,
+            mile: 0,
+        });
+        store.save_session("forged-route", &game).unwrap();
+        let before = fs::read(temp.0.join("save.json")).unwrap();
+        assert!(store.load_session().is_err());
+        assert_eq!(before, fs::read(temp.0.join("save.json")).unwrap());
+    }
+
+    #[test]
     fn stale_temporary_file_does_not_prevent_replacing_save() {
         let temp = Temp::new();
         let store = Storage::at(&temp.0);

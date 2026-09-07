@@ -1,5 +1,5 @@
 //! Factual route history and read-only supply-stop lookup.
-use crate::GameState;
+use crate::{content::TrailDefinition, GameState};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -11,6 +11,27 @@ pub struct Visit {
 }
 
 impl GameState {
+    /// Checks recorded stops without requiring an old save to begin at the trailhead.
+    pub(crate) fn visits_are_valid_for(&self, trail: &TrailDefinition) -> bool {
+        let Some(last) = self.visited_landmarks.last() else {
+            return true;
+        };
+        if self.current_node_id.as_deref() != Some(&last.landmark_id) {
+            return false;
+        }
+        let valid_stop = |id: &str| trail.nodes.iter().any(|node| node.id == id);
+        self.visited_landmarks.iter().all(|visit| {
+            valid_stop(&visit.landmark_id) && visit.day <= self.day && visit.mile <= self.miles
+        }) && self.visited_landmarks.windows(2).all(|pair| {
+            let [previous, next] = pair else { return true };
+            previous.day <= next.day
+                && previous.mile <= next.mile
+                && trail.nodes.iter().find(|node| node.id == previous.landmark_id).is_some_and(
+                    |node| node.routes.iter().any(|route| route.target_id == next.landmark_id),
+                )
+        })
+    }
+
     /// Closest reachable store along the chosen leg, then any still-open forks.
     pub fn next_supply_stop(&self) -> Option<(&str, u32)> {
         let trail = self.content.trails.iter().find(|t| Some(&t.id) == self.trail_id.as_ref())?;

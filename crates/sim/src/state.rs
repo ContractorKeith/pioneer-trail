@@ -1772,6 +1772,9 @@ impl GameState {
                     return Err(CommandError::UnknownId(node.clone()));
                 }
             }
+            if !self.visits_are_valid_for(trail) {
+                return Err(CommandError::InvalidSetup);
+            }
         }
         if let Some(id) = &self.era_id {
             if !self.content.eras.iter().any(|era| &era.id == id) {

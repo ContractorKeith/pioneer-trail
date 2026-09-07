@@ -1,5 +1,5 @@
 use crossterm::event::{KeyCode, KeyEvent};
-use pioneer_sim::{Command, GameState, RunStatus};
+use pioneer_sim::{route_record::Visit, Command, GameState, RunStatus};
 use pioneer_trail::{app::App, persist::Settings, screens::Screen};
 use ratatui::{backend::TestBackend, Terminal};
 
@@ -59,6 +59,103 @@ fn selecting_a_fork_does_not_stamp_the_other_branch() {
         let other = routes.iter().find(|r| r.id != route.id).unwrap();
         assert!(!game.visited_landmarks.iter().any(|v| v.landmark_id == other.target_id));
     }
+}
+
+#[test]
+fn visits_reject_forged_history_but_allow_a_partial_legacy_start() {
+    let mut state = game("oregon");
+    let target = state.target_node_id.clone().unwrap();
+    state.route_miles_remaining = 1;
+    state.apply(Command::TravelDay);
+    assert_eq!(state.current_node_id.as_deref(), Some(target.as_str()));
+    assert!(state.validate().is_ok());
+
+    for forged in [
+        Visit { landmark_id: "not-a-stop".into(), day: state.day, mile: state.miles },
+        Visit { landmark_id: target.clone(), day: state.day + 1, mile: state.miles },
+        Visit { landmark_id: target.clone(), day: state.day, mile: state.miles + 1 },
+        Visit { landmark_id: "willamette".into(), day: state.day, mile: state.miles },
+    ] {
+        let mut corrupt = state.clone();
+        corrupt.visited_landmarks.push(forged);
+        assert!(corrupt.validate().is_err());
+    }
+
+    let mut partial = game("oregon");
+    partial.current_node_id = Some("south_pass".into());
+    partial.target_node_id = None;
+    partial.status = RunStatus::AwaitingFork("south_pass".into());
+    partial.day = 20;
+    partial.miles = 932;
+    partial.visited_landmarks =
+        vec![Visit { landmark_id: "south_pass".into(), day: partial.day, mile: partial.miles }];
+    assert!(partial.validate().is_ok(), "a migrated history can begin after the trailhead");
+}
+
+fn south_pass_game() -> GameState {
+    let mut game = game("oregon");
+    let trail = game.content.trails.iter().find(|trail| trail.id == "oregon").unwrap();
+    let ids = [
+        "independence",
+        "kansas_river",
+        "big_blue",
+        "fort_kearney",
+        "chimney_rock",
+        "fort_laramie",
+        "independence_rock",
+        "south_pass",
+    ];
+    game.visited_landmarks = ids
+        .iter()
+        .enumerate()
+        .map(|(day, id)| {
+            let node = trail.nodes.iter().find(|node| node.id == *id).unwrap();
+            Visit { landmark_id: (*id).into(), day: day as u32, mile: node.mile }
+        })
+        .collect();
+    game.current_node_id = Some("south_pass".into());
+    game.target_node_id = Some("fort_bridger".into());
+    game.status = RunStatus::Travelling;
+    game.route_miles_remaining = 110;
+    game.day = 21;
+    game.miles = 1_041;
+    game
+}
+
+#[test]
+fn map_marks_only_the_chosen_fork_and_places_the_wagon_mid_leg() {
+    let game = south_pass_game();
+    let mut app = App::new(game.content.clone(), 23, Settings::default());
+    app.game = game;
+    app.screen = Screen::Journey;
+    app.handle_key(KeyEvent::from(KeyCode::Char('m')));
+    let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+    terminal.draw(|frame| app.render(frame)).unwrap();
+    let buffer = terminal.backend().buffer();
+
+    // South Pass (index 7) to Fort Bridger (index 9) is the selected fork.
+    assert_eq!(buffer[(63, 4)].fg, ratatui::style::Color::Rgb(27, 203, 1));
+    // The unchosen Green River branch remains white.
+    assert_eq!(buffer[(73, 4)].fg, ratatui::style::Color::Rgb(255, 255, 255));
+    assert_eq!(buffer[(68, 2)].symbol(), "◆");
+}
+
+#[test]
+fn legacy_history_renders_unknown_stops_in_text_mode() {
+    let mut game = game("oregon");
+    game.visited_landmarks.clear();
+    let mut app =
+        App::new(game.content.clone(), 23, Settings { no_art: true, ..Settings::default() });
+    app.game = game;
+    app.screen = Screen::Journey;
+    app.handle_key(KeyEvent::from(KeyCode::Char('m')));
+    let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+    terminal.draw(|frame| app.render(frame)).unwrap();
+    let text =
+        terminal.backend().buffer().content.iter().map(|cell| cell.symbol()).collect::<String>();
+    assert!(text.contains("Earlier visits were not recorded in this save."));
+    assert!(text.contains("oC Big Blue River Crossing · 185 route mi"));
+    assert!(!text.contains("day 0, mile 0"));
 }
 
 #[test]

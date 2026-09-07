@@ -60,7 +60,7 @@ impl App {
                 let code = char::from(b'A' + index as u8);
                 let color = mode.color(if stamp == '@' {
                     crate::art::Pixel::Orange
-                } else if stamp == '*' {
+                } else if matches!(stamp, '*' | '>') {
                     crate::art::Pixel::Green
                 } else {
                     crate::art::Pixel::White
