@@ -8,7 +8,7 @@ polished, keyboard-only game at 80×24 published on crates.io and a Homebrew tap
 **Full design and phase plan: `docs/PLAN.md`. Visual system (palette, `.px` format, layouts): `docs/DESIGN.md`. Read both before starting any phase.**
 
 ## Status
-v0.2.0 release candidate: camp, gathering, conversations, travel moments, route records, and journals.
+v0.2.0 released: camp, gathering, conversations, travel moments, route records, journals, and letters.
 Phases 1–9 have public binaries for five platforms and a verified Homebrew formula. Crates.io
 publication awaits credentials (GH #11). See `docs/features/camp-and-encounters/README.md` for this update.
 See `docs/BUILD_STATUS.md` and `docs/RELEASE_ACCEPTANCE.md` for scope and evidence.

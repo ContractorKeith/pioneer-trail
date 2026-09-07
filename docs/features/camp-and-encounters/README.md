@@ -1,6 +1,6 @@
 # Camp and encounters
 
-Status: all seven features reviewed, merged and pushed; v0.2.0 release checks underway.
+Status: all seven features reviewed, merged and pushed; v0.2.0 released and installed.
 Baseline: 4e85af0, v0.1.1. Full feature-review base: bef7f0c.
 
 Seven independently reviewable slices are specified in issues/. GitHub issues are the task tracker. The bonus is a small optional sealed-letter delivery system.
@@ -68,5 +68,21 @@ No unresolved requirements. Rework preserved full conversation replies, accurate
 Camp return navigation and truthful control labels. A real travel command now tests the existing
 mandatory weathered-event path, including render/Escape state invariance and response resolution.
 
-Distribution checks and public release evidence are pending. The KödMem checkpoint connection
-returns `workspace_not_registered`; no substitute project or retired worklog was used.
+## Distribution
+
+- [v0.2.0](https://github.com/ContractorKeith/pioneer-trail/releases/tag/v0.2.0) was published
+  from annotated tag v0.2.0, source 9c0ffd147f8d09815876d1f93c5d315c2b73da16.
+- [Release run 34121027331](https://github.com/ContractorKeith/pioneer-trail/actions/runs/34121027331)
+  passed all five native platform builds and their tests, lint, content checks and binary smoke runs.
+  Linux x86_64/ARM64, macOS Intel/Apple Silicon and Windows x86_64 archives are public.
+- All five archives and SHA256SUMS were freshly downloaded without authentication. Every checksum
+  matched. The downloaded Apple Silicon binary reports 0.2.0 and completed seeds 42–44 with arrivals.
+- Homebrew tap commit 92e0984 updates the source formula. The source archive SHA256 is
+  `3e1ed3f9b66efa923bca3bad92eb5cb74a73034d50742263d11d294ade57607b`.
+  Local upgrade, `brew test`, strict audit and style checks pass. The PATH-resolved binary is
+  `/opt/homebrew/bin/pioneer-trail`, version 0.2.0; its PTY exit restores terminal settings.
+- All seven issues are closed, feature worktrees and branches are removed, and existing saves
+  and the pre-existing unrelated stash remain untouched. Crates.io still awaits credentials in #11.
+
+The `log-work` checkpoint connection returns `workspace_not_registered`; KödMem onboarding is
+incomplete. No substitute project or retired worklog was used.

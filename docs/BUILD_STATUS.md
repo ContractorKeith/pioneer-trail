@@ -1,13 +1,13 @@
 # Build status
 
 This page maps the original [phase plan](PLAN.md) to the current source tree. It is a development
-record. Version 0.1.1 is released on GitHub and Homebrew; see the [README](../README.md) to play
+record. Version 0.2.0 is released on GitHub and Homebrew; see the [README](../README.md) to play
 and [release acceptance](RELEASE_ACCEPTANCE.md) for verification.
 
 [First-journey improvements](features/first-journey/README.md) records the v0.1.1 buying advice,
 survival tips, automatic-travel safeguards, illustrated screens, and verification.
 
-[Camp and encounters](features/camp-and-encounters/README.md) tracks the v0.2.0 release candidate:
+[Camp and encounters](features/camp-and-encounters/README.md) records the verified v0.2.0 release:
 gathering, camps, conversations, travel moments, route records, journals, and optional letters.
 
 | Phase | Player-visible result | Status |
