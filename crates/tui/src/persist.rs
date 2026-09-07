@@ -245,6 +245,7 @@ pub struct Settings {
     pub speed: Speed,
     pub bell: bool,
     pub no_art: bool,
+    pub reduced_motion: bool,
 }
 
 #[cfg(test)]
@@ -375,6 +376,29 @@ mod tests {
     }
 
     #[test]
+    fn saves_reject_forged_route_history_without_replacing_it() {
+        let temp = Temp::new();
+        let store = Storage::at(&temp.0);
+        let mut game = GameState::with_content(41, pioneer_data::load().unwrap());
+        game.apply(pioneer_sim::Command::Configure {
+            trail_id: "oregon".into(),
+            era_id: "1848".into(),
+            occupation_id: "banker".into(),
+            party: vec!["Ada".into(), "Ben".into(), "Clara".into(), "Dora".into(), "Eli".into()],
+            departure_month: 3,
+        });
+        game.visited_landmarks.push(pioneer_sim::route_record::Visit {
+            landmark_id: "willamette".into(),
+            day: 0,
+            mile: 0,
+        });
+        store.save_session("forged-route", &game).unwrap();
+        let before = fs::read(temp.0.join("save.json")).unwrap();
+        assert!(store.load_session().is_err());
+        assert_eq!(before, fs::read(temp.0.join("save.json")).unwrap());
+    }
+
+    #[test]
     fn stale_temporary_file_does_not_prevent_replacing_save() {
         let temp = Temp::new();
         let store = Storage::at(&temp.0);
@@ -390,12 +414,18 @@ mod tests {
     fn settings_round_trip_and_partial_defaults() {
         let temp = Temp::new();
         let store = Storage::at(&temp.0);
-        let settings = Settings { no_art: true, color: ColorMode::Mono, ..Settings::default() };
+        let settings = Settings {
+            no_art: true,
+            color: ColorMode::Mono,
+            reduced_motion: true,
+            ..Settings::default()
+        };
         store.save_settings(&settings).unwrap();
         assert_eq!(store.load_settings().unwrap(), settings);
         fs::write(temp.0.join("settings.toml"), "bell = true").unwrap();
         assert!(store.load_settings().unwrap().bell);
         assert_eq!(store.load_settings().unwrap().speed, Speed::Normal);
+        assert!(!store.load_settings().unwrap().reduced_motion);
     }
 
     #[test]

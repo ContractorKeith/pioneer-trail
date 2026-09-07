@@ -135,6 +135,9 @@ pub struct GameState {
     pub active_letter: Option<AcceptedLetter>,
     #[serde(default)]
     pub letter_origins_offered: BTreeSet<String>,
+    /// Stops actually reached, in order. Empty on saves made before route records existed.
+    #[serde(default)]
+    pub visited_landmarks: Vec<crate::route_record::Visit>,
     /// Per-speaker conversation memory: recognizes prior meetings and gates one-time favors.
     #[serde(default)]
     pub conversation_memory: BTreeMap<String, crate::conversations::ConversationMemory>,
@@ -411,6 +414,7 @@ impl GameState {
             last_fresh_food_day: None,
             active_letter: None,
             letter_origins_offered: BTreeSet::new(),
+            visited_landmarks: Vec::new(),
             conversation_memory: BTreeMap::new(),
         }
     }
@@ -434,7 +438,17 @@ impl GameState {
         }
     }
     pub fn apply(&mut self, c: Command) -> Vec<Outcome> {
+        let previous_node = self.current_node_id.clone();
         let mut outcomes = self.try_apply(c).unwrap_or_else(|e| vec![Outcome::Rejected(e)]);
+        if self.current_node_id != previous_node {
+            if let Some(id) = &self.current_node_id {
+                self.visited_landmarks.push(crate::route_record::Visit {
+                    landmark_id: id.clone(),
+                    day: self.day,
+                    mile: self.miles,
+                });
+            }
+        }
         if matches!(self.status, RunStatus::Arrived | RunStatus::Failed) {
             self.pending_event = None;
             self.active_minigame = None;
@@ -1987,6 +2001,9 @@ impl GameState {
                 if !trail.nodes.iter().any(|candidate| &candidate.id == node) {
                     return Err(CommandError::UnknownId(node.clone()));
                 }
+            }
+            if !self.visits_are_valid_for(trail) {
+                return Err(CommandError::InvalidSetup);
             }
         }
         if let Some(id) = &self.era_id {

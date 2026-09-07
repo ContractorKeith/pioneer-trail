@@ -13,3 +13,4 @@ pub mod persist;
 pub mod screens;
 pub mod seed;
 pub mod terminal;
+pub mod travel_moment;

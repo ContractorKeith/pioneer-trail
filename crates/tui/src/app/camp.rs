@@ -52,7 +52,7 @@ impl App {
                     mode,
                 );
             }
-            let fire = if self.animation_tick.is_multiple_of(2) {
+            let fire = if self.settings.reduced_motion || self.animation_tick.is_multiple_of(2) {
                 "camp_fire_0.px"
             } else {
                 "camp_fire_1.px"

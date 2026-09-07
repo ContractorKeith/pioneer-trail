@@ -1,0 +1,27 @@
+---
+source: crates/tui/src/app.rs
+expression: "app_view(&mut event, width, height)"
+---
+  TRAIL EVENT                                                                   
+▀                ▀   ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀         ▀           
+              ▀      ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀      ▀              
+     ▀▀▀   ▀    ▀▀▀    ▀▀▀▀▀▀▀        ▀▀▀    ▀   ▀▀▀▀▀▀▀▀   ▀▀▀        ▀▀▀     ▀
+    ▀▀ ▀▀      ▀▀ ▀▀  ▀▀▀▀▀▀▀▀▀      ▀▀ ▀▀▀     ▀▀▀▀▀▀▀▀▀▀ ▀▀ ▀▀      ▀▀ ▀▀ ▀   
+     ▀                ▀▀▀▀▀▀▀▀         ▀          ▀▀▀▀▀▀▀▀               ▀      
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+                                                                                
+  A decision is required:                                                       
+  A wheel splits on a hidden stone.                                             
+  ► 1. Fit the spare wheel [unavailable]                                        
+    2. Leave the wagon to limp                                                  
+  Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                  
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+TRAIL LOG───────────────────────────────────────────────────────────────────────
+Choose New Journey to begin.
