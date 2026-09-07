@@ -90,6 +90,66 @@ fn journey_advice_and_illustrations_never_advance_the_simulation() {
 }
 
 #[test]
+fn sealed_letter_screen_is_keyboard_only_and_renders_at_both_sizes() {
+    for no_art in [false, true] {
+        let mut app = carpenter(no_art);
+        app.game.current_node_id = Some("fort_kearney".into());
+        app.game.status = RunStatus::AtLandmark("fort_kearney".into());
+        app.screen = Screen::Journey;
+        app.handle_key(KeyEvent::from(KeyCode::Char('L')));
+        assert_eq!(app.screen, Screen::Letters);
+        for (width, height) in [(80, 24), (120, 40)] {
+            let view = render(&mut app, width, height);
+            assert!(
+                view.contains("SEALED LETTER") && view.contains("$15.00"),
+                "letter offer missing: {view}"
+            );
+        }
+        app.handle_key(KeyEvent::from(KeyCode::Enter));
+        app.screen = Screen::Journey;
+        app.handle_key(KeyEvent::from(KeyCode::Char('L')));
+        let carrying = render(&mut app, 80, 24);
+        assert!(carrying.contains("Carry this sealed letter to Fort Laramie"), "{carrying}");
+        assert!(!carrying.contains("Deliver sealed letter"), "{carrying}");
+        app.game.current_node_id = Some("fort_laramie".into());
+        app.game.status = RunStatus::AtLandmark("fort_laramie".into());
+        app.screen = Screen::Journey;
+        app.handle_key(KeyEvent::from(KeyCode::Char('L')));
+        app.handle_key(KeyEvent::from(KeyCode::Enter));
+        assert!(app.game.active_letter.is_none());
+    }
+}
+
+#[test]
+fn every_trail_offers_and_delivers_its_sealed_letter_at_the_actual_stops() {
+    let content = pioneer_data::load().unwrap();
+    for (index, definition) in content.letters.iter().enumerate() {
+        let mut game = pioneer_sim::GameState::with_content(90 + index as u64, content.clone());
+        assert!(!game
+            .apply(Command::Configure {
+                trail_id: definition.trail_id.clone(),
+                era_id: "1848".into(),
+                occupation_id: "farmer".into(),
+                party: ["Ada", "Ben", "Clara", "Dora", "Eli"].map(str::to_owned).to_vec(),
+                departure_month: 3,
+            })
+            .iter()
+            .any(|outcome| matches!(outcome, pioneer_sim::Outcome::Rejected(_))));
+        game.current_node_id = Some(definition.origin_id.clone());
+        game.status = RunStatus::AtLandmark(definition.origin_id.clone());
+        assert_eq!(game.offered_letter().map(|letter| &letter.id), Some(&definition.id));
+        game.apply(Command::AcceptLetter { letter_id: definition.id.clone() });
+        game.current_node_id = Some(definition.destination_id.clone());
+        game.status = RunStatus::AtLandmark(definition.destination_id.clone());
+        assert!(game.can_deliver_letter());
+        assert!(matches!(
+            game.apply(Command::DeliverLetter).as_slice(),
+            [pioneer_sim::Outcome::LetterDelivered { letter_id, .. }] if letter_id == &definition.id
+        ));
+    }
+}
+
+#[test]
 fn illness_advice_distinguishes_treatment_from_unavailable_medicine() {
     let mut app = carpenter(true);
     app.game.apply(Command::Buy { item_id: "oxen".into(), quantity: 3 });

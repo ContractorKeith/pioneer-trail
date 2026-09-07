@@ -45,6 +45,7 @@ pub fn validate(content: &GameContent) -> Result<(), ContentError> {
     unique(content.ailments.iter().map(|value| value.id.as_str()), "ailment")?;
     unique(content.events.iter().map(|value| value.id.as_str()), "event")?;
     unique(content.quotes.iter().map(|value| value.id.as_str()), "quote")?;
+    unique(content.letters.iter().map(|value| value.id.as_str()), "letter")?;
     unique(content.events.iter().map(|value| value.text.as_str()), "event text")?;
     unique(
         content.quotes.iter().map(|value| {
@@ -74,6 +75,49 @@ pub fn validate(content: &GameContent) -> Result<(), ContentError> {
         .filter(|node| node.store)
         .map(|node| node.id.as_str())
         .collect::<HashSet<_>>();
+    for letter in &content.letters {
+        expect(
+            valid_text(&letter.recipient, 80) && valid_text(&letter.text, 240),
+            "invalid letter text",
+        )?;
+        expect((100..=3_000).contains(&letter.reward_cents), "letter reward is out of range")?;
+        let trail =
+            content.trails.iter().find(|trail| trail.id == letter.trail_id).ok_or_else(|| {
+                ContentError::Validation(format!("letter {} names an unknown trail", letter.id))
+            })?;
+        let origin =
+            trail.nodes.iter().find(|node| node.id == letter.origin_id).ok_or_else(|| {
+                ContentError::Validation(format!("letter {} names an unknown origin", letter.id))
+            })?;
+        expect(origin.store, &format!("letter {} origin is not a supply stop", letter.id))?;
+        expect(
+            trail.nodes.iter().any(|node| node.id == letter.destination_id && node.store),
+            &format!("letter {} destination is not a supply stop", letter.id),
+        )?;
+        expect(
+            letter.origin_id != letter.destination_id,
+            &format!("letter {} does not travel later", letter.id),
+        )?;
+        expect(
+            letter_destination_reachable(trail, &letter.origin_id, &letter.destination_id),
+            &format!("letter {} destination is unreachable", letter.id),
+        )?;
+        expect(
+            letter_destination_unavoidable(trail, &letter.origin_id, &letter.destination_id),
+            &format!("letter {} destination can be bypassed", letter.id),
+        )?;
+        expect(
+            content.eras.iter().any(|era| {
+                !content.era_rules.get(&era.id).is_some_and(|rules| {
+                    rules
+                        .unavailable_stores
+                        .iter()
+                        .any(|store| store == &letter.origin_id || store == &letter.destination_id)
+                })
+            }),
+            &format!("letter {} destination is unavailable in every era", letter.id),
+        )?;
+    }
     let produced_flags = content
         .events
         .iter()
@@ -481,6 +525,44 @@ fn valid_text(text: &str, max_len: usize) -> bool {
     !text.is_empty() && text.len() <= max_len && !text.chars().any(char::is_control)
 }
 
+fn letter_destination_reachable(trail: &TrailDefinition, origin: &str, destination: &str) -> bool {
+    let mut reached = HashSet::new();
+    let mut queue = VecDeque::from([origin]);
+    while let Some(node) = queue.pop_front() {
+        if !reached.insert(node) {
+            continue;
+        }
+        if node == destination {
+            return true;
+        }
+        if let Some(definition) = trail.nodes.iter().find(|candidate| candidate.id == node) {
+            queue.extend(definition.routes.iter().map(|route| route.target_id.as_str()));
+        }
+    }
+    false
+}
+
+fn letter_destination_unavoidable(
+    trail: &TrailDefinition,
+    origin: &str,
+    destination: &str,
+) -> bool {
+    let mut reached = HashSet::new();
+    let mut queue = VecDeque::from([origin]);
+    while let Some(node) = queue.pop_front() {
+        if node == destination || !reached.insert(node) {
+            continue;
+        }
+        if node == trail.goal_node_id {
+            return false;
+        }
+        if let Some(definition) = trail.nodes.iter().find(|candidate| candidate.id == node) {
+            queue.extend(definition.routes.iter().map(|route| route.target_id.as_str()));
+        }
+    }
+    true
+}
+
 fn validate_trail_graph(
     trail: &TrailDefinition,
     nodes: &HashSet<&str>,
@@ -572,6 +654,29 @@ mod tests {
         assert!(content.ailments.len() >= 20);
         assert!(content.events.len() >= 150);
         assert!(content.quotes.len() >= 200);
+        assert_eq!(content.letters.len(), 3);
+        assert_eq!(
+            content.letters.iter().map(|letter| letter.trail_id.as_str()).collect::<HashSet<_>>(),
+            HashSet::from(["oregon", "california", "mormon"])
+        );
+    }
+
+    #[test]
+    fn letters_reject_a_destination_that_a_fork_can_bypass() {
+        let mut content = load().unwrap();
+        let letter = content.letters.iter_mut().find(|letter| letter.id == "sierra_note").unwrap();
+        letter.destination_id = "soda_springs_ca".into();
+        content
+            .trails
+            .iter_mut()
+            .find(|trail| trail.id == "california")
+            .unwrap()
+            .nodes
+            .iter_mut()
+            .find(|node| node.id == "soda_springs_ca")
+            .unwrap()
+            .store = true;
+        assert!(validate(&content).unwrap_err().to_string().contains("can be bypassed"));
     }
 
     #[test]

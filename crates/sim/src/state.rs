@@ -131,10 +131,21 @@ pub struct GameState {
     pub loose_bullets: u8,
     #[serde(default)]
     pub last_fresh_food_day: Option<u32>,
+    #[serde(default)]
+    pub active_letter: Option<AcceptedLetter>,
+    #[serde(default)]
+    pub letter_origins_offered: BTreeSet<String>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum Command {
     SetDifficulty(Difficulty),
+    AcceptLetter {
+        letter_id: String,
+    },
+    DeclineLetter {
+        letter_id: String,
+    },
+    DeliverLetter,
     Forage,
     Fish,
     Sell {
@@ -208,19 +219,67 @@ pub enum Command {
     },
 }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AcceptedLetter {
+    pub id: String,
+    pub destination_id: String,
+    pub recipient: String,
+    pub reward_cents: i64,
+}
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum Outcome {
     Configured,
-    Purchased { item_id: String, quantity: u32, cost_cents: i64 },
+    Purchased {
+        item_id: String,
+        quantity: u32,
+        cost_cents: i64,
+    },
     Departed,
-    DayAdvanced { day: u32, miles: u32, weather: WeatherKind },
-    ArrivedAt { landmark_id: String },
-    ForkAvailable { landmark_id: String },
-    RiverCrossingRequired { landmark_id: String },
-    Event { event_id: String, text: String },
-    Quote { quote_id: String, text: String },
-    Treated { member_index: usize, ailment_id: String },
-    Score { points: u32 },
-    MemberDied { name: String },
+    DayAdvanced {
+        day: u32,
+        miles: u32,
+        weather: WeatherKind,
+    },
+    ArrivedAt {
+        landmark_id: String,
+    },
+    ForkAvailable {
+        landmark_id: String,
+    },
+    RiverCrossingRequired {
+        landmark_id: String,
+    },
+    Event {
+        event_id: String,
+        text: String,
+    },
+    Quote {
+        quote_id: String,
+        text: String,
+    },
+    Treated {
+        member_index: usize,
+        ailment_id: String,
+    },
+    Score {
+        points: u32,
+    },
+    MemberDied {
+        name: String,
+    },
+    LetterAccepted {
+        letter_id: String,
+        recipient: String,
+        destination_id: String,
+        reward_cents: i64,
+    },
+    LetterDeclined {
+        letter_id: String,
+    },
+    LetterDelivered {
+        letter_id: String,
+        recipient: String,
+        reward_cents: i64,
+    },
     Message(String),
     Rejected(CommandError),
 }
@@ -317,6 +376,8 @@ impl GameState {
             active_minigame: None,
             loose_bullets: 0,
             last_fresh_food_day: None,
+            active_letter: None,
+            letter_origins_offered: BTreeSet::new(),
         }
     }
     pub fn npc_present(&self, npc_id: &str) -> bool {
@@ -383,6 +444,9 @@ impl GameState {
                 self.difficulty = difficulty;
                 Ok(vec![Outcome::Message("Difficulty changed".into())])
             }
+            Command::AcceptLetter { letter_id } => self.accept_letter(&letter_id),
+            Command::DeclineLetter { letter_id } => self.decline_letter(&letter_id),
+            Command::DeliverLetter => self.deliver_letter(),
             Command::Forage => self.forage(),
             Command::Fish => self.fish(),
             Command::Sell { item_id, quantity } => self.sell(&item_id, quantity),
@@ -1174,6 +1238,74 @@ impl GameState {
         outcomes.push(Outcome::Message(format!("Foraged {food} lbs of food.")));
         Ok(outcomes)
     }
+    pub fn offered_letter(&self) -> Option<&crate::content::LetterDefinition> {
+        let origin = self.current_node_id.as_deref()?;
+        (matches!(&self.status, RunStatus::AtLandmark(id) if id == origin)
+            && self.pending_event.is_none()
+            && self.active_minigame.is_none()
+            && self.active_letter.is_none()
+            && self.can_shop()
+            && !self.letter_origins_offered.contains(origin))
+        .then(|| {
+            self.content.letters.iter().find(|letter| {
+                Some(letter.trail_id.as_str()) == self.trail_id.as_deref()
+                    && letter.origin_id == origin
+            })
+        })
+        .flatten()
+    }
+    pub fn can_deliver_letter(&self) -> bool {
+        self.pending_event.is_none()
+            && self.active_minigame.is_none()
+            && self.active_letter.as_ref().is_some_and(|letter| {
+                matches!(&self.status, RunStatus::AtLandmark(id) if id == &letter.destination_id)
+                    && self.current_node_id.as_deref() == Some(letter.destination_id.as_str())
+                    && self.can_shop()
+            })
+    }
+    fn accept_letter(&mut self, letter_id: &str) -> Result<Vec<Outcome>, CommandError> {
+        let letter = self
+            .offered_letter()
+            .filter(|letter| letter.id == letter_id)
+            .ok_or(CommandError::InvalidChoice)?;
+        let accepted = AcceptedLetter {
+            id: letter.id.clone(),
+            destination_id: letter.destination_id.clone(),
+            recipient: letter.recipient.clone(),
+            reward_cents: letter.reward_cents,
+        };
+        self.letter_origins_offered.insert(letter.origin_id.clone());
+        self.active_letter = Some(accepted.clone());
+        Ok(vec![Outcome::LetterAccepted {
+            letter_id: accepted.id,
+            recipient: accepted.recipient,
+            destination_id: accepted.destination_id,
+            reward_cents: accepted.reward_cents,
+        }])
+    }
+    fn decline_letter(&mut self, letter_id: &str) -> Result<Vec<Outcome>, CommandError> {
+        let (origin_id, id) = self
+            .offered_letter()
+            .filter(|letter| letter.id == letter_id)
+            .map(|letter| (letter.origin_id.clone(), letter.id.clone()))
+            .ok_or(CommandError::InvalidChoice)?;
+        self.letter_origins_offered.insert(origin_id);
+        Ok(vec![Outcome::LetterDeclined { letter_id: id }])
+    }
+    fn deliver_letter(&mut self) -> Result<Vec<Outcome>, CommandError> {
+        let letter = self.active_letter.clone().ok_or(CommandError::InvalidChoice)?;
+        if !self.can_deliver_letter() {
+            return Err(CommandError::InvalidPhase);
+        }
+        self.cash_cents =
+            self.cash_cents.checked_add(letter.reward_cents).ok_or(CommandError::InvalidSetup)?;
+        self.active_letter = None;
+        Ok(vec![Outcome::LetterDelivered {
+            letter_id: letter.id,
+            recipient: letter.recipient,
+            reward_cents: letter.reward_cents,
+        }])
+    }
     fn fish(&mut self) -> Result<Vec<Outcome>, CommandError> {
         self.at_camp()?;
         if !matches!(self.terrain(), Terrain::RiverValley) {
@@ -1849,6 +1981,35 @@ impl GameState {
             {
                 return Err(CommandError::InvalidSetup);
             }
+        }
+        if let Some(trail_id) = self.trail_id.as_deref() {
+            for origin in &self.letter_origins_offered {
+                if !self
+                    .content
+                    .letters
+                    .iter()
+                    .any(|letter| letter.trail_id == trail_id && letter.origin_id == *origin)
+                {
+                    return Err(CommandError::InvalidSetup);
+                }
+            }
+            if let Some(active) = &self.active_letter {
+                let Some(definition) =
+                    self.content.letters.iter().find(|letter| letter.id == active.id)
+                else {
+                    return Err(CommandError::InvalidSetup);
+                };
+                if definition.trail_id != trail_id
+                    || definition.destination_id != active.destination_id
+                    || definition.recipient != active.recipient
+                    || definition.reward_cents != active.reward_cents
+                    || !self.letter_origins_offered.contains(&definition.origin_id)
+                {
+                    return Err(CommandError::InvalidSetup);
+                }
+            }
+        } else if self.active_letter.is_some() || !self.letter_origins_offered.is_empty() {
+            return Err(CommandError::InvalidSetup);
         }
         if let Some(session) = &self.active_minigame {
             if self.pending_event.is_some() {
@@ -4054,6 +4215,101 @@ mod tests {
             &mut limited,
             Command::CrossRiver { method: CrossMethod::Ferry },
         );
+    }
+
+    #[test]
+    fn sealed_letters_accept_deliver_once_and_survive_save_round_trip() {
+        let mut game = run(81);
+        game.content.letters.push(crate::content::LetterDefinition {
+            id: "platt_note".into(),
+            trail_id: "oregon".into(),
+            origin_id: "independence".into(),
+            destination_id: "willamette".into(),
+            recipient: "Martha Bell".into(),
+            text: "A sealed note.".into(),
+            reward_cents: 1500,
+        });
+        game.content.trails[0].nodes[1].store = true;
+        game.current_node_id = Some("independence".into());
+        game.status = RunStatus::AtLandmark("independence".into());
+        let offer = game.offered_letter().unwrap().clone();
+        assert!(matches!(
+            game.apply(Command::AcceptLetter { letter_id: offer.id.clone() }).as_slice(),
+            [Outcome::LetterAccepted { reward_cents: 1500, .. }]
+        ));
+        let saved: GameState =
+            serde_json::from_str(&serde_json::to_string(&game).unwrap()).unwrap();
+        assert_eq!(saved.active_letter, game.active_letter);
+        assert!(matches!(
+            game.apply(Command::AcceptLetter { letter_id: offer.id.clone() }).as_slice(),
+            [Outcome::Rejected(_)]
+        ));
+        game.current_node_id = Some("willamette".into());
+        game.status = RunStatus::AtLandmark("willamette".into());
+        let cash = game.cash_cents;
+        assert!(matches!(
+            game.apply(Command::DeliverLetter).as_slice(),
+            [Outcome::LetterDelivered { .. }]
+        ));
+        assert_eq!(game.cash_cents, cash + 1500);
+        assert!(matches!(game.apply(Command::DeliverLetter).as_slice(), [Outcome::Rejected(_)]));
+    }
+
+    #[test]
+    fn sealed_letters_reject_wrong_phase_destination_and_duplicate_origin() {
+        let mut game = run(82);
+        game.content.letters.push(crate::content::LetterDefinition {
+            id: "platt_note".into(),
+            trail_id: "oregon".into(),
+            origin_id: "independence".into(),
+            destination_id: "willamette".into(),
+            recipient: "Martha Bell".into(),
+            text: "A sealed note.".into(),
+            reward_cents: 1500,
+        });
+        assert_rejected_without_mutation(
+            &mut game,
+            Command::AcceptLetter { letter_id: "platt_note".into() },
+        );
+        game.current_node_id = Some("independence".into());
+        game.status = RunStatus::AtLandmark("independence".into());
+        game.pending_event = Some("mandatory".into());
+        assert!(game.offered_letter().is_none());
+        assert_rejected_without_mutation(
+            &mut game,
+            Command::AcceptLetter { letter_id: "platt_note".into() },
+        );
+        game.pending_event = None;
+        game.active_minigame =
+            Some(MinigameSession { kind: MinigameKind::Hunt, seed: 7, ammo_available: 1 });
+        assert!(game.offered_letter().is_none());
+        assert_rejected_without_mutation(
+            &mut game,
+            Command::AcceptLetter { letter_id: "platt_note".into() },
+        );
+        game.active_minigame = None;
+        game.apply(Command::DeclineLetter { letter_id: "platt_note".into() });
+        assert!(game.offered_letter().is_none());
+        assert_rejected_without_mutation(&mut game, Command::DeliverLetter);
+
+        let mut carrying = run(83);
+        carrying.content.letters.push(crate::content::LetterDefinition {
+            id: "platt_note".into(),
+            trail_id: "oregon".into(),
+            origin_id: "independence".into(),
+            destination_id: "willamette".into(),
+            recipient: "Martha Bell".into(),
+            text: "A sealed note.".into(),
+            reward_cents: 1500,
+        });
+        carrying.content.trails[0].nodes[1].store = true;
+        carrying.current_node_id = Some("independence".into());
+        carrying.status = RunStatus::AtLandmark("independence".into());
+        carrying.apply(Command::AcceptLetter { letter_id: "platt_note".into() });
+        carrying.current_node_id = Some("willamette".into());
+        carrying.status = RunStatus::Travelling;
+        assert!(!carrying.can_deliver_letter());
+        assert_rejected_without_mutation(&mut carrying, Command::DeliverLetter);
     }
 
     proptest::proptest! {

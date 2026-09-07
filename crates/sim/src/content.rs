@@ -19,6 +19,20 @@ pub struct GameContent {
     pub ailments: Vec<AilmentDefinition>,
     pub events: Vec<EventDefinition>,
     pub quotes: Vec<QuoteDefinition>,
+    /// Older saves retain their embedded content and therefore have no new letter offers.
+    /// This mirrors other saved content: resume stays deterministic rather than being rewritten.
+    #[serde(default)]
+    pub letters: Vec<LetterDefinition>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct LetterDefinition {
+    pub id: String,
+    pub trail_id: String,
+    pub origin_id: String,
+    pub destination_id: String,
+    pub recipient: String,
+    pub text: String,
+    pub reward_cents: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

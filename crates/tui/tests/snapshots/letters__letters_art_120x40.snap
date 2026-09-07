@@ -1,0 +1,127 @@
+---
+source: crates/tui/tests/letters.rs
+expression: "format!(\"=== OFFER ===\\n{offer}\\n=== CARRYING ===\\n{carrying}\\n=== DELIVERY ===\\n{delivery}\")"
+---
+=== OFFER ===
+┌SEALED LETTER─────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ SEALED LETTER                                                                                                        │
+│ A SEALED LETTER                                                                                                      │
+│ A sister asks that this sealed note reach Martha Bell at Fort Laramie.                                               │
+│ For Martha Bell at Fort Laramie · reward $15.00                                                                      │
+│ ► 1. Accept and carry it                                                                                             │
+│   2. Decline without penalty                                                                                         │
+│ Enter select · Esc return to trail                                                                                   │
+│ Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                                                         │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│ TRAIL LOG─────────────────────────────────────────────────────────────────────────────────────────────────────────── │
+│ Choose New Journey to begin.                                                                                         │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+=== CARRYING ===
+┌SEALED LETTER─────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ SEALED LETTER                                                                                                        │
+│ Carry this sealed letter to Fort Laramie for $15.00.                                                                 │
+│ Continue on the trail; delivery is not available here.                                                               │
+│ Enter select · Esc return to trail                                                                                   │
+│ Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                                                         │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│ TRAIL LOG─────────────────────────────────────────────────────────────────────────────────────────────────────────── │
+│ Sealed letter for Martha Bell accepted: deliver at fort_laramie for $15.00.                                          │
+│ Choose New Journey to begin.                                                                                         │
+│                                                                                                                      │
+│                                                                                                                      │
+└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+=== DELIVERY ===
+┌SEALED LETTER─────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ SEALED LETTER                                                                                                        │
+│ Carry this sealed letter to Fort Laramie for $15.00.                                                                 │
+│ ► 1. Deliver sealed letter                                                                                           │
+│   2. Keep carrying it                                                                                                │
+│ Enter select · Esc return to trail                                                                                   │
+│ Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                                                         │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│ TRAIL LOG─────────────────────────────────────────────────────────────────────────────────────────────────────────── │
+│ Sealed letter for Martha Bell accepted: deliver at fort_laramie for $15.00.                                          │
+│ Choose New Journey to begin.                                                                                         │
+│                                                                                                                      │
+│                                                                                                                      │
+└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
