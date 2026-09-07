@@ -1,0 +1,269 @@
+---
+source: crates/tui/tests/first_journey.rs
+expression: snapshots
+---
+
+=== preview art=true 80x24 ===
+
+    ▀▀▀▀▀              ▀▀▀▀▀                  ▀▀▀▀▀                  ▀▀▀▀▀
+   ▀▀▀▀▀▀▀            ▀▀▀▀▀▀▀                ▀▀▀▀▀▀▀                ▀▀▀▀▀▀▀
+     ▀▀▀                ▀▀▀                    ▀▀▀                    ▀▀▀
+      ▀                  ▀                      ▀                      ▀
+      ▀                  ▀                      ▀                      ▀
+                  ▀▀▀▀▀                                  ▀▀▀▀▀
+                 ▀▀▀▀▀▀▀                                ▀▀▀▀▀▀▀
+                   ▀▀▀                                    ▀▀▀
+
+
+
+
+
+
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+WOODLAND FORAGE
+Berries, roots, and greens may be found here. Weather and illness still press on
+► 1. Quick gathering — 1 day; camp eats 15 lb. Haul is uncertain.
+  2. Search longer — up to 3 days; camp eats 15 lb each day.
+Enter select · Esc return without spending a day
+Choose New Journey to begin.
+
+
+=== result art=true 80x24 ===
+
+    ▀▀▀▀▀              ▀▀▀▀▀                  ▀▀▀▀▀                  ▀▀▀▀▀
+   ▀▀▀▀▀▀▀            ▀▀▀▀▀▀▀                ▀▀▀▀▀▀▀                ▀▀▀▀▀▀▀
+     ▀▀▀                ▀▀▀                    ▀▀▀                    ▀▀▀
+      ▀                  ▀                      ▀                      ▀
+      ▀                  ▀                      ▀                      ▀
+                  ▀▀▀▀▀                                  ▀▀▀▀▀
+                 ▀▀▀▀▀▀▀                                ▀▀▀▀▀▀▀
+                   ▀▀▀                                    ▀▀▀
+
+
+
+
+
+
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+GATHERING RESULT
+Foraged 19 lb.
+Camp food changed +4 lb over 1 day.
+Enter or Esc returns to camp. This result cannot be collected again.
+
+
+
+
+=== preview art=true 120x40 ===
+
+                        ▀▀▀▀▀              ▀▀▀▀▀                  ▀▀▀▀▀                  ▀▀▀▀▀
+                       ▀▀▀▀▀▀▀            ▀▀▀▀▀▀▀                ▀▀▀▀▀▀▀                ▀▀▀▀▀▀▀
+                         ▀▀▀                ▀▀▀                    ▀▀▀                    ▀▀▀
+                          ▀                  ▀                      ▀                      ▀
+                          ▀                  ▀                      ▀                      ▀
+                                      ▀▀▀▀▀                                  ▀▀▀▀▀
+                                     ▀▀▀▀▀▀▀                                ▀▀▀▀▀▀▀
+                                       ▀▀▀                                    ▀▀▀
+
+
+
+
+
+
+                    ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+                    WOODLAND FORAGE
+                    Berries, roots, and greens may be found here. Weather and illness still press on
+                    ► 1. Quick gathering — 1 day; camp eats 15 lb. Haul is uncertain.
+                      2. Search longer — up to 3 days; camp eats 15 lb each day.
+                    Enter select · Esc return without spending a day
+                    Choose New Journey to begin.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+=== result art=true 120x40 ===
+
+                        ▀▀▀▀▀              ▀▀▀▀▀                  ▀▀▀▀▀                  ▀▀▀▀▀
+                       ▀▀▀▀▀▀▀            ▀▀▀▀▀▀▀                ▀▀▀▀▀▀▀                ▀▀▀▀▀▀▀
+                         ▀▀▀                ▀▀▀                    ▀▀▀                    ▀▀▀
+                          ▀                  ▀                      ▀                      ▀
+                          ▀                  ▀                      ▀                      ▀
+                                      ▀▀▀▀▀                                  ▀▀▀▀▀
+                                     ▀▀▀▀▀▀▀                                ▀▀▀▀▀▀▀
+                                       ▀▀▀                                    ▀▀▀
+
+
+
+
+
+
+                    ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+                    GATHERING RESULT
+                    Foraged 19 lb.
+                    Camp food changed +4 lb over 1 day.
+                    Enter or Esc returns to camp. This result cannot be collected again.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+=== preview art=false 80x24 ===
+┌GATHERING─────────────────────────────────────────────────────────────────────┐
+│ GATHERING                                                                    │
+│ WOODLAND FORAGE                                                              │
+│ Berries, roots, and greens may be found here. Weather and illness still      │
+│ press on the camp.                                                           │
+│ ► 1. Quick gathering — 1 day; camp eats 15 lb. Haul is uncertain.            │
+│   2. Search longer — up to 3 days; camp eats 15 lb each day.                 │
+│ Enter select · Esc return without spending a day                             │
+│ Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                 │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│ TRAIL LOG─────────────────────────────────────────────────────────────────── │
+│ Choose New Journey to begin.                                                 │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+=== result art=false 80x24 ===
+┌GATHERING─────────────────────────────────────────────────────────────────────┐
+│ GATHERING                                                                    │
+│ GATHERING RESULT                                                             │
+│ Foraged 19 lb.                                                               │
+│ Camp food changed +4 lb over 1 day.                                          │
+│ Enter or Esc returns to camp. This result cannot be collected again.         │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│ TRAIL LOG─────────────────────────────────────────────────────────────────── │
+│ Foraged 19 lb in 1 day.                                                      │
+│ Foraged 19 lbs of food.                                                      │
+│ Choose New Journey to begin.                                                 │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+=== preview art=false 120x40 ===
+┌GATHERING─────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ GATHERING                                                                                                            │
+│ WOODLAND FORAGE                                                                                                      │
+│ Berries, roots, and greens may be found here. Weather and illness still press on the camp.                           │
+│ ► 1. Quick gathering — 1 day; camp eats 15 lb. Haul is uncertain.                                                    │
+│   2. Search longer — up to 3 days; camp eats 15 lb each day.                                                         │
+│ Enter select · Esc return without spending a day                                                                     │
+│ Esc: Back · ↑↓/jk: Move · Enter/Space: Select · Ctrl-Q: Quit                                                         │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│ TRAIL LOG─────────────────────────────────────────────────────────────────────────────────────────────────────────── │
+│ Choose New Journey to begin.                                                                                         │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+=== result art=false 120x40 ===
+┌GATHERING─────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ GATHERING                                                                                                            │
+│ GATHERING RESULT                                                                                                     │
+│ Foraged 19 lb.                                                                                                       │
+│ Camp food changed +4 lb over 1 day.                                                                                  │
+│ Enter or Esc returns to camp. This result cannot be collected again.                                                 │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│ TRAIL LOG─────────────────────────────────────────────────────────────────────────────────────────────────────────── │
+│ Foraged 19 lb in 1 day.                                                                                              │
+│ Foraged 19 lbs of food.                                                                                              │
+│ Choose New Journey to begin.                                                                                         │
+│                                                                                                                      │
+└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
