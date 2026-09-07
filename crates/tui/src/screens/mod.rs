@@ -7,6 +7,7 @@ pub enum Screen {
     SetupDeparture,
     Store,
     Journey,
+    Gathering,
     Supplies,
     Map,
     Pace,
@@ -26,3 +27,4 @@ pub enum Screen {
     Seed,
     Minigame,
 }
+pub mod gathering;
