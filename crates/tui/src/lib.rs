@@ -1,4 +1,5 @@
 //! Reusable TUI building blocks for Pioneer Trail.
+#![cfg_attr(not(test), warn(clippy::unwrap_used))]
 mod advice;
 pub mod app;
 pub mod art;

@@ -31,3 +31,10 @@ proptest = "1"
 lto = true
 codegen-units = 1
 strip = true
+
+[workspace.lints.clippy]
+dbg_macro = "warn"
+todo = "warn"
+unimplemented = "warn"
+redundant_clone = "warn"
+allow_attributes_without_reason = "warn"

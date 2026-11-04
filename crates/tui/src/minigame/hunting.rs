@@ -304,7 +304,8 @@ impl HuntingGame {
         let area = area.intersection(buffer.area);
         for y in 0..area.height.min(23) {
             for x in 0..area.width.min(80) {
-                let cell = buffer.cell_mut((area.x + x, area.y + y)).unwrap();
+                let cell =
+                    buffer.cell_mut((area.x + x, area.y + y)).expect("area clipped to buffer");
                 cell.set_symbol(if y == 22 { "▄" } else { " " })
                     .set_fg(if mode == ColorMode::Mono { Color::White } else { Color::Green })
                     .set_bg(Color::Black);

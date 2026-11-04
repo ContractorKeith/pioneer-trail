@@ -182,7 +182,10 @@ impl RaftingGame {
         let a = area.intersection(b.area);
         for y in 0..a.height.min(24) {
             for x in 0..a.width.min(80) {
-                b.cell_mut((a.x + x, a.y + y)).unwrap().set_symbol(" ").set_bg(Color::Black);
+                b.cell_mut((a.x + x, a.y + y))
+                    .expect("area clipped to buffer")
+                    .set_symbol(" ")
+                    .set_bg(Color::Black);
                 if !(2..78).contains(&x) {
                     b[(a.x + x, a.y + y)].set_symbol("░").set_fg(mode.color(Pixel::Blue));
                 }

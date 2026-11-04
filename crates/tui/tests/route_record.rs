@@ -131,7 +131,7 @@ fn visits_reject_forged_history_but_allow_a_partial_legacy_start() {
     for forged in [
         Visit { landmark_id: "not-a-stop".into(), day: state.day, mile: state.miles },
         Visit { landmark_id: target.clone(), day: state.day + 1, mile: state.miles },
-        Visit { landmark_id: target.clone(), day: state.day, mile: state.miles + 1 },
+        Visit { landmark_id: target, day: state.day, mile: state.miles + 1 },
         Visit { landmark_id: "willamette".into(), day: state.day, mile: state.miles },
     ] {
         let mut corrupt = state.clone();

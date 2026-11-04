@@ -2196,19 +2196,22 @@ impl App {
             Screen::Map => {}
             Screen::Pace => {
                 lines.push(Line::from(
-                    crate::advice::screen_advice(&self.game, Screen::Pace).unwrap(),
+                    crate::advice::screen_advice(&self.game, Screen::Pace)
+                        .expect("Pace screen always has advice"),
                 ));
                 lines.extend(menu(&["Steady", "Strenuous", "Grueling"], self.cursor));
             }
             Screen::Rations => {
                 lines.push(Line::from(
-                    crate::advice::screen_advice(&self.game, Screen::Rations).unwrap(),
+                    crate::advice::screen_advice(&self.game, Screen::Rations)
+                        .expect("Rations screen always has advice"),
                 ));
                 lines.extend(menu(&["Filling", "Meager", "Bare Bones"], self.cursor))
             }
             Screen::Rest => {
                 lines.push(Line::from(
-                    crate::advice::screen_advice(&self.game, Screen::Rest).unwrap(),
+                    crate::advice::screen_advice(&self.game, Screen::Rest)
+                        .expect("Rest screen always has advice"),
                 ));
                 lines.extend(menu(&["Rest 1 day", "Rest 2 days", "Rest 3 days"], self.cursor))
             }

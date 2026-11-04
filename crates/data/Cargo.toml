@@ -14,3 +14,6 @@ serde = { workspace = true }
 ron = { workspace = true }
 include_dir = { workspace = true }
 thiserror = { workspace = true }
+
+[lints]
+workspace = true

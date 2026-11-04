@@ -251,7 +251,9 @@ fn next_pair(available: &mut Vec<Trait>, rng: &mut SimRng) -> Vec<Trait> {
         *available = Trait::ALL.to_vec();
         available.shuffle(rng.stream("party-profile"));
     }
-    vec![available.pop().unwrap(), available.pop().unwrap()]
+    let first = available.pop().expect("refilled to at least two traits");
+    let second = available.pop().expect("refilled to at least two traits");
+    vec![first, second]
 }
 
 fn trait_skills(trait_: Trait) -> Skills {
