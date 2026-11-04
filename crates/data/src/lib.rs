@@ -1,4 +1,5 @@
 //! Typed, build-embedded content for Pioneer Trail.
+#![cfg_attr(not(test), warn(clippy::unwrap_used))]
 
 use include_dir::{include_dir, Dir};
 use pioneer_sim::{Condition, Effect, GameContent, LandmarkKind, TrailDefinition};
@@ -499,7 +500,10 @@ fn validate_event_landmarks(
         collect_all_requirements(condition, &mut required_trails, &mut required_landmarks);
     }
     for trail_id in required_trails {
-        let trail = trails.iter().find(|trail| trail.id == trail_id).unwrap();
+        let trail = trails
+            .iter()
+            .find(|trail| trail.id == trail_id)
+            .expect("validate_condition rejected unknown trail ids");
         for landmark in &required_landmarks {
             expect(
                 trail.nodes.iter().any(|node| node.id == *landmark),
@@ -618,7 +622,7 @@ fn validate_trail_graph(
     let mut reverse: HashMap<&str, Vec<&str>> = nodes.iter().map(|id| (*id, Vec::new())).collect();
     for (node, targets) in &edges {
         for target in targets {
-            reverse.get_mut(target).unwrap().push(node);
+            reverse.get_mut(target).expect("route targets were validated").push(node);
         }
     }
     let mut can_finish = HashSet::new();
@@ -664,7 +668,7 @@ mod tests {
         for id in ["wedding_offer", "family_feud", "party_departure", "relative_joins"] {
             assert!(content.events.iter().any(|event| event.id == id), "missing {id}");
         }
-        let mut invalid = content.clone();
+        let mut invalid = content;
         invalid.events[0].conditions = vec![Condition::RelationshipAtLeast(101)];
         assert!(validate(&invalid).unwrap_err().to_string().contains("relationship condition"));
         invalid.events[0].conditions = vec![Condition::Always];

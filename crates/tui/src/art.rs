@@ -57,8 +57,11 @@ pub fn render_at(
             }
             let cell = &mut buffer[(px as u16, py as u16)];
             if mode == ColorMode::Mono {
-                let pixel =
-                    [top, bottom].into_iter().flatten().max_by_key(|p| mono_level(*p)).unwrap();
+                let pixel = [top, bottom]
+                    .into_iter()
+                    .flatten()
+                    .max_by_key(|p| mono_level(*p))
+                    .expect("at least one pixel is set");
                 cell.set_symbol(ColorMode::mono_glyph(pixel))
                     .set_fg(Color::White)
                     .set_bg(Color::Black);

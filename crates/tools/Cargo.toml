@@ -28,3 +28,6 @@ anyhow = { workspace = true }
 clap = { workspace = true }
 crossterm = { workspace = true }
 ratatui = { workspace = true }
+
+[lints]
+workspace = true

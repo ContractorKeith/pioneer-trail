@@ -3414,7 +3414,7 @@ mod tests {
         }
         let first = game.party[0].name.clone();
         let second = game.party[1].name.clone();
-        game.party[0].relationships.affinity.insert(second.clone(), 25);
+        game.party[0].relationships.affinity.insert(second, 25);
         game.party[1].relationships.affinity.insert(first, 25);
         game.effects(&[Effect::CelebrateWedding], &mut Vec::new());
         assert_eq!(
@@ -4605,7 +4605,7 @@ mod tests {
             serde_json::from_str(&serde_json::to_string(&game).unwrap()).unwrap();
         assert_eq!(saved.active_letter, game.active_letter);
         assert!(matches!(
-            game.apply(Command::AcceptLetter { letter_id: offer.id.clone() }).as_slice(),
+            game.apply(Command::AcceptLetter { letter_id: offer.id }).as_slice(),
             [Outcome::Rejected(_)]
         ));
         game.current_node_id = Some("willamette".into());

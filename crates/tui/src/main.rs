@@ -1,3 +1,5 @@
+#![cfg_attr(not(test), warn(clippy::unwrap_used))]
+
 use clap::Parser;
 use pioneer_trail::{
     app::{self, App},

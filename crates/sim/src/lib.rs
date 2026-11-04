@@ -2,6 +2,7 @@
 //!
 //! Rules: no I/O, no terminal, fully deterministic given a seed.
 //! The UI drives the sim exclusively through [`GameState::apply`].
+#![cfg_attr(not(test), warn(clippy::unwrap_used))]
 
 pub mod calendar;
 pub mod content;
