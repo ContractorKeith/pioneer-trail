@@ -6,6 +6,9 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 readme.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories = ["games", "simulation"]
 description = "Pure, deterministic game simulation for Pioneer Trail. No terminal dependencies."
 
 [dependencies]
