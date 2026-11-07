@@ -43,10 +43,11 @@ runs; every occupation/month combination had arrivals. Low-cash occupations rema
 under this fixed policy. See [the final report](features/balance-survival.md). Together with the
 shopping-only baseline, these reports cover 900,000 completed simulated journeys.
 
-Crates.io publication requires credentials not available in this session; it is tracked separately
-in [issue 11](https://github.com/ContractorKeith/pioneer-trail/issues/11). The simulation package
-passes Cargo package verification. Data and TUI package inventories include licenses and all
-embedded assets; publishing them requires their predecessor crates to be indexed first.
+Crates.io publication requires a `CARGO_REGISTRY_TOKEN` repository secret; it is tracked in
+[issue 11](https://github.com/ContractorKeith/pioneer-trail/issues/11). `cargo publish --workspace
+--dry-run --locked` packages and verifies pioneer-sim, pioneer-data and pioneer-trail in dependency
+order (pioneer-tools is `publish = false`). The manual `crates` workflow publishes them once the
+secret exists.
 
 ## Deliberate limits
 
