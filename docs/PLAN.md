@@ -441,7 +441,7 @@ Each phase ends playable and committed. Estimates assume evening/weekend pacing 
 - Art files are ASCII-safe `.px`; palettes only from `palette.ron`.
 - Commit format `<type>: <description>`. Commits by @ContractorKeith only.
 - Tests: `cargo test --workspace` must pass; `cargo clippy -- -D warnings`; `cargo fmt --check`.
-- Checkpoint via KödMem `log-work` at end of each session.
+- Record each session with `log-work` in the central worklog (`~/Projects/worklog/projects/pioneer-trail.md`).
 
 ---
 

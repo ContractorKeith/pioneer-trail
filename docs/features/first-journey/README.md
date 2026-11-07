@@ -75,5 +75,5 @@ no starting cash, consumption rate, mortality, or random sequence changed.
 - Original save and hall-of-fame SHA256 checksums were unchanged after verification. All three
   issues are closed, the team branches are merged, and their worktrees are removed.
 
-KödMem checkpointing remains unavailable because this workspace is not registered. Crates.io
-credentials remain a separate follow-up in GH #11; neither blocks GitHub or Homebrew play.
+Session notes live in the central worklog (`worklog/projects/pioneer-trail.md`). Crates.io
+credentials remain a separate follow-up in GH #11; that does not block GitHub or Homebrew play.

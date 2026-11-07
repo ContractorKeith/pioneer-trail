@@ -84,5 +84,4 @@ mandatory weathered-event path, including render/Escape state invariance and res
 - All seven issues are closed, feature worktrees and branches are removed, and existing saves
   and the pre-existing unrelated stash remain untouched. Crates.io still awaits credentials in #11.
 
-The `log-work` checkpoint connection returns `workspace_not_registered`; KödMem onboarding is
-incomplete. No substitute project or retired worklog was used.
+Session notes live in the central worklog (`worklog/projects/pioneer-trail.md`).
