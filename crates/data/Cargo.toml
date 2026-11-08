@@ -6,6 +6,9 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 readme.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories = ["games"]
 description = "Embedded RON content (trails, events, ailments, art) and loaders for Pioneer Trail."
 
 [dependencies]

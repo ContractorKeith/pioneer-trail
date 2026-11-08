@@ -6,6 +6,9 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 readme.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories = ["games", "command-line-utilities"]
 description = "Pioneer Trail: a terminal trail-survival game in the spirit of the Apple II classic."
 
 [[bin]]

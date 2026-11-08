@@ -9,6 +9,8 @@ license = "MIT"
 repository = "https://github.com/ContractorKeith/pioneer-trail"
 authors = ["Keith Bloemendaal <keith@dutchbuiltnc.com>"]
 readme = "README.md"
+homepage = "https://github.com/ContractorKeith/pioneer-trail"
+keywords = ["game", "tui", "terminal", "survival", "ratatui"]
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }

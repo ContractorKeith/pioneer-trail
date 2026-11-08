@@ -6,6 +6,8 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 readme.workspace = true
+# Repo-only dev tools; not published to crates.io.
+publish = false
 description = "Dev tools for Pioneer Trail: px-preview, balance-report, event-lint."
 
 [[bin]]
