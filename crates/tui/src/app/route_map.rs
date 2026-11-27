@@ -34,7 +34,6 @@ impl App {
                 let column = if row.is_multiple_of(2) { index % 8 } else { 7 - index % 8 };
                 (x + 3 + column as u16 * 10, y + 1 + row as u16 * 2)
             };
-            // A schematic of the actual trail graph, not a claim about geographic coordinates.
             for (index, node) in trail.nodes.iter().enumerate() {
                 let (ax, ay) = position(index);
                 for route in &node.routes {

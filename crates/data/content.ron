@@ -5,7 +5,6 @@ GameContent(
         (id: "1852", name: "Peak Emigration", year: 1852),
         (id: "1866", name: "After the War", year: 1866),
     ],
-    // These are game-balance knobs, not claims about historical prices or services.
     era_rules: {
         "1843": (price_percent: 105, ferry_fee_percent: 100, ferries_available: false, guide_cost_clothing: 4, unavailable_stores: ["fort_kearney", "fort_kearney_ca"], event_weight_percent: {}),
         "1848": (price_percent: 100, ferry_fee_percent: 100, ferries_available: true, guide_cost_clothing: 3, unavailable_stores: [], event_weight_percent: {}),
@@ -206,8 +205,6 @@ GameContent(
         (id:"talk_24",text:"Peter Lane: A clean bandage is better than a brave promise.",landmark_id:Some("echo_canyon"),seasons:[Winter],state_tags:["wealthy"]),
         (id:"talk_25",text:"Abigail Frost: The last mile is easier when someone is waiting at camp.",landmark_id:Some("salt_lake"),seasons:[Spring],state_tags:["homesick"]),
     ],
-    // Optional courier reward: $15.00. It is a modest fixed bonus, roughly one food load,
-    // and each origin may offer only once so it cannot become a money farm.
     letters: [
         (id:"platt_note",trail_id:"oregon",origin_id:"fort_kearney",destination_id:"fort_laramie",recipient:"Martha Bell",text:"A sister asks that this sealed note reach Martha Bell at Fort Laramie.",reward_cents:1500),
         (id:"sierra_note",trail_id:"california",origin_id:"fort_kearney_ca",destination_id:"fort_laramie_ca",recipient:"Elias Ward",text:"A freighter asks that this sealed note reach Elias Ward at Fort Laramie.",reward_cents:1500),

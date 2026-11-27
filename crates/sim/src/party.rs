@@ -68,10 +68,6 @@ pub struct Relationships {
     pub affinity: BTreeMap<String, i16>,
 }
 
-/// Assign a reproducible, varied profile to a newly configured party.
-///
-/// The leader receives the occupation's strongest skill. Companions receive only the smaller
-/// skill bonuses implied by their individual traits.
 pub fn initialize(party: &mut [PartyMember], occupation: &str, rng: &mut SimRng) {
     if party.is_empty() {
         return;
@@ -102,7 +98,6 @@ pub fn initialize(party: &mut [PartyMember], occupation: &str, rng: &mut SimRng)
     initialize_relationships(party, rng);
 }
 
-/// Give a joining traveler (or newborn) a deterministic profile and reciprocal social ties.
 pub fn initialize_joiner(member: &mut PartyMember, party: &mut [PartyMember], rng: &mut SimRng) {
     member.relationships = Relationships::default();
     member.sex = if rng.stream("family").gen_bool(0.5) { Sex::Female } else { Sex::Male };
@@ -139,7 +134,6 @@ pub fn initialize_joiner(member: &mut PartyMember, party: &mut [PartyMember], rn
     }
 }
 
-/// Apply daily morale and rare social consequences. Messages are emitted only for social events.
 pub fn daily(
     party: &mut [PartyMember],
     resting: bool,
@@ -197,7 +191,6 @@ pub fn daily(
     messages
 }
 
-/// Apply grief for newly reported deaths. The caller supplies each death once.
 pub fn mourn(party: &mut [PartyMember], deceased: &[String]) -> Vec<String> {
     let deceased = deceased.iter().collect::<BTreeSet<_>>();
     let mut messages = Vec::new();

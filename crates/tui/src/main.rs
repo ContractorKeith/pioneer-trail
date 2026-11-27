@@ -11,11 +11,9 @@ use pioneer_trail::{
 #[derive(Parser, Debug)]
 #[command(name = "pioneer-trail", version, about = "A keyboard-only trail survival game")]
 struct Cli {
-    /// Numeric world seed or a shared pt- code.
-    #[arg(long)]
+    #[arg(long, help = "Numeric world seed or a shared pt- code")]
     seed: Option<String>,
-    /// Simulate N journeys with the reference player.
-    #[arg(long, value_name = "N")]
+    #[arg(long, value_name = "N", help = "Simulate N journeys with the reference player")]
     headless_sim: Option<u32>,
     #[arg(long, default_value = "banker")]
     occupation: String,
@@ -25,20 +23,19 @@ struct Cli {
     trail: String,
     #[arg(long, default_value = "1848")]
     era: String,
-    /// Print each advancing day during headless journeys.
-    #[arg(long)]
+    #[arg(long, help = "Print each advancing day during headless journeys")]
     verbose: bool,
-    /// Resume the most recent local journey.
-    #[arg(long = "continue")]
+    #[arg(long = "continue", help = "Resume the most recent local journey")]
     resume: bool,
-    /// Text-only presentation without animated pixel scenes.
-    #[arg(long)]
+    #[arg(long, help = "Text-only presentation without animated pixel scenes")]
     no_art: bool,
-    /// Render using monochrome glyphs.
-    #[arg(long)]
+    #[arg(long, help = "Render using monochrome glyphs")]
     mono: bool,
-    /// Keep saves/settings in a separate directory (useful for portable or test runs).
-    #[arg(long, value_name = "DIR")]
+    #[arg(
+        long,
+        value_name = "DIR",
+        help = "Keep saves/settings in a separate directory (useful for portable or test runs)"
+    )]
     save_dir: Option<std::path::PathBuf>,
 }
 

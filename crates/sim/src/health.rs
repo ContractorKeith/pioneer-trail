@@ -13,7 +13,6 @@ pub enum Sex {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PartyMember {
     pub name: String,
-    /// `None` identifies an original party member. Joined NPCs retain their stable train id.
     #[serde(default)]
     pub npc_id: Option<String>,
     pub health: u8,

@@ -72,7 +72,6 @@ struct Target {
     alive: bool,
 }
 
-/// Top-down 80x23 hunting field. `tick` is called once per UI 30fps tick.
 pub struct HuntingGame {
     rng: SimRng,
     biome: Biome,
@@ -177,10 +176,6 @@ impl HuntingGame {
             _ => {}
         }
     }
-    /// Drive one accessible, turn-based action without rendering the pixel field.
-    ///
-    /// A numbered target is aimed at a visible cell in its existing sprite, then uses `shoot`
-    /// so text mode shares normal ammo, corpse, bag-cap, and hit accounting.
     pub fn text_key(&mut self, key: KeyCode) {
         if self.finished {
             return;
@@ -192,7 +187,6 @@ impl HuntingGame {
             _ => {}
         }
     }
-    /// Screen-reader-friendly state for the turn-based hunt. It deliberately contains no art.
     pub fn text_lines(&self) -> Vec<String> {
         let mut lines = vec![
             "TURN-BASED HUNT".into(),
@@ -330,7 +324,6 @@ impl HuntingGame {
             }
         }
         if self.crosshair.0 < area.width as i16 && self.crosshair.1 < area.height as i16 {
-            // The center marker is exactly the cell used by hit testing.
             buffer[(area.x + self.crosshair.0 as u16, area.y + self.crosshair.1 as u16)]
                 .set_symbol("+")
                 .set_fg(Color::White)

@@ -78,8 +78,6 @@ fn reach_node(game: &mut GameState, target: &str) {
         if game.current_node_id.as_deref() == Some(target) {
             return;
         }
-        // Keep the fixture focused on route commands rather than provisioning
-        // or illness attrition; it never changes route position or choices.
         game.inventory.quantities.insert("food".into(), 500);
         for member in game.party.iter_mut().filter(|member| member.alive) {
             member.health = 100;
@@ -87,8 +85,6 @@ fn reach_node(game: &mut GameState, target: &str) {
         match &game.status {
             RunStatus::Travelling => apply(game, Command::TravelDay),
             RunStatus::AtLandmark(_) => apply(game, Command::Continue),
-            // Caulking can lose cargo but cannot choose a casualty, keeping this
-            // command-only fixture deterministic enough to reach the fork.
             RunStatus::AwaitingRiver(_) => {
                 apply(game, Command::CrossRiver { method: CrossMethod::Caulk })
             }
@@ -191,9 +187,7 @@ fn map_marks_only_the_chosen_fork_and_places_the_wagon_mid_leg() {
     terminal.draw(|frame| app.render(frame)).unwrap();
     let buffer = terminal.backend().buffer();
 
-    // South Pass (index 7) to Fort Bridger (index 9) is the selected fork.
     assert_eq!(buffer[(63, 4)].fg, ratatui::style::Color::Rgb(27, 203, 1));
-    // The unchosen Green River branch remains white.
     assert_eq!(buffer[(73, 4)].fg, ratatui::style::Color::Rgb(255, 255, 255));
     assert_eq!(buffer[(68, 2)].symbol(), "◆");
 }

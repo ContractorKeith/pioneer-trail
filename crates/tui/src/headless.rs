@@ -1,5 +1,3 @@
-//! A command-only reference player for reproducible journeys and balance reports.
-
 use anyhow::{bail, Result};
 use pioneer_sim::{Command, CrossMethod, GameContent, GameState, MinigameKind, Outcome, RunStatus};
 
@@ -78,11 +76,9 @@ pub fn journey(
                     break result;
                 }
                 if session.kind == MinigameKind::Hunt {
-                    // A practiced text-mode hunter selects the first visible target.
                     encounter.text_key(crossterm::event::KeyCode::Char('1'));
                     encounter.text_key(crossterm::event::KeyCode::Char(' '));
                 } else {
-                    // The reference pilot holds center in the real collision world.
                     encounter.tick();
                 }
             }
@@ -193,8 +189,6 @@ fn submit(game: &mut GameState, command: Command) -> Result<Vec<Outcome>> {
 }
 
 fn buy_up_to(game: &mut GameState, item: &str, maximum: u32) {
-    // Quantity search uses the shop command so prices and stock stay simulation rules.
-    // Rejected purchases must leave state untouched, an invariant tested in sim.
     let Some(price) = game.price_cents(item).filter(|price| *price > 0) else {
         return;
     };

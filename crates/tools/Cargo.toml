@@ -6,7 +6,6 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 readme.workspace = true
-# Repo-only dev tools; not published to crates.io.
 publish = false
 description = "Dev tools for Pioneer Trail: px-preview, balance-report, event-lint."
 
@@ -21,6 +20,10 @@ path = "src/px_preview.rs"
 [[bin]]
 name = "balance-report"
 path = "src/balance_report.rs"
+
+[[bin]]
+name = "comment-ratchet"
+path = "src/comment_ratchet.rs"
 
 [dependencies]
 pioneer-data = { path = "../data", version = "0.2.0" }

@@ -59,7 +59,6 @@ fn travel_selected_event_is_mandatory_and_rendering_is_observational() {
     assert_eq!(app.screen, Screen::Event);
     assert_eq!(app.game.pending_event.as_deref(), Some("wheel"));
 
-    // The overlay is presentation only; it cannot advance its weather or event RNG.
     app.game.weather = WeatherKind::Rain;
     let before_render = serde_json::to_value(&app.game).unwrap();
     let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();

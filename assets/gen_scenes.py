@@ -156,7 +156,6 @@ def forts() -> None:
     for name, left, right, tower in specs:
         c = Canvas(); sky_band(c, "B", 5, 2)
         c.rect(left, 18, right - left, 11, "O")
-        # Corner bastions and alternating palisade tips make every fort read as defended.
         c.polygon([(left - 5, 29), (left, 14), (left + 5, 29)], "O")
         c.polygon([(right - 5, 29), (right, 14), (right + 5, 29)], "O")
         for x in range(left, right, 3):
@@ -205,7 +204,6 @@ def landmarks() -> None:
 
 def map_oregon() -> None:
     c = Canvas(); c.rect(0, 0, 80, 32, "K")
-    # Rivers frame a clear westward route across the map.
     c.line(9, 0, 14, 31, "B"); c.line(58, 0, 63, 31, "B"); c.line(0, 25, 80, 19, "B")
     route = [(8, 27), (16, 25), (22, 23), (31, 22), (39, 19), (46, 17), (51, 13), (57, 11), (65, 9), (72, 6)]
     for a, b in zip(route, route[1:]): c.line(*a, *b, "W")
@@ -214,7 +212,6 @@ def map_oregon() -> None:
 
 
 def animal(c: Canvas, kind: str, step: int) -> None:
-    # Each profile uses a deliberately different outline, not a shared body rectangle.
     if kind == "buffalo":
         c.polygon([(1, 6), (3, 3), (5, 2), (7, 4), (10, 4), (12, 5), (14, 5), (15, 7), (13, 8), (4, 8)], "O")
         c.rect(2, 5, 2, 3, "O"); c.put(1, 4, "W"); c.put(3, 3, "W"); c.put(12, 5, "W")
@@ -255,9 +252,6 @@ def actors() -> None:
     for frame in range(4):
         c = Canvas(40, 20)
         c.blit(wagon)
-        # Keep the full canonical wagon silhouette. Alternate a plus and an X
-        # inside each white rim; the canopy's center rib shifts one pixel to
-        # give the body a restrained trail bob without changing its footprint.
         for center in wheel_centers:
             if frame % 2 == 0:
                 for x, y in [(center, 13), (center, 14), (center, 15), (center - 1, 15), (center + 1, 15), (center, 16), (center, 17)]:
@@ -273,8 +267,6 @@ def actors() -> None:
     for frame in range(2):
         c = Canvas(20, 10)
         c.blit(ox)
-        # Original horns and body stay intact; only the four hooves trade
-        # forward/back positions for a walking cycle.
         for x in range(20):
             if c.rows[9][x] == "K":
                 c.put(x, 9, ".")

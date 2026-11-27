@@ -17,15 +17,14 @@ ROOT = Path(__file__).resolve().parent.parent
 W, H = 80, 32
 
 PALETTE = {
-    "K": "#000000",  # black
-    "W": "#FFFFFF",  # white
-    "G": "#1BCB01",  # green
-    "V": "#E434FE",  # violet
-    "O": "#F26A00",  # orange
-    "B": "#1B9AFE",  # blue
+    "K": "#000000",
+    "W": "#FFFFFF",
+    "G": "#1BCB01",
+    "V": "#E434FE",
+    "O": "#F26A00",
+    "B": "#1B9AFE",
 }
 
-# --- sprites -----------------------------------------------------------------
 
 WAGON = """
 ..........WWWWWWWWWWWWWWWWWWWW..........
@@ -50,7 +49,6 @@ WAGON = """
 ....KKKK........................KKKK....
 """
 
-# One ox, facing left (west). Horns in white, hooves black.
 OX = """
 W....W..............
 .W..W...............
@@ -104,18 +102,14 @@ def text(canvas, s, x0, y0, color="O"):
 
 def build() -> list[list[str]]:
     c = [["." for _ in range(W)] for _ in range(H)]
-    # ground
     for x in range(W):
         c[20][x] = "G"
         c[21][x] = "G" if x % 3 else "K"
-    # oxen and tongue
     blit(c, sprite(OX), 0, 10)
     blit(c, sprite(OX), 20, 10)
     for x in range(36, 42):
         c[14][x] = "O"
-    # wagon
     blit(c, sprite(WAGON), 40, 0)
-    # title
     text(c, "PIONEER TRAIL", 1, 24, color="O")
     return c
 
@@ -133,7 +127,6 @@ def write_svg(c, scale=8):
         f'viewBox="0 0 {W} {H}" shape-rendering="crispEdges">',
         f'<rect width="{W}" height="{H}" fill="#000000"/>',
     ]
-    # merge horizontal runs into one rect each to keep the file small
     for y, row in enumerate(c):
         x = 0
         while x < W:

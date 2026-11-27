@@ -1,6 +1,5 @@
 use pioneer_sim::{GameState, Pace, RationLevel, RunStatus, Terrain};
 
-/// A short, state-specific prompt that fits the 80-column trail panel.
 pub(crate) fn trail_advice(game: &GameState) -> String {
     let alive = game.party.iter().filter(|member| member.alive).count();
     let food = game.inventory.get("food");

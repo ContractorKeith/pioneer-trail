@@ -1,15 +1,9 @@
-//! Pixel-art loading and rendering for the terminal scene canvas.
-//!
-//! `.px` images deliberately have a tiny, strict grammar so malformed content
-//! is found while developing an asset instead of becoming a broken scene.
-
 use std::{fmt, str::FromStr};
 
 use pioneer_sim::WeatherKind;
 use ratatui::{buffer::Buffer, layout::Rect, style::Color};
 use std::{collections::BTreeMap, sync::OnceLock};
 
-/// Parse embedded assets once; malformed assets fail the content test gate.
 pub fn embedded(name: &str) -> Option<&'static PxImage> {
     static IMAGES: OnceLock<BTreeMap<String, PxImage>> = OnceLock::new();
     IMAGES
@@ -29,7 +23,6 @@ pub fn embedded(name: &str) -> Option<&'static PxImage> {
         .get(name)
 }
 
-/// Draw a sprite at a signed cell origin, clipping all four edges of the viewport.
 pub fn render_at(
     image: &PxImage,
     buffer: &mut Buffer,
@@ -75,8 +68,6 @@ pub fn render_at(
     }
 }
 
-/// Draw a small weather layer over a travel scene. It is derived only from the
-/// current simulated weather, never from a random stream.
 pub fn render_weather_overlay(
     buffer: &mut Buffer,
     area: Rect,
@@ -109,7 +100,6 @@ pub fn render_weather_overlay(
     }
 }
 
-/// The six colors available to Pioneer Trail sprites.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Pixel {
     Black,
@@ -121,7 +111,6 @@ pub enum Pixel {
 }
 
 impl Pixel {
-    /// Parses one palette character. `.` is transparent and is therefore `None`.
     pub const fn from_char(ch: char) -> Option<Option<Self>> {
         match ch {
             '.' => Some(None),
@@ -135,7 +124,6 @@ impl Pixel {
         }
     }
 
-    /// The source-file character for this palette entry.
     pub const fn as_char(self) -> char {
         match self {
             Self::Black => 'K',
@@ -148,7 +136,6 @@ impl Pixel {
     }
 }
 
-/// A parsed `.px` image. Pixels are row-major and `None` means transparent.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PxImage {
     width: u16,
@@ -157,7 +144,6 @@ pub struct PxImage {
 }
 
 impl PxImage {
-    /// Parses a `.px` source. Comment rows begin with `#`; blank rows are not valid pixels.
     pub fn parse(source: &str) -> Result<Self, PxError> {
         let rows: Vec<(usize, &str)> =
             source.lines().enumerate().filter(|(_, line)| !line.starts_with('#')).collect();
@@ -168,8 +154,6 @@ impl PxImage {
         if width == 0 {
             return Err(PxError::EmptyRow { line: rows[0].0 + 1 });
         }
-        // This is intentionally far below u16::MAX: the renderer must never
-        // allocate or iterate an unbounded canvas from an arbitrary file.
         if width > 256 || rows.len() > 256 {
             return Err(PxError::TooLarge);
         }
@@ -205,7 +189,6 @@ impl PxImage {
         self.height.div_ceil(2)
     }
 
-    /// Returns the pixel at source coordinates, or `None` when outside the image.
     pub fn pixel(&self, x: u16, y: u16) -> Option<Pixel> {
         if x >= self.width || y >= self.height {
             return None;
@@ -221,7 +204,6 @@ impl FromStr for PxImage {
     }
 }
 
-/// Why a `.px` file was rejected.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PxError {
     Empty,
@@ -249,7 +231,6 @@ impl fmt::Display for PxError {
 
 impl std::error::Error for PxError {}
 
-/// Terminal palette selected by the user's color-mode setting.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum ColorMode {
     #[default]
@@ -301,9 +282,6 @@ impl ColorMode {
     }
 }
 
-/// Renders an image into terminal cells. Two vertical source pixels share one cell.
-/// Transparent pixels preserve the existing cell, making layers composable.
-/// Images are clipped to both `area` and the destination buffer.
 pub fn render(image: &PxImage, buffer: &mut Buffer, area: Rect, mode: ColorMode) {
     let bounds = area.intersection(buffer.area);
     let source_x = bounds.x.saturating_sub(area.x);
@@ -342,8 +320,6 @@ pub fn render(image: &PxImage, buffer: &mut Buffer, area: Rect, mode: ColorMode)
     }
 }
 
-/// Renders a vertical cell slice of an image. This keeps short scene vignettes
-/// focused on their ground-level action rather than an empty stretch of sky.
 pub fn render_section(
     image: &PxImage,
     buffer: &mut Buffer,
@@ -361,8 +337,6 @@ pub fn render_section(
     );
 }
 
-/// Recovers the colors represented by the renderer's half-block cell. Unknown
-/// terminal glyphs are treated as a solid foreground color.
 fn cell_halves(symbol: &str, fg: Color, bg: Color) -> (Color, Color) {
     match symbol {
         "▀" => (fg, bg),

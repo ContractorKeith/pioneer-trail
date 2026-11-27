@@ -1,4 +1,3 @@
-//! Gregorian calendar helpers, independent of UI and persistence.
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]

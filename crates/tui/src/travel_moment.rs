@@ -1,5 +1,3 @@
-//! Presentation-only pauses between travel days. These never touch simulation state or RNG.
-
 use pioneer_sim::{Terrain, WeatherKind};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -9,10 +7,6 @@ pub struct TravelMoment {
     pub wildlife_sprite: Option<&'static str>,
 }
 
-/// Pick an infrequent, deterministic observation from already-resolved travel state.
-///
-/// This is deliberately arithmetic rather than random: opening or skipping a moment cannot
-/// alter the simulation's named random streams or consume another day.
 pub fn after_travel_day(
     day: u32,
     weather: WeatherKind,

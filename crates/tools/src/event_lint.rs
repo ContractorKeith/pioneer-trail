@@ -1,5 +1,3 @@
-//! Validates every embedded content file. Runs in CI.
-
 fn main() -> anyhow::Result<()> {
     let content = pioneer_data::load()?;
     println!(

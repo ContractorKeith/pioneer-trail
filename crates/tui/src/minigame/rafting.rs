@@ -21,7 +21,6 @@ struct Rock {
     y: i16,
     charged: bool,
 }
-/// A deterministic 30fps downstream course. The raft can be steered with arrows or hjkl.
 pub struct RaftingGame {
     rng: SimRng,
     rocks: Vec<Rock>,
@@ -99,7 +98,6 @@ impl RaftingGame {
             _ => {}
         }
     }
-    /// Drive one accessible, turn-based rafting action without rendering the river sprites.
     pub fn text_key(&mut self, key: KeyCode) {
         if self.finished {
             return;
@@ -125,7 +123,6 @@ impl RaftingGame {
             _ => {}
         }
     }
-    /// Screen-reader-friendly state for the turn-based raft. It deliberately contains no art.
     pub fn text_lines(&self) -> Vec<String> {
         let mut lines = vec![
             "TURN-BASED RAFT".into(),

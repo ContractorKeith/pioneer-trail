@@ -1,4 +1,3 @@
-//! Typed, build-embedded content for Pioneer Trail.
 #![cfg_attr(not(test), warn(clippy::unwrap_used))]
 
 use include_dir::{include_dir, Dir};
@@ -19,7 +18,6 @@ pub enum ContentError {
     Validation(String),
 }
 
-/// Parse the RON included in the release binary and reject broken references.
 pub fn load() -> Result<GameContent, ContentError> {
     let mut content: GameContent = ron::from_str(CONTENT)?;
     for file in
@@ -522,7 +520,6 @@ fn collect_landmarks<'a>(condition: &'a Condition, landmarks: &mut Vec<&'a str>)
                 collect_landmarks(child, landmarks);
             }
         }
-        // A negated terminal landmark is reachable everywhere before arrival.
         Condition::Not(_) => {}
         _ => {}
     }
