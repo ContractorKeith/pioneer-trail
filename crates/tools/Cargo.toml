@@ -21,6 +21,10 @@ path = "src/px_preview.rs"
 name = "balance-report"
 path = "src/balance_report.rs"
 
+[[bin]]
+name = "comment-ratchet"
+path = "src/comment_ratchet.rs"
+
 [dependencies]
 pioneer-data = { path = "../data", version = "0.2.0" }
 pioneer-sim = { path = "../sim", version = "0.2.0" }

@@ -16,6 +16,7 @@ jobs:
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
       - run: cargo run -p pioneer-tools --bin event-lint
+      - run: cargo run -p pioneer-tools --bin comment-ratchet
       - name: sim crate has no terminal deps
         run: |
           if cargo tree -p pioneer-sim | grep -Eq 'ratatui|crossterm'; then

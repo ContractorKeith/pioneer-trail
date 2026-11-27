@@ -20,6 +20,7 @@ cargo run -p pioneer-trail                          # TUI (Phase 2+)
 cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings && cargo fmt --all --check
 cargo run -p pioneer-tools --bin event-lint         # validates embedded content
+cargo run -p pioneer-tools --bin comment-ratchet    # bans new comments; add -- --update after deleting some, -- --list to inventory
 ```
 
 ## Architecture
