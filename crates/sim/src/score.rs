@@ -10,7 +10,6 @@ pub struct Breakdown {
     pub total: u32,
 }
 
-/// The occupation multiplier applies to survivor/gear points; achievement bonuses are flat.
 pub fn breakdown(game: &crate::GameState) -> Breakdown {
     let multiplier = game
         .content
@@ -72,7 +71,7 @@ pub fn calculate(
     let goods: u64 = inventory
         .iter()
         .map(|(id, qty)| match id.as_str() {
-            "oxen" => u64::from(*qty) * 8, // Each purchased yoke contains two oxen.
+            "oxen" => u64::from(*qty) * 8,
             "food" => u64::from(*qty) / 25,
             "clothing" | "wheel" | "axle" | "tongue" => u64::from(*qty) * 2,
             _ => 0,

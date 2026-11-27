@@ -1,5 +1,3 @@
-//! Versioned local storage. A failed read never authorizes replacing a save.
-
 use anyhow::{bail, Context, Result};
 use directories::ProjectDirs;
 use pioneer_sim::{GameState, JournalEntry};
@@ -45,7 +43,6 @@ impl Storage {
         let Some(value) = self.read_json::<serde_json::Value>("save.json")? else {
             return Ok(None);
         };
-        // Check the envelope before deserializing state from a future schema.
         let version = value.get("schema_version").and_then(|v| v.as_u64());
         if version != Some(u64::from(SAVE_VERSION)) {
             bail!("Unsupported save version {version:?}; the existing save was preserved");
@@ -67,7 +64,6 @@ impl Storage {
         self.save_session(&run_id, game)
     }
 
-    /// The caller supplies the identity created when the player started this run.
     pub fn save_session(&self, run_id: &str, game: &GameState) -> Result<()> {
         self.write_json(
             "save.json",
@@ -79,7 +75,6 @@ impl Storage {
         Ok(self.read_json("hall_of_fame.json")?.unwrap_or_default())
     }
 
-    /// A run id is created once at new-game time and survives resuming the save.
     pub fn record_run(&self, entry: RunRecord) -> Result<bool> {
         let mut history = self.load_history()?;
         if history.runs.iter().any(|run| run.run_id == entry.run_id) {
@@ -205,7 +200,6 @@ pub struct RunRecord {
     pub arrived: bool,
     pub epitaph: String,
     pub cause: String,
-    /// A completed journey keeps its factual record after `save.json` is replaced.
     #[serde(default)]
     pub journal: Vec<JournalEntry>,
 }

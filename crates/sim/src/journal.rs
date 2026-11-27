@@ -1,4 +1,3 @@
-//! Durable, factual milestones for a single journey.
 use serde::{Deserialize, Serialize};
 const MAX_ENTRIES: usize = 200;
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

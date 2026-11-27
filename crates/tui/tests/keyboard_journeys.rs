@@ -1,5 +1,3 @@
-//! Keyboard-only journeys exercise the same public input boundary as a terminal player.
-
 use crossterm::event::{KeyCode, KeyEvent};
 use pioneer_sim::{Command, Condition, Effect, EventChoice, EventDefinition, GameState, RunStatus};
 use pioneer_trail::{

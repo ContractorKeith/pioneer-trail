@@ -1,5 +1,3 @@
-//! Portable world codes include the seed, trail and era, with a typo checksum.
-
 use anyhow::{bail, ensure, Result};
 
 const ALPHABET: &[u8; 32] = b"0123456789abcdefghjkmnpqrstvwxyz";

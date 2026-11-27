@@ -1,7 +1,3 @@
-//! Serializable content contract shared with `pioneer-data`.
-//!
-//! The simulation deliberately owns these types so data remains a one-way
-//! dependency: data loads content, while rules never perform file I/O.
 use crate::weather::{ClimateZone, Terrain};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -19,8 +15,6 @@ pub struct GameContent {
     pub ailments: Vec<AilmentDefinition>,
     pub events: Vec<EventDefinition>,
     pub quotes: Vec<QuoteDefinition>,
-    /// Older saves retain their embedded content and therefore have no new letter offers.
-    /// This mirrors other saved content: resume stays deterministic rather than being rewritten.
     #[serde(default)]
     pub letters: Vec<LetterDefinition>,
     #[serde(default)]
@@ -44,7 +38,6 @@ pub struct EraDefinition {
     pub year: i32,
 }
 
-/// Game-balance modifiers for a selected era, rather than historical price claims.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct EraRules {
     pub price_percent: u16,
@@ -122,7 +115,6 @@ pub struct QuoteDefinition {
     pub state_tags: Vec<String>,
 }
 
-/// A named traveler available for conversation at a specific fort or trading post.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SpeakerDefinition {
     pub id: String,
@@ -130,9 +122,7 @@ pub struct SpeakerDefinition {
     pub landmark_id: String,
     pub greeting: String,
     pub returning_greeting: String,
-    /// Sentence describing the small favor offered on a recognized return visit.
     pub favor_text: String,
-    /// Pounds of food the favor offers; capped at wagon capacity when granted.
     #[serde(default = "default_favor_food_lbs")]
     pub favor_food_lbs: u32,
 }
@@ -261,7 +251,6 @@ pub enum WeatherKind {
 }
 
 impl GameContent {
-    /// A complete small journey used by compatibility construction and tests.
     pub fn starter() -> Self {
         Self {
             eras: vec![EraDefinition { id: "1848".into(), name: "1848".into(), year: 1848 }],

@@ -1,4 +1,3 @@
-//! Terminal lifecycle is deliberately owned by a guard so panics restore it.
 use anyhow::Result;
 use crossterm::{
     cursor::Show,

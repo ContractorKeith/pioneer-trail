@@ -1,12 +1,3 @@
-//! Illustrated conversations with recurring travelers.
-//!
-//! Named speakers appear at forts/trading posts (data-driven roster, only while
-//! actually standing at that fort) or as a nearby recurring NPC train (a
-//! "neighboring wagon"). Every answer is grounded in real [`GameState`] fields —
-//! the party's live progress toward its chosen target, current supplies, real
-//! trail/river data ahead — never an invented forecast. [`ConversationMemory`]
-//! persists per speaker so a *later-day* return visit is recognized and a
-//! one-time favor cannot be farmed by asking several topics in one sitting.
 use crate::content::{LandmarkDefinition, LandmarkKind};
 use crate::state::{CommandError, GameState, Outcome, RationLevel, RunStatus};
 use serde::{Deserialize, Serialize};
@@ -19,14 +10,12 @@ pub enum ConversationTopic {
     News,
 }
 
-/// Where a conversation is taking place, used to pick setting-specific scene art.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SpeakerSetting {
     Fort,
     Wagon,
 }
 
-/// Persisted memory of a speaker: recognizes prior meetings and gates the one-time favor.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ConversationMemory {
     pub times_talked: u32,
@@ -35,7 +24,6 @@ pub struct ConversationMemory {
     pub favor_received: bool,
 }
 
-/// A named speaker the player can currently approach.
 #[derive(Debug, Clone)]
 pub struct SpeakerView {
     pub id: String,
@@ -44,11 +32,6 @@ pub struct SpeakerView {
 }
 
 impl GameState {
-    /// Named speakers available right now, by setting: the fort roster while
-    /// actually standing at that fort (and its store isn't closed this era), or
-    /// any recurring NPC train currently near the party (a neighboring wagon).
-    /// Empty during a pending decision or minigame, matching every other command
-    /// that requires [`GameState::at_camp`].
     pub fn available_speakers(&self) -> Vec<SpeakerView> {
         let mut speakers = Vec::new();
         if self.active_minigame.is_some() || self.pending_event.is_some() {
@@ -81,9 +64,6 @@ impl GameState {
         speakers
     }
 
-    /// Approach a named speaker and ask about one grounded topic. Only reachable
-    /// through [`crate::state::Command::Converse`] — this is the single mutation
-    /// boundary for conversations, mirroring every other command handler.
     pub(crate) fn converse(
         &mut self,
         speaker_id: &str,
@@ -99,8 +79,6 @@ impl GameState {
 
         let memory = self.conversation_memory.entry(speaker_id.to_string()).or_default();
         let recognized = memory.times_talked > 0;
-        // A favor recognizes an actual *return visit* on a later day, not a second
-        // question asked in the same sitting; `favor_received` makes it one-shot.
         let is_later_day_return =
             memory.last_talked_day.is_some_and(|last_day| last_day < self.day);
         let favor_eligible = is_later_day_return && !memory.favor_received;
@@ -110,7 +88,6 @@ impl GameState {
 
         let has_traded_before = match speaker.setting {
             SpeakerSetting::Fort => true,
-            // Wagon recognition must reflect a real prior trade, not just prior talk.
             SpeakerSetting::Wagon => self
                 .npcs
                 .iter()
@@ -147,9 +124,6 @@ impl GameState {
         }
     }
 
-    /// Reports the party's live progress, not a fork's full posted distance: while
-    /// actually mid-route, the chosen target and remaining miles take priority over
-    /// whatever routes are still listed on the last landmark node.
     fn route_answer(&self) -> String {
         if self.route_miles_remaining > 0 {
             if let Some(target) = &self.target_node_id {
@@ -202,10 +176,6 @@ impl GameState {
         )
     }
 
-    /// Shares concrete, useful facts about whatever is actually ahead — a river's
-    /// real width and depth, or whether the next fort's store is open this era —
-    /// rather than restating the weather or mileage already visible on screen.
-    /// Never claims to still be at a fort once the party has moved on.
     fn news_answer(&self) -> String {
         let weather = weather_word(self.weather);
         let ahead = self.target_node_id.clone().or_else(|| {
@@ -238,8 +208,6 @@ impl GameState {
         format!("Not much news. Here at camp, the weather is {weather}.")
     }
 
-    /// Original, data-driven dialogue for a fort speaker's roster entry; a plain
-    /// template for a wagon-train speaker, since `NpcTrain` names are code-seeded.
     fn greeting_line(&self, speaker: &SpeakerView, recognized: bool) -> String {
         if let SpeakerSetting::Fort = speaker.setting {
             if let Some(def) = self.content.speakers.iter().find(|d| d.id == speaker.id) {
@@ -257,8 +225,6 @@ impl GameState {
         }
     }
 
-    /// Looks up a landmark only within the party's own chosen trail, so a shared id
-    /// on another trail variant can never surface the wrong name.
     fn trail_node(&self, id: &str) -> Option<&LandmarkDefinition> {
         self.content
             .trails
@@ -271,11 +237,6 @@ impl GameState {
         self.trail_node(id).map_or_else(|| id.to_string(), |node| node.name.clone())
     }
 
-    /// A small, capacity-checked, one-time favor granted on a recognized later-day
-    /// return visit. Never exceeds real wagon capacity or the item limit — if there
-    /// is no room, no food is claimed and the one-shot flag is left untouched so
-    /// the favor can still be offered once there's space. Returns `None` when
-    /// nothing was actually granted.
     fn grant_favor(&mut self, speaker: &SpeakerView) -> Option<String> {
         match speaker.setting {
             SpeakerSetting::Fort => {
@@ -362,8 +323,6 @@ mod tests {
     #[test]
     fn departed_fort_speakers_are_not_available_mid_leg() {
         let mut game = fort_state();
-        // The party has left the fort; `current_node_id` still names it as the last
-        // stop, but the party is no longer standing there.
         game.status = RunStatus::Travelling;
         game.target_node_id = Some("willamette".into());
         game.route_miles_remaining = 1_800;
@@ -492,7 +451,6 @@ mod tests {
         };
         assert!(favor.is_none(), "mere repeated talk must not fabricate trade familiarity");
 
-        // A real trade actually happened (mirrors `barter`'s bookkeeping).
         game.npcs[0].last_reputation_day = Some(game.day);
         game.npcs[0].reputation = 1;
         game.day += 5;
@@ -504,9 +462,6 @@ mod tests {
         assert_eq!(game.npcs[0].reputation, 2);
     }
 
-    /// Fort speakers vanish once the party is underway (see the departed-fort
-    /// test), so mid-leg route questions can only reach a wagon-train speaker —
-    /// exactly the scenario that used to leak a stale fork node's full distance.
     fn traveling_state_with_a_wagon_speaker() -> GameState {
         let mut game = fort_state();
         game.npcs.push(NpcTrain {
@@ -567,9 +522,6 @@ mod tests {
 
     #[test]
     fn news_never_names_the_departed_fort_while_traveling() {
-        // `current_node_id` stays "independence" — the last stop — for the whole
-        // leg; only `target_node_id`/`route_miles_remaining` move. News must never
-        // describe the party as still standing at that stale current landmark.
         let mut game = fort_state();
         game.status = RunStatus::Travelling;
         game.target_node_id = Some("willamette".into());
@@ -659,7 +611,6 @@ mod tests {
     #[test]
     fn landmark_name_never_resolves_a_different_trails_node() {
         let mut game = fort_state();
-        // Another trail defines a node with the same id but a different name.
         content_with_conflicting_trail(&mut game);
         game.trail_id = Some("oregon".into());
         assert_eq!(game.landmark_name("shared_id"), "Oregon Name");

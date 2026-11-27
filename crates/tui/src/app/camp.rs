@@ -65,7 +65,6 @@ impl App {
                 i32::from(area.y + 6),
                 mode,
             );
-            // A load marker depicts actual cargo, rather than inventing a wagon health stat.
             let crates = (self.game.wagon_weight() / 500).min(4);
             for n in 0..crates {
                 art::render_at(

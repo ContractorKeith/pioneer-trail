@@ -20,7 +20,6 @@ mod camp;
 mod journal_view;
 mod route_map;
 
-/// UI-only draft; all rules are submitted to the simulation as commands.
 #[derive(Debug, Clone)]
 struct SetupDraft {
     trail: usize,
@@ -38,7 +37,6 @@ struct TradeDraft {
     offered_quantity: u32,
     wanted_quantity: u32,
 }
-/// Talk screen's two-step flow: pick a speaker, then a grounded topic.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 enum TalkStage {
     #[default]
@@ -166,7 +164,6 @@ impl App {
     pub fn should_quit(&self) -> bool {
         self.quit
     }
-    /// A concise, accurate survival prompt for the current trail state.
     pub(crate) fn trail_advice(&self) -> String {
         crate::advice::trail_advice(&self.game)
     }
@@ -267,7 +264,6 @@ impl App {
             _ => 1,
         }
     }
-    /// One fixed 30 Hz step. The runtime pauses these steps below the minimum terminal size.
     pub fn tick_minigame(&mut self) {
         if let Some(game) = &mut self.minigame {
             game.tick();
@@ -2528,8 +2524,6 @@ impl App {
         self.title().to_string()
     }
 }
-/// Runs the keyboard application. The caller owns save/load policy and supplies
-/// a fully constructed app, keeping terminal concerns out of persistence.
 pub fn run(mut app: App) -> anyhow::Result<()> {
     let guard = crate::terminal::TerminalGuard::enter()?;
     let backend = ratatui::backend::CrosstermBackend::new(std::io::stdout());
@@ -2572,7 +2566,6 @@ pub fn run(mut app: App) -> anyhow::Result<()> {
                 now + std::time::Duration::from_millis(app.settings.speed.milliseconds().max(30));
         }
         if app.minigame.is_some() && !app.settings.no_art && size.width >= 80 && size.height >= 24 {
-            // Bound catch-up after a stalled terminal; never fast-forward a whole hunt.
             for _ in 0..3 {
                 if now < next_tick {
                     break;
@@ -3367,9 +3360,6 @@ mod tests {
         assert!(view.contains("1. Ask about the route"));
         assert!(view.contains("3. Ask for news"));
     }
-    /// The longest realistic reply (a multi-route fork, each with a long label and
-    /// target name) must still leave the menu, controls line, and trail log legible
-    /// at the minimum 80×24 terminal — nothing should be crowded off screen.
     #[test]
     fn talk_screen_wraps_the_longest_route_answer_without_losing_controls_or_log() {
         let mut app = outfitted_app();

@@ -1,4 +1,3 @@
-//! Command-driven deterministic journey state.
 use crate::{
     calendar::CalendarDate,
     content::*,
@@ -106,7 +105,6 @@ pub struct GameState {
     pub rations: RationLevel,
     pub weather: WeatherKind,
     pub current_node_id: Option<String>,
-    /// Destination selected from the current node's route; never infer this from absolute miles.
     pub target_node_id: Option<String>,
     pub route_miles_remaining: u32,
     pub pending_event: Option<String>,
@@ -138,10 +136,8 @@ pub struct GameState {
     pub letter_origins_offered: BTreeSet<String>,
     #[serde(default)]
     pub journal: Journal,
-    /// Stops actually reached, in order. Empty on saves made before route records existed.
     #[serde(default)]
     pub visited_landmarks: Vec<crate::route_record::Visit>,
-    /// Per-speaker conversation memory: recognizes prior meetings and gates one-time favors.
     #[serde(default)]
     pub conversation_memory: BTreeMap<String, crate::conversations::ConversationMemory>,
 }
@@ -155,8 +151,6 @@ pub enum Command {
         letter_id: String,
     },
     DeliverLetter,
-    /// A multi-day gathering search. The existing `Forage` and `Fish` commands
-    /// remain the one-day actions for callers that want their established economy.
     Gather {
         activity: GatheringActivity,
         days: u8,
@@ -1078,7 +1072,6 @@ impl GameState {
         self.pending_event = None;
         Ok(out)
     }
-    /// Whether the current mandatory wagon event can be addressed with a spare or a repair attempt.
     pub fn can_repair(&self) -> bool {
         if self.at_camp().is_err() || self.pending_wagon_part().is_none() {
             return false;
@@ -1402,9 +1395,6 @@ impl GameState {
         });
         Ok(outcomes)
     }
-    /// Search longer than the familiar one-day command. Each day uses the same
-    /// camp-day rules as quick gathering, so food, illness, and a terminal
-    /// party state are resolved by the simulation rather than the UI.
     fn gather(
         &mut self,
         activity: GatheringActivity,
@@ -1928,7 +1918,6 @@ impl GameState {
     pub fn wagon_weight(&self) -> u32 {
         self.weight()
     }
-    /// Open seats after reserving room for every pending birth.
     pub fn available_party_slots(&self) -> usize {
         12usize.saturating_sub(self.party.len().saturating_add(self.family.pregnancies.len()))
     }
@@ -1951,13 +1940,11 @@ impl GameState {
                 .current_landmark()
                 .is_some_and(|node| node.store && !era_rules.unavailable_stores.contains(&node.id))
     }
-    /// Current ferry fee after the selected era's game-balance modifier.
     pub fn ferry_cost(&self) -> Option<i64> {
         let rules = self.era_rules();
         let base = self.node().ok()?.river.as_ref()?.ferry_cost_cents?;
         rules.ferries_available.then(|| Self::apply_percent(base, rules.ferry_fee_percent))
     }
-    /// Clothing sets required for the Snake River guide in the selected era.
     pub fn guide_cost(&self) -> u32 {
         self.era_rules().guide_cost_clothing
     }
@@ -1968,10 +1955,6 @@ impl GameState {
             self.shop_unit_price(&market, item)
         })
     }
-    /// Pounds of food the living party consumes on one camp or travel day.
-    ///
-    /// UI guidance uses this so its food-day estimate remains tied to the
-    /// simulation's ration rule.
     pub fn daily_food_lbs(&self) -> u32 {
         let ration = match self.rations {
             RationLevel::Filling => 3,
@@ -2051,7 +2034,6 @@ impl GameState {
     pub fn has_fresh_food(&self) -> bool {
         self.last_fresh_food_day.is_some_and(|day| self.day.saturating_sub(day) <= 3)
     }
-    /// Reject corrupted saves before a UI attempts to navigate their content IDs.
     pub fn validate(&self) -> Result<(), CommandError> {
         if matches!(self.status, RunStatus::Arrived | RunStatus::Failed)
             && (self.pending_event.is_some() || self.active_minigame.is_some())
@@ -2631,7 +2613,6 @@ impl GameState {
                         name: self.party[index].name.clone(),
                         cause: DeathCause::Ailments(vec![id.clone()]),
                     });
-                    // A person can die only once per day, even if several ailments are present.
                     break;
                 }
                 if days >= u16::from(definition.severity.max(2)) * 3
@@ -2743,8 +2724,6 @@ impl GameState {
         );
         self.journal_relationship_changes(&before);
     }
-    /// Resolve pregnancies after each completed game day. A due pregnancy is consumed even when
-    /// the mother has died or the wagon is full, so old saves cannot repeatedly retry a birth.
     fn family_daily(&mut self, out: &mut Vec<Outcome>) {
         if matches!(self.status, RunStatus::Arrived | RunStatus::Failed) {
             return;

@@ -1,4 +1,3 @@
-//! Cross-feature acceptance checks for the first-play improvements.
 use crossterm::event::{KeyCode, KeyEvent};
 use pioneer_sim::{Command, RunStatus};
 use pioneer_trail::{app::App, persist::Settings, screens::Screen};

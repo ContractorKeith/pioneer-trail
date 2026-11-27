@@ -1,4 +1,3 @@
-//! UI worlds consume input; only validated result commands change the journey.
 use super::{
     hunting::{Biome, HuntingGame},
     rafting::RaftingGame,
@@ -50,14 +49,12 @@ impl LiveMinigame {
             Self::Raft(g) => g.handle_key(key),
         }
     }
-    /// Submit an accessible turn-based action. The caller owns whether wall-clock ticking is off.
     pub fn text_key(&mut self, key: KeyCode) {
         match self {
             Self::Hunt(g) => g.text_key(key),
             Self::Raft(g) => g.text_key(key),
         }
     }
-    /// Return screen-reader-friendly text without rendering raster minigame art.
     pub fn text_lines(&self) -> Vec<String> {
         match self {
             Self::Hunt(g) => g.text_lines(),

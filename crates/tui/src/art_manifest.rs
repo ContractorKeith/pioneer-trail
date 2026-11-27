@@ -1,4 +1,3 @@
-//! Typed manifest validation keeps asset names and frame timing out of guesswork.
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]

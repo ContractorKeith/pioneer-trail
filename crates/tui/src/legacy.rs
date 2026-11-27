@@ -1,5 +1,3 @@
-//! Deterministic trail graves for map and crossing scenes.
-
 use crate::persist::{History, RunRecord};
 use pioneer_sim::{rng::SimRng, LandmarkDefinition, TrailDefinition};
 use rand::Rng;
@@ -15,10 +13,6 @@ pub struct Grave {
     pub local: bool,
 }
 
-/// Returns the longest weighted start-to-goal route through a trail graph.
-///
-/// Invalid graphs fall back to their furthest landmark mile so grave placement
-/// remains bounded even if content is malformed.
 pub fn trail_extent(trail: &TrailDefinition) -> u32 {
     let fallback = trail.nodes.iter().map(|node| node.mile).max().unwrap_or_default();
     let nodes = trail.nodes.iter().map(|node| (node.id.as_str(), node)).collect::<HashMap<_, _>>();
@@ -95,10 +89,6 @@ fn longest_to_goal<'a>(
     Some(distance)
 }
 
-/// Returns seeded fictional graves plus failed local journeys for a full trail.
-///
-/// `trail_extent_miles` must be the trail's fixed total length, never the
-/// party's current mileage, so seeded graves remain stable while travelling.
 pub fn graves(
     history: &History,
     seed: u64,

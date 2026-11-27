@@ -1,5 +1,3 @@
-//! Durable family milestones that survive saves and replay deterministically.
-
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]

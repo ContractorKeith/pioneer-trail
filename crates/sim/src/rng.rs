@@ -1,6 +1,3 @@
-//! Seeded RNG with named sub-streams so adding random calls in one
-//! system never reshuffles another system's rolls.
-
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use serde::{Deserialize, Serialize};
@@ -21,7 +18,6 @@ impl SimRng {
         self.seed
     }
 
-    /// Get (or lazily create) a named stream. Stream seed = hash(master seed, name).
     pub fn stream(&mut self, name: &str) -> &mut ChaCha20Rng {
         let seed = self.seed;
         self.streams.entry(name.to_string()).or_insert_with(|| {

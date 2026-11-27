@@ -36,7 +36,6 @@ impl WeatherState {
         self.advance_in(rng, season, ClimateZone::Temperate);
     }
 
-    /// Advance weather using a regional climate while retaining 1–5 day weather states.
     pub fn advance_in(&mut self, rng: &mut SimRng, season: Season, climate: ClimateZone) {
         if self.days_remaining > 1 {
             self.days_remaining -= 1;

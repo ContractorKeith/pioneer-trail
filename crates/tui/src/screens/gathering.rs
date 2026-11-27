@@ -1,5 +1,3 @@
-//! UI copy and art selection for the gathering encounter. Rules stay in `pioneer-sim`.
-
 use pioneer_sim::GatheringActivity;
 
 pub fn heading(activity: GatheringActivity) -> &'static str {

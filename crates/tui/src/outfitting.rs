@@ -1,5 +1,3 @@
-//! Read-only, budget-aware guidance for the first store visit.
-
 use pioneer_sim::GameState;
 
 const TARGET_FOOD_LBS: u32 = 1200;

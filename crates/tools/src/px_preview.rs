@@ -1,5 +1,3 @@
-//! Render a `.px` sprite in the terminal using the game's renderer.
-
 use std::{
     fs,
     io::{self, stdout},
@@ -19,14 +17,12 @@ use ratatui::{backend::CrosstermBackend, layout::Rect, Terminal};
 #[derive(Parser, Debug)]
 #[command(name = "px-preview", about = "Preview a Pioneer Trail .px sprite")]
 struct Args {
-    /// Path to a `.px` file.
+    #[arg(help = "Path to a `.px` file")]
     path: std::path::PathBuf,
-    /// Palette: truecolor, 256, 16, or mono.
-    #[arg(long, default_value = "truecolor")]
+    #[arg(long, default_value = "truecolor", help = "Palette: truecolor, 256, 16, or mono")]
     color: String,
 }
 
-/// Restores the terminal even when drawing or polling returns an error.
 struct TerminalGuard;
 
 impl Drop for TerminalGuard {

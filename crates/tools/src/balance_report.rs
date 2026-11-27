@@ -1,5 +1,3 @@
-//! Deterministic Monte Carlo summaries for the reference headless player.
-
 use std::collections::BTreeMap;
 
 use anyhow::{ensure, Result};
@@ -10,17 +8,13 @@ use pioneer_trail::headless::{self, BalanceSummary, RunConfig, RunSummary};
 #[derive(Parser, Debug)]
 #[command(name = "balance-report", about = "Run deterministic Pioneer Trail balance scenarios")]
 struct Args {
-    /// Journeys per occupation/month scenario.
-    #[arg(long, default_value_t = 10_000)]
+    #[arg(long, default_value_t = 10_000, help = "Journeys per occupation/month scenario")]
     runs: u32,
-    /// First deterministic journey seed.
-    #[arg(long, default_value_t = 0)]
+    #[arg(long, default_value_t = 0, help = "First deterministic journey seed")]
     seed: u64,
-    /// One occupation ID; omit to report every occupation available in the era.
-    #[arg(long)]
+    #[arg(long, help = "One occupation ID; omit to report every occupation available in the era")]
     occupation: Option<String>,
-    /// One departure month (3 through 7); omit to report March through July.
-    #[arg(long)]
+    #[arg(long, help = "One departure month (3 through 7); omit to report March through July")]
     month: Option<u8>,
     #[arg(long, default_value = "oregon")]
     trail: String,
@@ -49,7 +43,6 @@ impl Observation {
     }
 }
 
-/// An ailment at death is context, not proof that it caused the death.
 fn death_cause(game: &GameState, name: &str) -> String {
     game.party
         .iter()

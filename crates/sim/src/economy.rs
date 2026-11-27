@@ -32,8 +32,6 @@ pub struct NpcTrain {
     pub reputation: i16,
     pub inventory: BTreeMap<String, u32>,
     pub recurring: bool,
-    /// The day on which this train last improved the party's reputation.
-    /// This prevents repeating the same interaction from becoming a reputation faucet.
     #[serde(default)]
     pub last_reputation_day: Option<u32>,
     #[serde(default)]
@@ -58,7 +56,6 @@ impl NpcTrain {
     }
 }
 
-/// A trade the NPC has priced and left open for explicit confirmation.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Counteroffer {
     pub npc_id: String,

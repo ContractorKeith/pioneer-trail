@@ -41,6 +41,7 @@ Cargo workspace, four crates:
 - Content voice rules live in `docs/CONTENT_STYLE.md`. No copied Oregon Trail text or art.
 - Art palette is the six Apple II hi-res colors (`docs/DESIGN.md` §1); fallbacks to 256/16/mono are the renderer's job.
 - The logo/title art is generated: edit sprites in `assets/gen_logo.py`, then run it. Never hand-edit `title.px`, `logo.svg`, `logo.png`.
+- No code comments (`docs/adr/0007-no-code-comments.md`): decisions go in `docs/adr/`, workarounds in issues. `comment-ratchet` enforces it; `/delete-comment` triages leftovers.
 - Snapshot tests (`insta`) at 80×24 and 120×40 for every screen from Phase 2.
 - Commit format `<type>: <description>`; author @ContractorKeith only.
 - Checkpoint via the `log-work` skill at the end of each session.

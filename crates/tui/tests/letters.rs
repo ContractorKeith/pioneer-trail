@@ -1,5 +1,3 @@
-//! Sealed-letter errands use the real route graph; rendering fixtures only set the visible stop.
-
 use crossterm::event::{KeyCode, KeyEvent};
 use pioneer_sim::{Command, CrossMethod, GameState, JournalKind, Outcome, RunStatus};
 use pioneer_trail::{
