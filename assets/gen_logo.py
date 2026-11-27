@@ -17,12 +17,12 @@ ROOT = Path(__file__).resolve().parent.parent
 W, H = 80, 32
 
 PALETTE = {
-    "K": "#000000",  # black
-    "W": "#FFFFFF",  # white
-    "G": "#1BCB01",  # green
-    "V": "#E434FE",  # violet
-    "O": "#F26A00",  # orange
-    "B": "#1B9AFE",  # blue
+    "K": "#000000",
+    "W": "#FFFFFF",
+    "G": "#1BCB01",
+    "V": "#E434FE",
+    "O": "#F26A00",
+    "B": "#1B9AFE",
 }
 
 
