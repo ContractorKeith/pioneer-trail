@@ -18,6 +18,9 @@ the worst bug the game can have.
   replacing a save.
 - A run id is created once at new-game time and survives resume. A completed journey keeps its
   record after `save.json` is replaced.
+- An item definition without `score` (content embedded in an older save) is scored by
+  `legacy_item_score(id)`, which holds the original weights, so old saves score exactly as before.
+  New content must define `score`; `event-lint` rejects shipped items in the legacy table that lack it.
 - A due pregnancy is consumed even when the mother has died or the wagon is full, so an old save
   cannot retry a birth on every load.
 
