@@ -186,7 +186,7 @@ fn choose_columbia_route(app: &mut App) {
     key(app, KeyCode::Char('2'));
 }
 
-fn choose_barlow_route(app: &mut App) {
+fn choose_first_route(app: &mut App) {
     key(app, KeyCode::Char('1'));
 }
 
@@ -530,7 +530,7 @@ fn keyboard_1843_oregon_columbia_raft_reaches_willamette() {
             Screen::Fork if app.game.current_node_id.as_deref() == Some("the_dalles") => {
                 choose_columbia_route(&mut app);
             }
-            Screen::Fork => key(&mut app, KeyCode::Char('1')),
+            Screen::Fork => choose_first_route(&mut app),
             Screen::Minigame => {
                 raft_started = true;
                 steer_raft_down_the_center(&mut app);
@@ -614,7 +614,7 @@ fn keyboard_journey_reaches_score_hall_and_fresh_setup() {
         match app.screen {
             Screen::Score => break,
             Screen::Event => choose_event(&mut app),
-            Screen::Fork => choose_barlow_route(&mut app),
+            Screen::Fork => choose_first_route(&mut app),
             Screen::River => {
                 let snake = app.game.current_node_id.as_deref() == Some("snake_river");
                 let guide = snake && app.game.inventory.get("clothing") >= app.game.guide_cost();
