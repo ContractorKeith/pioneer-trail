@@ -1,2 +1,0 @@
-4 crates/tui/src/app.rs
-58 crates/tui/tests/keyboard_journeys.rs
