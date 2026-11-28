@@ -19,6 +19,8 @@ pub struct GameContent {
     pub letters: Vec<LetterDefinition>,
     #[serde(default)]
     pub speakers: Vec<SpeakerDefinition>,
+    #[serde(default)]
+    pub npc_trains: Vec<NpcTrainDefinition>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct LetterDefinition {
@@ -125,6 +127,21 @@ pub struct SpeakerDefinition {
     pub favor_text: String,
     #[serde(default = "default_favor_food_lbs")]
     pub favor_food_lbs: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct NpcTrainDefinition {
+    pub id: String,
+    pub name: String,
+    pub reputation: i16,
+    pub inventory: BTreeMap<String, u32>,
+    pub recurring: bool,
+    pub first_mile: u32,
+    pub last_mile: u32,
+    pub period_days: u32,
+    pub day_window: u32,
+    pub greeting: String,
+    pub returning_greeting: String,
 }
 
 fn default_favor_food_lbs() -> u32 {
@@ -327,6 +344,47 @@ impl GameContent {
                     },
                 ],
             }],
+            npc_trains: vec![
+                NpcTrainDefinition {
+                    id: "emigrant_train".into(),
+                    name: "Ruth Holloway".into(),
+                    reputation: 0,
+                    inventory: BTreeMap::from([("food".into(), 100)]),
+                    recurring: true,
+                    first_mile: 0,
+                    last_mile: 700,
+                    period_days: 1,
+                    day_window: 1,
+                    greeting: "Ruth Holloway: Well met on the road.".into(),
+                    returning_greeting: "Ruth Holloway: Back again, are you?".into(),
+                },
+                NpcTrainDefinition {
+                    id: "mercer_wagon".into(),
+                    name: "Elias Mercer".into(),
+                    reputation: 0,
+                    inventory: BTreeMap::from([("clothing".into(), 2), ("food".into(), 60)]),
+                    recurring: true,
+                    first_mile: 500,
+                    last_mile: 1350,
+                    period_days: 3,
+                    day_window: 2,
+                    greeting: "Elias Mercer: Well met on the road.".into(),
+                    returning_greeting: "Elias Mercer: Back again, are you?".into(),
+                },
+                NpcTrainDefinition {
+                    id: "bird_traders".into(),
+                    name: "Nora Bird".into(),
+                    reputation: 0,
+                    inventory: BTreeMap::from([("medicine".into(), 1), ("food".into(), 40)]),
+                    recurring: true,
+                    first_mile: 1200,
+                    last_mile: 1850,
+                    period_days: 4,
+                    day_window: 2,
+                    greeting: "Nora Bird: Well met on the road.".into(),
+                    returning_greeting: "Nora Bird: Back again, are you?".into(),
+                },
+            ],
             ..Self::default()
         }
     }

@@ -338,6 +338,7 @@ pub enum CommandError {
 
 impl GameState {
     pub fn with_content(seed: u64, content: GameContent) -> Self {
+        let npcs = content.npc_trains.iter().map(NpcTrain::from_definition).collect();
         Self {
             rng: SimRng::new(seed),
             content,
@@ -366,44 +367,7 @@ impl GameState {
             ox_fatigue: 0,
             reputation: 0,
             markets: BTreeMap::new(),
-            npcs: vec![
-                NpcTrain {
-                    id: "emigrant_train".into(),
-                    name: "Ruth Holloway".into(),
-                    reputation: 0,
-                    inventory: BTreeMap::from([("food".into(), 100)]),
-                    recurring: true,
-                    last_reputation_day: None,
-                    first_mile: 0,
-                    last_mile: 700,
-                    period_days: 1,
-                    day_window: 1,
-                },
-                NpcTrain {
-                    id: "mercer_wagon".into(),
-                    name: "Elias Mercer".into(),
-                    reputation: 0,
-                    inventory: BTreeMap::from([("clothing".into(), 2), ("food".into(), 60)]),
-                    recurring: true,
-                    last_reputation_day: None,
-                    first_mile: 500,
-                    last_mile: 1350,
-                    period_days: 3,
-                    day_window: 2,
-                },
-                NpcTrain {
-                    id: "bird_traders".into(),
-                    name: "Nora Bird".into(),
-                    reputation: 0,
-                    inventory: BTreeMap::from([("medicine".into(), 1), ("food".into(), 40)]),
-                    recurring: true,
-                    last_reputation_day: None,
-                    first_mile: 1200,
-                    last_mile: 1850,
-                    period_days: 4,
-                    day_window: 2,
-                },
-            ],
+            npcs,
             pending_counteroffer: None,
             active_minigame: None,
             loose_bullets: 0,

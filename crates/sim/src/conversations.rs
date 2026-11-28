@@ -209,19 +209,30 @@ impl GameState {
     }
 
     fn greeting_line(&self, speaker: &SpeakerView, recognized: bool) -> String {
-        if let SpeakerSetting::Fort = speaker.setting {
-            if let Some(def) = self.content.speakers.iter().find(|d| d.id == speaker.id) {
-                return if recognized {
-                    def.returning_greeting.clone()
-                } else {
-                    def.greeting.clone()
-                };
-            }
+        let (greeting, returning) = match speaker.setting {
+            SpeakerSetting::Fort => self
+                .content
+                .speakers
+                .iter()
+                .find(|d| d.id == speaker.id)
+                .map(|d| (d.greeting.clone(), d.returning_greeting.clone())),
+            SpeakerSetting::Wagon => self
+                .content
+                .npc_trains
+                .iter()
+                .find(|d| d.id == speaker.id)
+                .map(|d| (d.greeting.clone(), d.returning_greeting.clone())),
         }
+        .unwrap_or_else(|| {
+            (
+                format!("{}: Well met on the road.", speaker.name),
+                format!("{}: Back again, are you?", speaker.name),
+            )
+        });
         if recognized {
-            format!("{}: Back again, are you?", speaker.name)
+            returning
         } else {
-            format!("{}: Well met on the road.", speaker.name)
+            greeting
         }
     }
 
@@ -683,6 +694,76 @@ mod tests {
         value.as_object_mut().unwrap().remove("conversation_memory");
         let restored: GameState = serde_json::from_value(value).unwrap();
         assert!(restored.conversation_memory.is_empty());
+    }
+
+    fn wagon_greeting(game: &mut GameState, npc_id: &str) -> String {
+        let outcomes = converse(game, npc_id, ConversationTopic::News);
+        let Outcome::Conversation { lines, .. } = &outcomes[0] else {
+            panic!("expected a Conversation outcome");
+        };
+        lines[0].clone()
+    }
+
+    fn wagon_with_matching_npc(def_greeting: bool) -> GameState {
+        let mut game = fort_state();
+        if def_greeting {
+            game.content.npc_trains.push(crate::content::NpcTrainDefinition {
+                id: "wagon_a".into(),
+                name: "Nora Bird".into(),
+                reputation: 0,
+                inventory: BTreeMap::new(),
+                recurring: true,
+                first_mile: 0,
+                last_mile: 5_000,
+                period_days: 1,
+                day_window: 1,
+                greeting: "Nora Bird: Mind the ford ahead.".into(),
+                returning_greeting: "Nora Bird: The ford again.".into(),
+            });
+        }
+        game.npcs.push(NpcTrain {
+            id: "wagon_a".into(),
+            name: "Nora Bird".into(),
+            reputation: 0,
+            inventory: BTreeMap::new(),
+            recurring: true,
+            last_reputation_day: None,
+            first_mile: 0,
+            last_mile: 5_000,
+            period_days: 0,
+            day_window: 0,
+        });
+        game
+    }
+
+    #[test]
+    fn wagon_speakers_greet_from_their_content_definition() {
+        let mut game = wagon_with_matching_npc(true);
+        assert_eq!(wagon_greeting(&mut game, "wagon_a"), "Nora Bird: Mind the ford ahead.");
+    }
+
+    #[test]
+    fn wagon_speakers_without_a_definition_keep_the_original_greeting() {
+        let mut game = wagon_with_matching_npc(false);
+        assert_eq!(wagon_greeting(&mut game, "wagon_a"), "Nora Bird: Well met on the road.");
+    }
+
+    #[test]
+    fn starter_content_builds_the_original_three_trains() {
+        let game = GameState::with_content(1, GameContent::starter());
+        let names: Vec<_> = game.npcs.iter().map(|npc| npc.name.as_str()).collect();
+        assert_eq!(names, ["Ruth Holloway", "Elias Mercer", "Nora Bird"]);
+        assert_eq!(game.npcs[1].inventory["clothing"], 2);
+        assert_eq!(game.npcs[2].first_mile, 1200);
+    }
+
+    #[test]
+    fn old_content_without_npc_trains_still_loads() {
+        let json = serde_json::to_string(&GameContent::starter()).unwrap();
+        let mut value: serde_json::Value = serde_json::from_str(&json).unwrap();
+        value.as_object_mut().unwrap().remove("npc_trains");
+        let restored: GameContent = serde_json::from_value(value).unwrap();
+        assert!(restored.npc_trains.is_empty());
     }
 
     #[test]

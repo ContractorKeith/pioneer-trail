@@ -18,6 +18,7 @@ the worst bug the game can have.
   replacing a save.
 - A run id is created once at new-game time and survives resume. A completed journey keeps its
   record after `save.json` is replaced.
+- A wagon speaker whose id is missing from the save's embedded `npc_trains` (any save made before NPC trains moved into content) gets the original greetings, `"<name>: Well met on the road."` and `"<name>: Back again, are you?"`, so old saves read the same.
 - A due pregnancy is consumed even when the mother has died or the wagon is full, so an old save
   cannot retry a birth on every load.
 
