@@ -71,11 +71,11 @@ fn loaded_app_for(seed: u64, storage: Storage, config: RunConfig) -> App {
 }
 
 fn start_setup(app: &mut App) {
-    enter(app); // Title: New Journey
+    enter(app);
     assert_eq!(app.screen, Screen::SetupTrail);
-    enter(app); // Oregon, with 1848 selected by RunConfig defaults
+    enter(app);
     assert_eq!(app.screen, Screen::SetupOccupation);
-    enter(app); // Banker
+    enter(app);
     assert_eq!(app.screen, Screen::SetupParty);
     for name in ["Ada", "Bert", "Clara", "Dora", "Eli"] {
         for character in name.chars() {
@@ -83,7 +83,7 @@ fn start_setup(app: &mut App) {
         }
         enter(app);
     }
-    enter(app); // Done
+    enter(app);
     assert_eq!(app.screen, Screen::SetupDeparture);
     assert!(render(app, 80, 24).contains("Departure month: 3"));
     enter(app);
@@ -102,9 +102,7 @@ fn down(app: &mut App, count: usize) {
     }
 }
 
-/// Purchases are deliberately ordered as displayed by the real store menu.
 fn buy_standard_outfit(app: &mut App) {
-    // Oxen starts selected.  The next food selection must normalize quantity before bulk input.
     right(app, 2);
     enter(app);
     assert_eq!(app.game.inventory.get("oxen"), 3);
@@ -129,6 +127,110 @@ fn buy_standard_outfit(app: &mut App) {
         enter(app);
         assert_eq!(app.game.inventory.get(item), quantity as u32);
     }
+}
+
+fn choose_speaker(app: &mut App) {
+    enter(app);
+}
+
+fn ask_about_route(app: &mut App) {
+    enter(app);
+}
+
+fn ask_about_supplies(app: &mut App) {
+    down(app, 1);
+    enter(app);
+}
+
+fn ask_for_news(app: &mut App) {
+    down(app, 2);
+    enter(app);
+}
+
+fn dismiss_reply(app: &mut App) {
+    enter(app);
+}
+
+fn back_out_of_topics(app: &mut App) {
+    key(app, KeyCode::Esc);
+}
+
+fn back_to_speaker_list(app: &mut App) {
+    key(app, KeyCode::Esc);
+}
+
+fn leave_talk(app: &mut App) {
+    key(app, KeyCode::Esc);
+}
+
+fn travel_one_day(app: &mut App) {
+    enter(app);
+    if app.screen == Screen::Event {
+        choose_event(app);
+    }
+}
+
+fn make_room_for_a_favor(app: &mut App) {
+    app.game.inventory.quantities.insert("food".into(), 500);
+}
+
+fn choose_guide(app: &mut App) {
+    key(app, KeyCode::Char('5'));
+}
+
+fn choose_ferry(app: &mut App) {
+    key(app, KeyCode::Char('3'));
+}
+
+fn choose_columbia_route(app: &mut App) {
+    key(app, KeyCode::Char('2'));
+}
+
+fn choose_first_route(app: &mut App) {
+    key(app, KeyCode::Char('1'));
+}
+
+fn steer_raft_down_the_center(app: &mut App) {
+    key(app, KeyCode::Char('2'));
+}
+
+fn offer_clothing(app: &mut App) {
+    down(app, 1);
+    right(app, 1);
+}
+
+fn reduce_offer_quantity(app: &mut App, presses: usize) {
+    down(app, 1);
+    for _ in 0..presses {
+        key(app, KeyCode::Left);
+    }
+}
+
+fn request_food(app: &mut App) {
+    down(app, 1);
+    key(app, KeyCode::Left);
+}
+
+fn submit_trade(app: &mut App) {
+    down(app, 2);
+    enter(app);
+}
+
+fn trade_clothing_for_food(app: &mut App, quantity_presses: usize) {
+    offer_clothing(app);
+    reduce_offer_quantity(app, quantity_presses);
+    request_food(app);
+    submit_trade(app);
+}
+
+fn invite_traveler(app: &mut App) {
+    down(app, 2);
+    enter(app);
+}
+
+fn dismiss_traveler(app: &mut App) {
+    down(app, 1);
+    enter(app);
 }
 
 fn depart(app: &mut App) {
@@ -230,7 +332,7 @@ fn keyboard_river_rejection_is_mandatory_and_survives_resume() {
     let river_id = app.game.current_node_id.clone().unwrap();
     key(&mut app, KeyCode::Esc);
     assert_eq!(app.screen, Screen::River);
-    key(&mut app, KeyCode::Char('5')); // Guide is invalid away from Snake River.
+    choose_guide(&mut app);
     assert_eq!(app.screen, Screen::River);
     assert_eq!(app.game.current_node_id.as_deref(), Some(river_id.as_str()));
 
@@ -238,7 +340,7 @@ fn keyboard_river_rejection_is_mandatory_and_survives_resume() {
     resumed.resume();
     assert_eq!(resumed.screen, Screen::River);
     assert_eq!(resumed.game.current_node_id.as_deref(), Some(river_id.as_str()));
-    key(&mut resumed, KeyCode::Char('3')); // Kansas River ferry: the safe keyboard choice.
+    choose_ferry(&mut resumed);
     assert_eq!(resumed.screen, Screen::Journey);
 }
 
@@ -283,36 +385,21 @@ fn keyboard_trade_invite_and_dismiss_use_the_live_npc_menu() {
     start_setup(&mut app);
     buy_standard_outfit(&mut app);
     depart(&mut app);
-    enter(&mut app); // Make room in the wagon's food supply before the trade.
-    if app.screen == Screen::Event {
-        choose_event(&mut app);
-    }
+    travel_one_day(&mut app);
     assert_eq!(app.screen, Screen::Journey);
 
     let food_before = app.game.inventory.get("food");
     key(&mut app, KeyCode::Char('u'));
     assert_eq!(app.screen, Screen::Trade);
-    down(&mut app, 1); // Offer item.
-    right(&mut app, 1); // Clothing.
-    down(&mut app, 1); // Offer quantity.
-    key(&mut app, KeyCode::Left);
-    for _ in 0..48 {
-        key(&mut app, KeyCode::Left);
-    }
-    down(&mut app, 1); // Requested item.
-    key(&mut app, KeyCode::Left); // Food.
-    down(&mut app, 2); // Trade action.
-    enter(&mut app);
+    trade_clothing_for_food(&mut app, 49);
     assert_eq!(app.game.inventory.get("clothing"), 4);
     assert_eq!(app.game.inventory.get("food"), food_before + 1);
 
-    down(&mut app, 2); // Invite.
-    enter(&mut app);
+    invite_traveler(&mut app);
     assert_eq!(app.game.party.len(), 6);
     assert!(app.game.party.iter().any(|member| member.npc_id.as_deref() == Some("emigrant_train")));
 
-    down(&mut app, 1); // Dismiss.
-    enter(&mut app);
+    dismiss_traveler(&mut app);
     assert_eq!(app.game.party.len(), 5);
     assert!(app.game.party.iter().all(|member| member.npc_id.is_none()));
 }
@@ -441,12 +528,12 @@ fn keyboard_1843_oregon_columbia_raft_reaches_willamette() {
                 );
             }
             Screen::Fork if app.game.current_node_id.as_deref() == Some("the_dalles") => {
-                key(&mut app, KeyCode::Char('2')); // Columbia, because Barlow is unavailable in 1843.
+                choose_columbia_route(&mut app);
             }
-            Screen::Fork => key(&mut app, KeyCode::Char('1')),
+            Screen::Fork => choose_first_route(&mut app),
             Screen::Minigame => {
                 raft_started = true;
-                key(&mut app, KeyCode::Char('2')); // Turn-based center lane; 30 inputs finish the real course.
+                steer_raft_down_the_center(&mut app);
             }
             Screen::Journey
                 if matches!(app.game.status, RunStatus::AtLandmark(_))
@@ -527,10 +614,7 @@ fn keyboard_journey_reaches_score_hall_and_fresh_setup() {
         match app.screen {
             Screen::Score => break,
             Screen::Event => choose_event(&mut app),
-            Screen::Fork => {
-                // The first route at The Dalles is Barlow, avoiding the raft minigame.
-                key(&mut app, KeyCode::Char('1'));
-            }
+            Screen::Fork => choose_first_route(&mut app),
             Screen::River => {
                 let snake = app.game.current_node_id.as_deref() == Some("snake_river");
                 let guide = snake && app.game.inventory.get("clothing") >= app.game.guide_cost();
@@ -621,25 +705,24 @@ fn keyboard_talk_at_a_fort_offers_a_named_speaker_grounded_in_state() {
     app.game.route_miles_remaining = 250;
     app.game.miles = 304;
     app.game.status = RunStatus::AtLandmark("fort_kearney".into());
-    // Eat down from the full 2000 lb store limit so there is room for a favor.
-    app.game.inventory.quantities.insert("food".into(), 500);
+    make_room_for_a_favor(&mut app);
 
     key(&mut app, KeyCode::Char('t'));
     assert_eq!(app.screen, Screen::Talk);
     let view = render(&mut app, 80, 24);
     assert!(view.contains("Speak with"), "a named speaker should be listed:\n{view}");
 
-    enter(&mut app); // Choose the first listed speaker.
+    choose_speaker(&mut app);
     let view = render(&mut app, 80, 24);
     assert!(view.contains("Ask about the route"), "topics should follow speaker choice:\n{view}");
 
-    key(&mut app, KeyCode::Esc); // Esc backs out of the topic choice, not the whole screen.
+    back_out_of_topics(&mut app);
     assert_eq!(app.screen, Screen::Talk);
     let view = render(&mut app, 80, 24);
     assert!(view.contains("Speak with"), "Esc should return to the speaker list:\n{view}");
 
-    enter(&mut app); // Choose the speaker again.
-    enter(&mut app); // Ask about the route.
+    choose_speaker(&mut app);
+    ask_about_route(&mut app);
     assert_eq!(app.screen, Screen::Talk, "the talk screen should stay open after an answer");
     assert_eq!(app.game.conversation_memory.len(), 1);
     let (speaker_id, memory) = app.game.conversation_memory.iter().next().unwrap();
@@ -652,32 +735,29 @@ fn keyboard_talk_at_a_fort_offers_a_named_speaker_grounded_in_state() {
         "the route answer must name the real next landmark and distance:\n{view}"
     );
 
-    enter(&mut app); // Dismiss the complete attributed reply.
+    dismiss_reply(&mut app);
     let food_before = app.game.inventory.get("food");
 
-    enter(&mut app); // Approach the same speaker again, same day.
-    down(&mut app, 1);
-    enter(&mut app); // Ask about supplies this time.
+    choose_speaker(&mut app);
+    ask_about_supplies(&mut app);
     let memory = &app.game.conversation_memory[&speaker_id];
     assert_eq!(memory.times_talked, 2);
     assert!(!memory.favor_received, "same-day repeats are not a return visit");
     assert_eq!(app.game.inventory.get("food"), food_before);
 
-    app.game.day += 1; // A real return visit, a day later.
-    enter(&mut app); // Dismiss the previous reply.
-    enter(&mut app); // Approach again.
-    down(&mut app, 2);
-    enter(&mut app); // Ask for news.
+    app.game.day += 1;
+    dismiss_reply(&mut app);
+    choose_speaker(&mut app);
+    ask_for_news(&mut app);
     let memory = &app.game.conversation_memory[&speaker_id];
     assert_eq!(memory.times_talked, 3);
     assert!(memory.favor_received, "a later-day return should be recognized with a one-time favor");
     assert_eq!(app.game.inventory.get("food"), food_before + 15);
 
     app.game.day += 1;
-    enter(&mut app); // Dismiss the previous reply.
-    enter(&mut app); // Approach a fourth time, another later day.
-    down(&mut app, 0);
-    enter(&mut app); // Ask about the route again.
+    dismiss_reply(&mut app);
+    choose_speaker(&mut app);
+    ask_about_route(&mut app);
     assert_eq!(
         app.game.inventory.get("food"),
         food_before + 15,
@@ -718,8 +798,6 @@ fn keyboard_talk_speakers_vanish_once_the_party_leaves_the_fort() {
     assert!(at_fort.contains("Speak with"), "a named speaker should be listed at the fort");
     key(&mut app, KeyCode::Esc);
 
-    // The party has moved on; `current_node_id` still names the fort as the last
-    // stop, but the status is no longer AtLandmark there.
     app.game.status = RunStatus::Travelling;
     app.game.target_node_id = Some("chimney_rock".into());
     app.game.route_miles_remaining = 120;
@@ -745,14 +823,13 @@ fn keyboard_talk_max_capacity_grants_no_food_and_no_false_claim() {
     assert_eq!(app.game.inventory.get("food"), 2_000, "store limit leaves no room for a favor");
 
     key(&mut app, KeyCode::Char('t'));
-    enter(&mut app); // Choose the first speaker.
-    enter(&mut app); // Ask about the route.
+    choose_speaker(&mut app);
+    ask_about_route(&mut app);
 
     app.game.day += 1;
-    enter(&mut app); // Dismiss the previous reply.
-    enter(&mut app); // Return a day later.
-    down(&mut app, 1);
-    enter(&mut app); // Ask about supplies.
+    dismiss_reply(&mut app);
+    choose_speaker(&mut app);
+    ask_about_supplies(&mut app);
     let view = render(&mut app, 80, 24);
     assert_eq!(app.game.inventory.get("food"), 2_000, "a full wagon must not overflow its limit");
     assert!(
@@ -773,53 +850,39 @@ fn keyboard_talk_wagon_favor_only_follows_a_real_trade() {
     start_setup(&mut app);
     buy_standard_outfit(&mut app);
     depart(&mut app);
-    enter(&mut app); // Make room in the wagon's food supply before any trade.
-    if app.screen == Screen::Event {
-        choose_event(&mut app);
-    }
+    travel_one_day(&mut app);
     assert_eq!(app.screen, Screen::Journey);
 
     key(&mut app, KeyCode::Char('t'));
     assert_eq!(app.screen, Screen::Talk);
     let view = render(&mut app, 80, 24);
     assert!(view.contains("neighboring wagon"), "a nearby NPC train should be listed:\n{view}");
-    enter(&mut app); // Approach the wagon speaker.
-    enter(&mut app); // Ask a topic.
+    choose_speaker(&mut app);
+    ask_about_route(&mut app);
     app.game.day += 1;
-    enter(&mut app); // Dismiss the previous reply.
-    enter(&mut app); // Return a day later, still without ever having traded.
-    down(&mut app, 1);
-    enter(&mut app);
+    dismiss_reply(&mut app);
+    choose_speaker(&mut app);
+    ask_about_supplies(&mut app);
     let food_before = app.game.inventory.get("food");
     assert!(
         app.game.conversation_memory.values().all(|memory| !memory.favor_received),
         "mere repeated talk must not fabricate trade familiarity"
     );
-    key(&mut app, KeyCode::Esc); // Dismiss the reply to the speaker list.
-    key(&mut app, KeyCode::Esc); // Return to the trail.
+    back_to_speaker_list(&mut app);
+    leave_talk(&mut app);
     assert_eq!(app.screen, Screen::Journey);
 
-    // Now trade for real.
     key(&mut app, KeyCode::Char('u'));
     assert_eq!(app.screen, Screen::Trade);
-    down(&mut app, 1); // Offer item.
-    right(&mut app, 1); // Clothing.
-    down(&mut app, 1); // Offer quantity.
-    for _ in 0..48 {
-        key(&mut app, KeyCode::Left);
-    }
-    down(&mut app, 1); // Requested item.
-    key(&mut app, KeyCode::Left); // Food.
-    down(&mut app, 2); // Trade action.
-    enter(&mut app);
+    trade_clothing_for_food(&mut app, 48);
     assert!(app.game.npcs[0].last_reputation_day.is_some(), "a real trade must be recorded");
     key(&mut app, KeyCode::Esc);
     assert_eq!(app.screen, Screen::Journey);
 
     app.game.day += 1;
     key(&mut app, KeyCode::Char('t'));
-    enter(&mut app); // Approach the wagon speaker again.
-    enter(&mut app); // Ask a topic.
+    choose_speaker(&mut app);
+    ask_about_route(&mut app);
     assert!(
         app.game.conversation_memory.values().any(|memory| memory.favor_received),
         "a real prior trade should now be recognized with a favor"
