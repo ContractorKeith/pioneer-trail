@@ -30,6 +30,7 @@ anyhow = { workspace = true }
 rand = { workspace = true }
 
 [dev-dependencies]
+pioneer-sim = { path = "../sim", version = "0.2.0", features = ["test-support"] }
 insta = { workspace = true }
 
 [lints]
