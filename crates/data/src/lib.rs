@@ -42,6 +42,16 @@ pub fn validate(content: &GameContent) -> Result<(), ContentError> {
     unique(content.occupations.iter().map(|value| value.id.as_str()), "occupation")?;
     unique(content.items.iter().map(|value| value.id.as_str()), "item")?;
     unique(content.ailments.iter().map(|value| value.id.as_str()), "ailment")?;
+    for item in &content.items {
+        expect(
+            item.score.is_none_or(|score| score.per_units >= 1),
+            &format!("item {} has a score with per_units of 0", item.id),
+        )?;
+        expect(
+            item.score.is_some() || pioneer_sim::score::legacy_item_score(&item.id).is_none(),
+            &format!("item {} must define a score", item.id),
+        )?;
+    }
     unique(content.events.iter().map(|value| value.id.as_str()), "event")?;
     unique(content.quotes.iter().map(|value| value.id.as_str()), "quote")?;
     unique(content.letters.iter().map(|value| value.id.as_str()), "letter")?;
@@ -685,6 +695,18 @@ mod tests {
     #[test]
     fn embedded_content_parses_and_validates() {
         assert!(load().is_ok());
+    }
+
+    #[test]
+    fn items_in_the_legacy_score_table_must_define_a_score_and_per_units_must_be_positive() {
+        let content = load().unwrap();
+        let mut missing = content.clone();
+        missing.items.iter_mut().find(|item| item.id == "oxen").unwrap().score = None;
+        assert!(validate(&missing).unwrap_err().to_string().contains("must define a score"));
+        let mut zero = content;
+        let score = zero.items.iter_mut().find(|item| item.id == "food").unwrap();
+        score.score.as_mut().unwrap().per_units = 0;
+        assert!(validate(&zero).unwrap_err().to_string().contains("per_units of 0"));
     }
 
     #[test]

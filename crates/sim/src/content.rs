@@ -99,6 +99,19 @@ pub struct ItemDefinition {
     pub price_cents: i64,
     pub weight_lbs: u32,
     pub limit: u32,
+    #[serde(default)]
+    pub score: Option<ItemScore>,
+}
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum ScoreCategory {
+    Ammunition,
+    Goods,
+}
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ItemScore {
+    pub points: u32,
+    pub per_units: u32,
+    pub category: ScoreCategory,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct AilmentDefinition {
@@ -287,6 +300,11 @@ impl GameContent {
                     price_cents: 4_000,
                     weight_lbs: 0,
                     limit: 9,
+                    score: Some(ItemScore {
+                        points: 8,
+                        per_units: 1,
+                        category: ScoreCategory::Goods,
+                    }),
                 },
                 ItemDefinition {
                     id: "food".into(),
@@ -295,6 +313,11 @@ impl GameContent {
                     price_cents: 20,
                     weight_lbs: 1,
                     limit: 2_000,
+                    score: Some(ItemScore {
+                        points: 1,
+                        per_units: 25,
+                        category: ScoreCategory::Goods,
+                    }),
                 },
                 ItemDefinition {
                     id: "clothing".into(),
@@ -303,6 +326,11 @@ impl GameContent {
                     price_cents: 1_000,
                     weight_lbs: 2,
                     limit: 99,
+                    score: Some(ItemScore {
+                        points: 2,
+                        per_units: 1,
+                        category: ScoreCategory::Goods,
+                    }),
                 },
                 ItemDefinition {
                     id: "medicine".into(),
@@ -311,6 +339,7 @@ impl GameContent {
                     price_cents: 1_500,
                     weight_lbs: 2,
                     limit: 5,
+                    score: None,
                 },
             ],
             trails: vec![TrailDefinition {
