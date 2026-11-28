@@ -3075,6 +3075,7 @@ mod tests {
                 price_cents: 1_000,
                 weight_lbs: 30,
                 limit: 3,
+                score: None,
             },
             ItemDefinition {
                 id: "tools".into(),
@@ -3083,6 +3084,7 @@ mod tests {
                 price_cents: 2_500,
                 weight_lbs: 15,
                 limit: 1,
+                score: None,
             },
         ]);
         game.content.events.push(EventDefinition {
@@ -3123,6 +3125,7 @@ mod tests {
             price_cents: 200,
             weight_lbs: 1,
             limit: 99,
+            score: None,
         });
         content.occupations.push(OccupationDefinition {
             id: "hunter".into(),
@@ -3234,6 +3237,7 @@ mod tests {
                 price_cents: 200,
                 weight_lbs: 1,
                 limit: 99,
+                score: None,
             },
             ItemDefinition {
                 id: "wheel".into(),
@@ -3242,6 +3246,7 @@ mod tests {
                 price_cents: 1_000,
                 weight_lbs: 30,
                 limit: 3,
+                score: None,
             },
             ItemDefinition {
                 id: "trade_goods".into(),
@@ -3250,6 +3255,7 @@ mod tests {
                 price_cents: 2_000,
                 weight_lbs: 10,
                 limit: 10,
+                score: None,
             },
             ItemDefinition {
                 id: "medicine".into(),
@@ -3258,6 +3264,7 @@ mod tests {
                 price_cents: 1_500,
                 weight_lbs: 2,
                 limit: 5,
+                score: None,
             },
         ]);
         content.ailments.push(AilmentDefinition {
@@ -3790,6 +3797,7 @@ mod tests {
             price_cents: i64::MAX,
             weight_lbs: 0,
             limit: u32::MAX,
+            score: None,
         });
         game.inventory.quantities.insert("priceless".into(), 3);
         game.npcs[0].inventory.insert("priceless".into(), 2);
