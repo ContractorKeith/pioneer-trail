@@ -2901,7 +2901,7 @@ mod tests {
         });
         app.game.pending_event = Some("wheel".into());
         app.sync_screen();
-        app.select(); // No spare wheel: rejected.
+        app.select();
         assert_eq!(app.pending_event.as_deref(), Some("wheel"));
         assert_eq!(app.screen, Screen::Event);
         assert!(app.body().iter().any(|line| format!("{line:?}").contains("unavailable")));
@@ -3350,7 +3350,7 @@ mod tests {
         app.game.status = pioneer_sim::RunStatus::AtLandmark("fort_kearney".into());
         app.handle_key(KeyEvent::from(KeyCode::Char('t')));
         assert_eq!(app.screen, Screen::Talk);
-        app.handle_key(KeyEvent::from(KeyCode::Enter)); // Choose the first speaker.
+        choose_speaker(&mut app);
         app.handle_key(KeyEvent::from(KeyCode::Down));
         let view = render_screen(&mut app, 80, 24);
         assert!(
@@ -3391,12 +3391,18 @@ mod tests {
             ];
         }
         app.handle_key(KeyEvent::from(KeyCode::Char('t')));
-        app.handle_key(KeyEvent::from(KeyCode::Enter)); // Choose the first speaker.
-        app.handle_key(KeyEvent::from(KeyCode::Enter)); // Ask about the route.
+        choose_speaker(&mut app);
+        ask_about_route(&mut app);
         let view = render_screen(&mut app, 80, 24);
         assert!(view.contains("Esc: Back"), "controls must stay visible:\n{view}");
         assert!(view.contains("TRAIL LOG"), "the trail log must stay visible:\n{view}");
         assert_eq!(view.lines().count(), 24, "the frame must still be exactly 24 rows:\n{view}");
+    }
+    fn choose_speaker(app: &mut App) {
+        app.handle_key(KeyEvent::from(KeyCode::Enter));
+    }
+    fn ask_about_route(app: &mut App) {
+        app.handle_key(KeyEvent::from(KeyCode::Enter));
     }
     fn render_screen(app: &mut App, width: u16, height: u16) -> String {
         let backend = TestBackend::new(width, height);
