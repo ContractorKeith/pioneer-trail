@@ -56,6 +56,7 @@ pub fn validate(content: &GameContent) -> Result<(), ContentError> {
     unique(content.quotes.iter().map(|value| value.id.as_str()), "quote")?;
     unique(content.letters.iter().map(|value| value.id.as_str()), "letter")?;
     unique(content.speakers.iter().map(|value| value.id.as_str()), "speaker")?;
+    unique(content.npc_trains.iter().map(|value| value.id.as_str()), "npc train")?;
     unique(content.events.iter().map(|value| value.text.as_str()), "event text")?;
     unique(
         content.quotes.iter().map(|value| {
@@ -369,6 +370,33 @@ pub fn validate(content: &GameContent) -> Result<(), ContentError> {
             speaker.favor_food_lbs > 0 && speaker.favor_food_lbs <= 50,
             &format!("speaker {} favor_food_lbs must stay a small, bounded amount", speaker.id),
         )?;
+    }
+    for train in &content.npc_trains {
+        expect(
+            valid_text(&train.name, 60) && !train.name.is_empty(),
+            &format!("npc train {} needs a name", train.id),
+        )?;
+        expect(
+            !train.greeting.is_empty()
+                && !train.returning_greeting.is_empty()
+                && valid_text(&train.greeting, 240)
+                && valid_text(&train.returning_greeting, 240),
+            &format!("npc train {} needs a first-meeting and a returning greeting", train.id),
+        )?;
+        expect(
+            train.first_mile <= train.last_mile,
+            &format!("npc train {} first_mile is after last_mile", train.id),
+        )?;
+        expect(
+            train.period_days >= 1,
+            &format!("npc train {} period_days must be at least 1", train.id),
+        )?;
+        for item_id in train.inventory.keys() {
+            expect(
+                item_ids.contains(item_id.as_str()),
+                &format!("npc train {} stocks unknown item {item_id}", train.id),
+            )?;
+        }
     }
     Ok(())
 }
@@ -732,6 +760,60 @@ mod tests {
         let mut invalid = content;
         invalid.speakers[0].landmark_id = "independence".into();
         assert!(validate(&invalid).unwrap_err().to_string().contains("non-fort landmark"));
+    }
+
+    #[test]
+    fn npc_trains_load_with_their_greetings() {
+        let content = load().unwrap();
+        assert_eq!(content.npc_trains.len(), 3);
+        assert_eq!(content.npc_trains[0].greeting, "Ruth Holloway: Well met on the road.");
+        assert_eq!(content.npc_trains[2].returning_greeting, "Nora Bird: Back again, are you?");
+    }
+
+    #[test]
+    fn npc_train_ids_must_be_unique() {
+        let mut content = load().unwrap();
+        content.npc_trains[1].id = content.npc_trains[0].id.clone();
+        assert!(validate(&content).unwrap_err().to_string().contains("duplicate npc train"));
+    }
+
+    #[test]
+    fn npc_train_needs_a_name() {
+        let mut content = load().unwrap();
+        content.npc_trains[0].name = String::new();
+        assert!(validate(&content).unwrap_err().to_string().contains("needs a name"));
+    }
+
+    #[test]
+    fn npc_train_needs_both_greetings() {
+        let mut content = load().unwrap();
+        content.npc_trains[0].greeting = String::new();
+        assert!(validate(&content).unwrap_err().to_string().contains("needs a first-meeting"));
+
+        let mut content = load().unwrap();
+        content.npc_trains[0].returning_greeting = String::new();
+        assert!(validate(&content).unwrap_err().to_string().contains("needs a first-meeting"));
+    }
+
+    #[test]
+    fn npc_train_mile_window_must_not_be_reversed() {
+        let mut content = load().unwrap();
+        content.npc_trains[0].first_mile = 800;
+        assert!(validate(&content).unwrap_err().to_string().contains("first_mile is after"));
+    }
+
+    #[test]
+    fn npc_train_period_must_be_at_least_one_day() {
+        let mut content = load().unwrap();
+        content.npc_trains[0].period_days = 0;
+        assert!(validate(&content).unwrap_err().to_string().contains("period_days"));
+    }
+
+    #[test]
+    fn npc_train_inventory_must_name_known_items() {
+        let mut content = load().unwrap();
+        content.npc_trains[0].inventory.insert("moonshine".into(), 1);
+        assert!(validate(&content).unwrap_err().to_string().contains("unknown item moonshine"));
     }
 
     #[test]

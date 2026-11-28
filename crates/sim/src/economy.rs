@@ -1,3 +1,4 @@
+use crate::content::NpcTrainDefinition;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -44,6 +45,20 @@ pub struct NpcTrain {
     pub day_window: u32,
 }
 impl NpcTrain {
+    pub fn from_definition(def: &NpcTrainDefinition) -> Self {
+        Self {
+            id: def.id.clone(),
+            name: def.name.clone(),
+            reputation: def.reputation,
+            inventory: def.inventory.clone(),
+            recurring: def.recurring,
+            last_reputation_day: None,
+            first_mile: def.first_mile,
+            last_mile: def.last_mile,
+            period_days: def.period_days,
+            day_window: def.day_window,
+        }
+    }
     pub fn accepts(
         &self,
         offered_value_cents: u64,
