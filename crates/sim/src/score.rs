@@ -114,7 +114,7 @@ mod tests {
     }
     #[test]
     fn achievements_require_arrival_and_the_original_departure_year() {
-        let mut game = crate::GameState::new(1);
+        let mut game = crate::GameState::with_content(1, crate::GameContent::starter());
         game.era_id = Some("1848".into());
         game.party = vec![PartyMember::new("Ada".into())];
         game.flags.insert("independence_rock_early".into());

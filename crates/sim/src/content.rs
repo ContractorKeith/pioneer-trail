@@ -251,6 +251,7 @@ pub enum WeatherKind {
 }
 
 impl GameContent {
+    #[cfg(any(test, feature = "test-support"))]
     pub fn starter() -> Self {
         Self {
             eras: vec![EraDefinition { id: "1848".into(), name: "1848".into(), year: 1848 }],

@@ -337,9 +337,6 @@ pub enum CommandError {
 }
 
 impl GameState {
-    pub fn new(seed: u64) -> Self {
-        Self::with_content(seed, GameContent::starter())
-    }
     pub fn with_content(seed: u64, content: GameContent) -> Self {
         Self {
             rng: SimRng::new(seed),
@@ -3048,7 +3045,7 @@ mod tests {
         content
     }
     fn run(seed: u64) -> GameState {
-        let mut g = GameState::new(seed);
+        let mut g = GameState::with_content(seed, GameContent::starter());
         g.apply(Command::Configure {
             trail_id: "oregon".into(),
             era_id: "1848".into(),
@@ -3296,7 +3293,7 @@ mod tests {
     fn seeded_family_pregnancy_is_eligible_and_reproducible() {
         let seed = (0..1_000)
             .find(|seed| {
-                let mut game = GameState::new(*seed);
+                let mut game = GameState::with_content(*seed, GameContent::starter());
                 game.apply(Command::Configure {
                     trail_id: "oregon".into(),
                     era_id: "1848".into(),
@@ -3313,8 +3310,8 @@ mod tests {
                 !game.family.pregnancies.is_empty()
             })
             .expect("a seeded family pregnancy should be reachable");
-        let mut left = GameState::new(seed);
-        let mut right = GameState::new(seed);
+        let mut left = GameState::with_content(seed, GameContent::starter());
+        let mut right = GameState::with_content(seed, GameContent::starter());
         let command = Command::Configure {
             trail_id: "oregon".into(),
             era_id: "1848".into(),
@@ -3588,7 +3585,7 @@ mod tests {
     }
     #[test]
     fn duplicate_party_names_are_rejected_without_mutating_setup() {
-        let mut game = GameState::new(8);
+        let mut game = GameState::with_content(8, GameContent::starter());
         assert_rejected_without_mutation(
             &mut game,
             Command::Configure {
@@ -3623,7 +3620,7 @@ mod tests {
 
     #[test]
     fn rejected_command_does_not_mutate_state() {
-        let mut game = GameState::new(2);
+        let mut game = GameState::with_content(2, GameContent::starter());
         let before = serde_json::to_string(&game).unwrap();
         assert!(matches!(game.apply(Command::Depart).as_slice(), [Outcome::Rejected(_)]));
         assert_eq!(before, serde_json::to_string(&game).unwrap());
@@ -3710,7 +3707,7 @@ mod tests {
 
     #[test]
     fn market_stock_depletes_and_npc_trade_is_atomic() {
-        let mut game = GameState::new(8);
+        let mut game = GameState::with_content(8, GameContent::starter());
         game.apply(Command::Configure {
             trail_id: "oregon".into(),
             era_id: "1848".into(),
@@ -4062,7 +4059,7 @@ mod tests {
 
     #[test]
     fn market_preview_matches_buy_and_sellback_is_stock_bounded() {
-        let mut game = GameState::new(14);
+        let mut game = GameState::with_content(14, GameContent::starter());
         game.apply(Command::Configure {
             trail_id: "oregon".into(),
             era_id: "1848".into(),

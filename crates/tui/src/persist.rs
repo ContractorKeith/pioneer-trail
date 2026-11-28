@@ -248,6 +248,7 @@ pub struct Settings {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use pioneer_sim::GameContent;
     use std::sync::atomic::{AtomicU64, Ordering};
 
     static NEXT: AtomicU64 = AtomicU64::new(0);
@@ -401,9 +402,9 @@ mod tests {
         let store = Storage::at(&temp.0);
         fs::write(temp.0.join(format!(".save.json.{}.0.tmp", std::process::id())), b"partial")
             .unwrap();
-        store.save_game(&GameState::new(3)).unwrap();
+        store.save_game(&GameState::with_content(3, GameContent::starter())).unwrap();
         assert!(store.load_game().unwrap().is_some());
-        store.save_game(&GameState::new(7)).unwrap();
+        store.save_game(&GameState::with_content(7, GameContent::starter())).unwrap();
         assert_eq!(store.load_game().unwrap().unwrap().rng.seed(), 7);
     }
 
@@ -427,7 +428,8 @@ mod tests {
 
     #[test]
     fn old_save_and_history_default_the_journal() {
-        let mut game = serde_json::to_value(GameState::new(7)).unwrap();
+        let mut game =
+            serde_json::to_value(GameState::with_content(7, GameContent::starter())).unwrap();
         game.as_object_mut().unwrap().remove("journal");
         let restored: GameState = serde_json::from_value(game).unwrap();
         assert!(restored.journal.entries.is_empty());
@@ -442,7 +444,7 @@ mod tests {
         let temp = Temp::new();
         let store = Storage::at(&temp.0);
         let id = new_run_id();
-        store.save_session(&id, &GameState::new(42)).unwrap();
+        store.save_session(&id, &GameState::with_content(42, GameContent::starter())).unwrap();
         assert_eq!(store.load_session().unwrap().unwrap().0, id);
         let run = RunRecord {
             run_id: id.clone(),
